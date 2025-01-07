@@ -340,8 +340,10 @@ class Llama:
             for t in generation_tokens
         ]
 
+
 class Task(TypedDict):
     requirements: List[int]
+
 
 class Workflow(Llama):
     BOS_ID = 128000
@@ -353,9 +355,12 @@ class Workflow(Llama):
         self.id_map = torch.tensor([-1], dtype=torch.long)
         self.context = torch.tensor([self.BOS_ID], dtype=torch.long)
 
+    def insert(self, dialog: Dialog):
+        self._insert(self.formatter.encode_dialog_prompt(dialog))
+
     # TODO -- this should _really_ have some requirements system analogous to step
     # for now, we just insert things with a normal causal mask and full backwards access
-    def insert(self, token_ids: List[int]):
+    def _insert(self, token_ids: List[int]):
         if token_ids[0] == self.BOS_ID:
             token_ids = token_ids[1:]
         tokens = torch.tensor(token_ids, dtype=torch.long)
