@@ -19,18 +19,36 @@ def main(
     )
 
     dialog = [
-        {'role': 'system', 'content': 'Respond with a kind greeting.'},
-        {'role': 'user', 'content': 'Hello!'}
+        {'role': 'system', 'content': 'Echo the user\'s message back.'},
+        {'role': 'user', 'content': 'Hello!'},
+        {'role': 'user', 'content': 'What is the capital of France?'}
     ]
 
-    workflow.insert(dialog)
+    system, user_1, user_2 = workflow.insert(*dialog)
 
-    tasks = [
-        {'requirements': [0, 1]},
-        {'requirements': [0, 1]},
-    ]
+    outputs, _ = workflow.step(
+        [
+            {'requirements': [system, user_1], 'expects': ('assistant', None)},
+            {'requirements': [system, user_1]},
+        ]
+        max_gen_len, temperature, top_p, log_probs
+    )
 
-    outputs, _ = workflow.step(tasks, max_gen_len, temperature, top_p, log_probs)
+    outputs, _ = workflow.step(
+        [
+            {'requirements': [system, user_2]},
+            {'requirements': [system, user_2]},
+        ]
+        max_gen_len, temperature, top_p, log_probs
+    )
+
+    outputs, _ = workflow.step(
+        [
+            {'requirements': [system, user_1]},
+            {'requirements': [system, user_2]},
+        ]
+        max_gen_len, temperature, top_p, log_probs
+    )
 
 if __name__ == '__main__':
     fire.Fire(main)

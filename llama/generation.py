@@ -18,7 +18,7 @@ from fairscale.nn.model_parallel.initialize import (
 )
 
 from llama.model import ModelArgs, Transformer
-from llama.tokenizer import ChatFormat, Dialog, Message, Tokenizer
+from llama.tokenizer import ChatFormat, Dialog, Message, Tokenizer, Role
 
 
 class CompletionPrediction(TypedDict, total=False):
@@ -343,36 +343,37 @@ class Llama:
 
 class Task(TypedDict):
     requirements: List[int]
-
+    expects: Tuple[Role, str]
 
 class Workflow(Llama):
+
+    # TODO -- shouldn't be hardcoded
     BOS_ID = 128000
     BOT_ID = 128006
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.cur_id = -1
+        self.cur_id = 0
         self.id_map = torch.tensor([-1], dtype=torch.long)
         self.context = torch.tensor([self.BOS_ID], dtype=torch.long)
 
-    def insert(self, dialog: Dialog):
-        self._insert(self.formatter.encode_dialog_prompt(dialog))
+    def insert(self, *messages: Dialog) -> List[int]:
+        return [self._insert(self.formatter.encode_dialog_prompt(m, prefill=False)) for m in messages]
 
-    # TODO -- this should _really_ have some requirements system analogous to step
-    # for now, we just insert things with a normal causal mask and full backwards access
-    def _insert(self, token_ids: List[int]):
+    # TODO -- this should have some requirements system analogous to step
+    def _insert(self, token_ids: List[int]) -> int:
         if token_ids[0] == self.BOS_ID:
             token_ids = token_ids[1:]
         tokens = torch.tensor(token_ids, dtype=torch.long)
         self.model.forward(tokens, len(self.context))
         self.context = torch.cat([self.context, tokens])
         self.add_mapping(token_ids)
+        self.cur_id += 1
+        return self.cur_id - 1
 
     def add_mapping(self, token_ids: List[int]):
         cur_map = torch.full((len(token_ids),), -1, dtype=torch.long, device='cuda')
         for i, t in enumerate(token_ids):
-            if t == self.BOT_ID:
-                self.cur_id += 1
             cur_map[i] = self.cur_id
         self.id_map = torch.cat([self.id_map, cur_map])
 
@@ -436,7 +437,7 @@ class Workflow(Llama):
             new_ids = torch.where(
                 eos_reached,
                 torch.full((bsz,), pad_id),
-                torch.arange(self.cur_id + 1, self.cur_id + 1 + bsz)
+                torch.arange(self.cur_id, self.cur_id + bsz)
             )
             self.id_map = torch.cat([self.id_map, new_ids])
 
