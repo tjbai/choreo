@@ -5,6 +5,7 @@ import json
 import os
 import sys
 import time
+from collections import defaultdict
 from pathlib import Path
 from typing import List, Optional, Tuple, TypedDict
 
@@ -67,7 +68,7 @@ class Llama:
         assert 1 <= max_seq_len <= 8192, f"max_seq_len must be between 1 and 8192, got {max_seq_len}."
         assert os.path.isdir(ckpt_dir), f"Checkpoint directory '{ckpt_dir}' does not exist."
         assert os.path.isfile(tokenizer_path), f"Tokenizer file '{tokenizer_path}' does not exist."
-        
+
         if not torch.distributed.is_initialized():
             torch.distributed.init_process_group("nccl")
         if not model_parallel_is_initialized():
@@ -339,6 +340,135 @@ class Llama:
             for t in generation_tokens
         ]
 
+class Task(TypedDict):
+    requirements: List[int]
+
+class Workflow(Llama):
+    BOS_ID = 128000
+    BOT_ID = 128006
+
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.cur_id = -1
+        self.id_map = torch.tensor([-1], dtype=torch.long)
+        self.context = torch.tensor([self.BOS_ID], dtype=torch.long)
+
+    # TODO -- this should _really_ have some requirements system analogous to step
+    # for now, we just insert things with a normal causal mask and full backwards access
+    def insert(self, token_ids: List[int]):
+        if token_ids[0] == self.BOS_ID:
+            token_ids = token_ids[1:]
+        tokens = torch.tensor(token_ids, dtype=torch.long)
+        self.model.forward(tokens, len(self.context))
+        self.context = torch.cat([self.context, tokens])
+        self.add_mapping(token_ids)
+
+    def add_mapping(self, token_ids: List[int]):
+        cur_map = torch.full((len(token_ids),), -1, dtype=torch.long, device='cuda')
+        for i, t in enumerate(token_ids):
+            if t == self.BOT_ID:
+                self.cur_id += 1
+            cur_map[i] = self.cur_id
+        self.id_map = torch.cat([self.id_map, cur_map])
+
+    @torch.inference_mode()
+    def step(
+        self,
+        tasks: List[Task],
+        max_gen_len: int,
+        temperature: float = 0.6,
+        top_p: float = 0.9,
+        log_probs: bool = True
+    ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
+
+        # TODO -- runtime validations
+        bsz = len(tasks)
+        pad_id = self.tokenizer.pad_id
+        tokens = torch.full((1, bsz * max_gen_len), pad_id, dtype=torch.long, device="cuda")
+        # token_logprobs = torch.zeros_like(tokens, dtype=torch.float)
+
+        prev_pos = 0
+        eos_reached = torch.tensor([False] * bsz, device="cuda")
+        stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens))
+
+        mask = torch.full((bsz, len(self.context)), float("-inf"), device="cuda")
+        for i, task in enumerate(tasks):
+            mask[i, torch.isin(self.context, torch.tensor(task['requirements']).type_as(self.context))] = 0
+
+        # TODO -- this only left-compacts each new generation without repositioning the context
+        position_ids = torch.cumsum(mask == 0, dim=1) # (bsz,)
+
+        for cur_pos in range(0, bsz * max_gen_len, bsz):
+            """
+            In each step, (cache_len + i) should only be able to attend over
+            (cache_len - bsz + i) from the previous set of interleaved generations.
+
+            For example, at batch size 3, this looks like:
+
+                 previous  current
+                     v       v
+                   1 0 0   1 1 1
+            mask + 0 1 0 + 1 1 1
+                   0 0 1   1 1 1
+            """
+            prev_pos = len(self.context) + cur_pos
+            logits = self.model.forward(
+                tokens=tokens[:, cur_pos : cur_pos + bsz],
+                start_pos=prev_pos,
+                mask=torch.hstack([mask, torch.full((bsz, bsz), float("-inf"))]),
+                position_ids=position_ids
+            )
+
+            if temperature > 0:
+                probs = torch.softmax(logits[:, -bsz:] / temperature, dim=-1)
+                next_token = sample_top_p_parallel(probs, top_p)
+            else:
+                next_token = torch.argmax(logits[:, -bsz:], dim=-1)
+
+            eos_reached |= torch.isin(next_token, stop_tokens)
+            tokens[:, cur_pos : cur_pos + bsz][eos_reached] = next_token[eos_reached]
+
+            new_ids = torch.where(
+                eos_reached,
+                torch.full((bsz,), pad_id),
+                torch.arange(self.cur_id + 1, self.cur_id + 1 + bsz)
+            )
+            self.id_map = torch.cat([self.id_map, new_ids])
+
+            interleaved_mask = torch.full((bsz, bsz), float("-inf")).type_as(mask)
+            interleaved_mask.fill_diagonal_(0)
+            mask = torch.cat([mask, interleaved_mask], dim=1)
+            position_ids += 1
+
+            if all(eos_reached):
+                break
+
+        self.cur_id += bsz
+
+        return (tokens.tolist(), None)
+
+        # if logprobs:
+        #     token_logprobs = token_logprobs.tolist()
+        # out_tokens, out_logprobs = [], []
+        # for i, toks in enumerate(tokens.tolist()):
+        #     # cut to max gen len
+        #     start = 0 if echo else len(prompt_tokens[i])
+        #     toks = toks[start : len(prompt_tokens[i]) + max_gen_len]
+        #     probs = None
+        #     if logprobs:
+        #         probs = token_logprobs[i][start : len(prompt_tokens[i]) + max_gen_len]
+        #     # cut to after eos tok if any
+        #     for stop_token in self.tokenizer.stop_tokens:
+        #         try:
+        #             eos_idx = toks.index(stop_token)
+        #             toks = toks[:eos_idx]
+        #             probs = probs[:eos_idx] if logprobs else None
+        #         except ValueError:
+        #             pass
+        #     out_tokens.append(toks)
+        #     out_logprobs.append(probs)
+        # return (out_tokens, out_logprobs if logprobs else None)
+
 
 def sample_top_p(probs, p):
     """
@@ -360,6 +490,16 @@ def sample_top_p(probs, p):
     mask = probs_sum - probs_sort > p
     probs_sort[mask] = 0.0
     probs_sort.div_(probs_sort.sum(dim=-1, keepdim=True))
+    print(probs_sort.shape)
     next_token = torch.multinomial(probs_sort, num_samples=1)
     next_token = torch.gather(probs_idx, -1, next_token)
     return next_token
+
+
+def sample_top_p_parallel(probs, p):
+    """
+    Akin to `sample_top_p` but expecting a BxNxV shape tensor for probs.
+    Returns a shape BxN tensor of samples.
+    """
+    next_token = sample_top_p(probs.view(-1, probs.shape[-1]), p)
+    return next_token.view(probs.shape[0], probs.shape[1])

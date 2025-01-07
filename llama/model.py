@@ -126,6 +126,7 @@ class Attention(nn.Module):
             init_method=lambda x: x,
         )
 
+        # TODO -- for our purposes these should be (1, max_batch_size * max_seq_len)
         self.cache_k = torch.zeros(
             (
                 args.max_batch_size,
@@ -169,12 +170,8 @@ class Attention(nn.Module):
         values = self.cache_v[:bsz, : start_pos + seqlen]
 
         # repeat k/v heads if n_kv_heads < n_heads
-        keys = repeat_kv(
-            keys, self.n_rep
-        )  # (bs, cache_len + seqlen, n_local_heads, head_dim)
-        values = repeat_kv(
-            values, self.n_rep
-        )  # (bs, cache_len + seqlen, n_local_heads, head_dim)
+        keys = repeat_kv(keys, self.n_rep)  # (bs, cache_len + seqlen, n_local_heads, head_dim)
+        values = repeat_kv(values, self.n_rep)  # (bs, cache_len + seqlen, n_local_heads, head_dim)
 
         xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
         keys = keys.transpose(1, 2)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
@@ -273,25 +270,29 @@ class Transformer(nn.Module):
         )
 
     @torch.inference_mode()
-    def forward(self, tokens: torch.Tensor, start_pos: int):
-        _bsz, seqlen = tokens.shape
+    def forward(
+        self,
+        tokens: torch.Tensor,
+        start_pos: int,
+        mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None
+    ):
+        _, seqlen = tokens.shape
         h = self.tok_embeddings(tokens)
         self.freqs_cis = self.freqs_cis.to(h.device)
-        freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
 
-        mask = None
-        if seqlen > 1:
+        if position_ids is not None:
+            assert position_ids.shape == (seqlen,)
+            freqs_cis = self.freqs_cis[position_ids]
+        else:
+            freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
+
+        if seqlen > 1 and mask is not None:
+            assert mask.shape == (seqlen, start_pos + seqlen)
+        elif seqlen > 1 and mask is None:
             mask = torch.full((seqlen, seqlen), float("-inf"), device=tokens.device)
-
             mask = torch.triu(mask, diagonal=1)
-
-            # When performing key-value caching, we compute the attention scores
-            # only for the new sequence. Thus, the matrix of scores is of size
-            # (seqlen, cache_len + seqlen), and the only masked entries are (i, j) for
-            # j > cache_len + i, since row i corresponds to token cache_len + i.
-            mask = torch.hstack(
-                [torch.zeros((seqlen, start_pos), device=tokens.device), mask]
-            ).type_as(h)
+            mask = torch.hstack([torch.zeros((seqlen, start_pos), device=tokens.device), mask]).type_as(h)
 
         for layer in self.layers:
             h = layer(h, start_pos, freqs_cis, mask)
