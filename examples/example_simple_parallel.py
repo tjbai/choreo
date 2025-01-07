@@ -26,7 +26,7 @@ def main(
 
     system, user_1, user_2 = workflow.insert(*dialog)
 
-    outputs, _ = workflow.step(
+    outputs, *_ = workflow.step(
         [
             {'requirements': [system, user_1], 'expects': ('assistant', None)},
             {'requirements': [system, user_1]},
@@ -34,7 +34,7 @@ def main(
         max_gen_len, temperature, top_p, log_probs
     )
 
-    outputs, _ = workflow.step(
+    outputs, *_ = workflow.step(
         [
             {'requirements': [system, user_2]},
             {'requirements': [system, user_2]},
@@ -42,7 +42,7 @@ def main(
         max_gen_len, temperature, top_p, log_probs
     )
 
-    outputs, _ = workflow.step(
+    outputs, *_ = workflow.step(
         [
             {'requirements': [system, user_1]},
             {'requirements': [system, user_2]},

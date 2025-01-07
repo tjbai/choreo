@@ -385,8 +385,7 @@ class Workflow(Llama):
         temperature: float = 0.6,
         top_p: float = 0.9,
         log_probs: bool = True
-    ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
-
+    ) -> Tuple[List[List[int]], List[int], Optional[List[List[float]]]]:
         # TODO -- runtime validations
         bsz = len(tasks)
         pad_id = self.tokenizer.pad_id
@@ -449,31 +448,21 @@ class Workflow(Llama):
             if all(eos_reached):
                 break
 
-        self.cur_id += bsz
+        # (bsz, max_gen_len)
+        tokens = tokens.view(-1, bsz).t()
+        out_tokens, out_ids = []
+        for i, toks in enumerate(tokens.tolist()):
+            for stop_token in self.tokenizer.stop_tokens:
+                try:
+                    eos_idx = toks.index(stop_token)
+                    toks = toks[:eos_idx]
+                except ValueError:
+                    pass
+            out_tokens.append(toks)
+            out_ids.append(self.cur_id)
+            self.cur_id += 1
 
-        return (tokens.tolist(), None)
-
-        # if logprobs:
-        #     token_logprobs = token_logprobs.tolist()
-        # out_tokens, out_logprobs = [], []
-        # for i, toks in enumerate(tokens.tolist()):
-        #     # cut to max gen len
-        #     start = 0 if echo else len(prompt_tokens[i])
-        #     toks = toks[start : len(prompt_tokens[i]) + max_gen_len]
-        #     probs = None
-        #     if logprobs:
-        #         probs = token_logprobs[i][start : len(prompt_tokens[i]) + max_gen_len]
-        #     # cut to after eos tok if any
-        #     for stop_token in self.tokenizer.stop_tokens:
-        #         try:
-        #             eos_idx = toks.index(stop_token)
-        #             toks = toks[:eos_idx]
-        #             probs = probs[:eos_idx] if logprobs else None
-        #         except ValueError:
-        #             pass
-        #     out_tokens.append(toks)
-        #     out_logprobs.append(probs)
-        # return (out_tokens, out_logprobs if logprobs else None)
+        return out_tokens, out_ids, None
 
 
 def sample_top_p(probs, p):
