@@ -356,6 +356,7 @@ class Workflow(Llama):
         self.cur_id = 0
         self.id_map = torch.tensor([-1], dtype=torch.long, device="cuda")
         self.context = torch.tensor([self.BOS_ID], dtype=torch.long, device="cuda")
+        self.device = "cuda"
 
     def insert(self, dialog: Dialog) -> List[int]:
         prev_id = self.cur_id
@@ -378,9 +379,9 @@ class Workflow(Llama):
         self.context = torch.cat([self.context, tokens])
 
     def _dependency_mask(self, tasks):
-        mask = torch.full((len(tasks), len(self.context)), float("-inf"), device=self.context.device)
+        mask = torch.full((len(tasks), len(self.context)), float("-inf"), device=self.device)
         for i, task in enumerate(tasks):
-            meets_requirement = torch.isin(self.id_map, torch.tensor(task['requirements'], device=self.context.device))
+            meets_requirement = torch.isin(self.id_map, torch.tensor(task['requirements'], device=self.device))
             is_identity = (self.id_map == (self.cur_id + i))
             mask[i, meets_requirement | is_identity] = 0
         mask[:, 0] = 0 # bos
@@ -429,8 +430,8 @@ class Workflow(Llama):
                 prefill_tokens.extend(header)
                 prefill_length.append(len(header))
 
-            prefill_tokens = torch.tensor(prefill_tokens, device=self.context.device)
-            prefill_length = torch.tensor(prefill_length, device=self.context.device)
+            prefill_tokens = torch.tensor(prefill_tokens, device=self.device)
+            prefill_length = torch.tensor(prefill_length, device=self.device)
 
             # (seqlen, seqlen)
             grouped = grouped_causal_mask(torch.tensor(prefill_tokens))
@@ -476,7 +477,7 @@ class Workflow(Llama):
             """
 
             tokens = (
-                self.context[torch.arange(bsz, device=self.context.device), tail_mask]
+                self.context[torch.arange(bsz, device=self.device), tail_mask]
                 if cur_pos == 0 else tokens[:, cur_pos : cur_pos + bsz]
             )
 
@@ -502,8 +503,8 @@ class Workflow(Llama):
 
             new_ids = torch.where(
                 eos_reached,
-                torch.full((bsz,), pad_id, device=self.id_map.device),
-                torch.arange(self.cur_id, self.cur_id + bsz, device=self.id_map.device)
+                torch.full((bsz,), pad_id, device=self.device),
+                torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)
             )
             self.id_map = torch.cat([self.id_map, new_ids])
 
