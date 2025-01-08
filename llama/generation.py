@@ -371,11 +371,12 @@ class Workflow(Llama):
         return self.cur_id - 1
 
     def _dependency_mask(self, tasks):
-        mask = torch.full((len(tasks), len(self.context)), float("-inf"), device="cuda")
+        mask = torch.full((len(tasks), len(self.context)), float("-inf"), device=self.context.device)
         for i, task in enumerate(tasks):
-            meets_requirement = torch.isin(self.context, torch.tensor(task['requirements'])).to(mask)
-            is_identity = (self.context == self.cur_id + i).to(mask)
+            meets_requirement = torch.isin(self.id_map, torch.tensor(task['requirements'], device=self.context.device))
+            is_identity = (self.id_map == (self.cur_id + i))
             mask[i, meets_requirement | is_identity] = 0
+        mask[:, 0] = 0 # bos
         return mask
 
     @torch.inference_mode()
