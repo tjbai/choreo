@@ -24,7 +24,7 @@ def main(
         {'role': 'user', 'content': 'What is the capital of France?'}
     ]
 
-    system, user_1, user_2 = workflow.insert(*dialog)
+    system, user_1, user_2 = workflow.insert(dialog)
 
     outputs, *_ = workflow.step(
         [
