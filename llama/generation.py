@@ -458,6 +458,9 @@ class Workflow(Llama):
             mask = self._dependency_mask(tasks)
             position_ids += prefill_length
 
+        # TODO -- this is gross and probably not necessary
+        tail_mask = -((mask == 0).flip(-1).int().argmax(-1) - len(self.context))
+
         for cur_pos in range(0, bsz * max_gen_len, bsz):
             """
             In each step, (cache_len + i) should only be able to attend over
@@ -472,12 +475,13 @@ class Workflow(Llama):
                    0 0 1   0 0 1
             """
 
-            interleaved_mask = torch.full((bsz, bsz), float("-inf")).type_as(mask)
-            interleaved_mask.fill_diagonal_(0)
-            mask = torch.hstack([mask, interleaved_mask])
+            tokens = (
+                self.context[torch.arange(bsz, device=self.context.device), tail_mask]
+                if cur_pos == 0 else tokens[:, cur_pos : cur_pos + bsz]
+            )
 
             logits = self.model.forward(
-                tokens=tokens[:, cur_pos : cur_pos + bsz],
+                tokens=tokens,
                 start_pos=len(self.context) + cur_pos,
                 mask=mask,
                 position_ids=position_ids
@@ -491,6 +495,10 @@ class Workflow(Llama):
 
             eos_reached |= torch.isin(next_token, stop_tokens)
             tokens[:, cur_pos : cur_pos + bsz][eos_reached] = next_token[eos_reached]
+
+            interleaved_mask = torch.full((bsz, bsz), float("-inf")).type_as(mask)
+            interleaved_mask.fill_diagonal_(0)
+            mask = torch.hstack([mask, interleaved_mask])
 
             new_ids = torch.where(
                 eos_reached,
