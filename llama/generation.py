@@ -5,7 +5,6 @@ import json
 import os
 import sys
 import time
-from collections import defaultdict
 from pathlib import Path
 from typing import List, Optional, Tuple, TypedDict
 
@@ -354,28 +353,30 @@ class Workflow(Llama):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self.cur_id = 0
-        self.id_map = torch.tensor([-1], dtype=torch.long)
-        self.context = torch.tensor([self.BOS_ID], dtype=torch.long)
+        self.id_map = torch.tensor([-1], dtype=torch.long, device="cuda")
+        self.context = torch.tensor([self.BOS_ID], dtype=torch.long, device="cuda")
 
     def insert(self, *messages: Dialog) -> List[int]:
         return [self._insert(self.formatter.encode_dialog_prompt(m, prefill=False)) for m in messages]
 
-    # TODO -- this should have some requirements system analogous to step
+    # TODO -- implement masking analogous to step
     def _insert(self, token_ids: List[int]) -> int:
         if token_ids[0] == self.BOS_ID:
             token_ids = token_ids[1:]
         tokens = torch.tensor(token_ids, dtype=torch.long)
         self.model.forward(tokens, len(self.context))
         self.context = torch.cat([self.context, tokens])
-        self.add_mapping(token_ids)
+        self.id_map = torch.cat([self.id_map, torch.full((len(token_ids),), self.cur_id, device='cuda')])
         self.cur_id += 1
         return self.cur_id - 1
 
-    def add_mapping(self, token_ids: List[int]):
-        cur_map = torch.full((len(token_ids),), -1, dtype=torch.long, device='cuda')
-        for i, t in enumerate(token_ids):
-            cur_map[i] = self.cur_id
-        self.id_map = torch.cat([self.id_map, cur_map])
+    def _dependency_mask(self, tasks):
+        mask = torch.full((len(tasks), len(self.context)), float("-inf"), device="cuda")
+        for i, task in enumerate(tasks):
+            meets_requirement = torch.isin(self.context, torch.tensor(task['requirements'])).to(mask)
+            is_identity = (self.context == self.cur_id + i).to(mask)
+            mask[i, meets_requirement | is_identity] = 0
+        return mask
 
     @torch.inference_mode()
     def step(
@@ -384,24 +385,66 @@ class Workflow(Llama):
         max_gen_len: int,
         temperature: float = 0.6,
         top_p: float = 0.9,
-        log_probs: bool = True
+        log_probs: bool = True,
+        prefill: bool = True
     ) -> Tuple[List[List[int]], List[int], Optional[List[List[float]]]]:
+
         # TODO -- runtime validations
         bsz = len(tasks)
         pad_id = self.tokenizer.pad_id
         tokens = torch.full((1, bsz * max_gen_len), pad_id, dtype=torch.long, device="cuda")
-        # token_logprobs = torch.zeros_like(tokens, dtype=torch.float)
-
-        prev_pos = 0
         eos_reached = torch.tensor([False] * bsz, device="cuda")
         stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens))
 
-        mask = torch.full((bsz, len(self.context)), float("-inf"), device="cuda")
-        for i, task in enumerate(tasks):
-            mask[i, torch.isin(self.context, torch.tensor(task['requirements']).type_as(self.context))] = 0
 
         # TODO -- this only left-compacts each new generation without repositioning the context
+        mask = self._dependency_mask(tasks)
         position_ids = torch.cumsum(mask == 0, dim=1) # (bsz,)
+
+        """
+        We might want to prefill the start of each message with the expected role
+        and special tokens. Rather than interleave, we can concatenate them to the
+        context sequentially:
+
+            <context><prefill 1><prefill 2>...
+
+        To add them to the cache, we just need to do one forward pass. The tricky
+        part is correctly handling the attention mask because each prefill needs to:
+            1. only have causal attention over other tokens in the prefill sequence
+            2. and only attend over required tokens in the context.
+        """
+        if prefill:
+            prefill_tokens = []
+            prefill_length = []
+            for i, task in enumerate(tasks):
+                role = f"{task['expects'][0]}:{task['expects'][1]}" if task['expects'][1] else task['expects'][0]
+                header = self.formatter.encode_header({"role": role}) # type: ignore
+                prefill_tokens.extend(header)
+                prefill_length.append(len(header))
+
+            prefill_tokens = torch.tensor(prefill_tokens).cuda()
+            prefill_length = torch.tensor(prefill_length).cuda()
+
+            # (seqlen, seqlen)
+            grouped = grouped_causal_mask(torch.tensor(prefill_tokens))
+
+            # (seqlen, cachelen)
+            requirements = torch.repeat_interleave(mask, prefill_length, dim=0)
+
+            self.model.forward(
+                tokens=prefill_tokens.unsqueeze(0),
+                start_pos=len(self.context),
+                mask=torch.hstack([requirements, grouped]),
+                position_ids=position_ids
+            )
+
+            new_ids = torch.repeat_interleave(torch.arange(self.cur_id, self.cur_id + bsz), prefill_length, dim=0)
+            self.id_map = torch.cat([self.id_map, new_ids])
+            self.context = torch.cat([self.context, prefill_tokens])
+
+            # need to update these with the new tokens
+            position_ids += prefill_length
+            mask = self._dependency_mask(tasks)
 
         for cur_pos in range(0, bsz * max_gen_len, bsz):
             """
@@ -498,3 +541,11 @@ def sample_top_p_parallel(probs, p):
     """
     next_token = sample_top_p(probs.view(-1, probs.shape[-1]), p)
     return next_token.view(probs.shape[0], probs.shape[1])
+
+
+def grouped_causal_mask(message_ids: torch.Tensor) -> torch.Tensor:
+    seqlen = len(message_ids)
+    causal = torch.ones((seqlen, seqlen), dtype=torch.bool, device=message_ids.device)
+    causal = torch.tril(causal)
+    same_message = message_ids.unsqueeze(0) == message_ids.unsqueeze(1)
+    return torch.where(causal & same_message, torch.zeros(seqlen, seqlen), torch.full((seqlen, seqlen), float("-inf")))
