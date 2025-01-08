@@ -349,6 +349,7 @@ class Workflow(Llama):
     # TODO -- shouldn't be hardcoded
     BOS_ID = 128000
     BOT_ID = 128006
+    EOT_ID = 128009
 
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
@@ -356,19 +357,25 @@ class Workflow(Llama):
         self.id_map = torch.tensor([-1], dtype=torch.long, device="cuda")
         self.context = torch.tensor([self.BOS_ID], dtype=torch.long, device="cuda")
 
-    def insert(self, *messages: Dialog) -> List[int]:
-        return [self._insert(self.formatter.encode_dialog_prompt(m, prefill=False)) for m in messages]
+    def insert(self, dialog: Dialog) -> List[int]:
+        prev_id = self.cur_id
+        self._insert(self.formatter.encode_dialog_prompt(dialog, prefill=False))
+        assert self.cur_id - prev_id == len(dialog)
+        return list(range(self.cur_id - len(dialog), self.cur_id))
 
     # TODO -- implement masking analogous to step
-    def _insert(self, token_ids: List[int]) -> int:
+    def _insert(self, token_ids: List[int]):
         if token_ids[0] == self.BOS_ID:
             token_ids = token_ids[1:]
         tokens = torch.tensor(token_ids, dtype=torch.long)
+
+        eot_increment = torch.cumsum(tokens == self.BOT_ID, dim=0)
+        new_ids = torch.full_like(tokens, self.cur_id) + eot_increment - 1
+        self.cur_id += eot_increment[-1].item()
+
         self.model.forward(tokens, len(self.context))
+        self.id_map = torch.cat([self.id_map, new_ids])
         self.context = torch.cat([self.context, tokens])
-        self.id_map = torch.cat([self.id_map, torch.full((len(token_ids),), self.cur_id, device='cuda')])
-        self.cur_id += 1
-        return self.cur_id - 1
 
     def _dependency_mask(self, tasks):
         mask = torch.full((len(tasks), len(self.context)), float("-inf"), device=self.context.device)
@@ -396,7 +403,6 @@ class Workflow(Llama):
         tokens = torch.full((1, bsz * max_gen_len), pad_id, dtype=torch.long, device="cuda")
         eos_reached = torch.tensor([False] * bsz, device="cuda")
         stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens))
-
 
         # TODO -- this only left-compacts each new generation without repositioning the context
         mask = self._dependency_mask(tasks)
@@ -456,9 +462,9 @@ class Workflow(Llama):
 
                  previous  current
                      v       v
-                   1 0 0   1 1 1
-            mask + 0 1 0 + 1 1 1
-                   0 0 1   1 1 1
+                   1 0 0   0 0 0
+            mask + 0 1 0 + 0 0 0
+                   0 0 1   0 0 0
             """
             prev_pos = len(self.context) + cur_pos
             logits = self.model.forward(
