@@ -402,7 +402,7 @@ class Workflow(Llama):
         pad_id = self.tokenizer.pad_id
         tokens = torch.full((1, bsz * max_gen_len), pad_id, dtype=torch.long, device="cuda")
         eos_reached = torch.tensor([False] * bsz, device="cuda")
-        stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens))
+        stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens), device="cuda")
 
         # TODO -- this only left-compacts each new generation without repositioning the context
         mask = self._dependency_mask(tasks)
@@ -429,8 +429,8 @@ class Workflow(Llama):
                 prefill_tokens.extend(header)
                 prefill_length.append(len(header))
 
-            prefill_tokens = torch.tensor(prefill_tokens).cuda()
-            prefill_length = torch.tensor(prefill_length).cuda()
+            prefill_tokens = torch.tensor(prefill_tokens, device=self.context.device)
+            prefill_length = torch.tensor(prefill_length, device=self.context.device)
 
             # (seqlen, seqlen)
             grouped = grouped_causal_mask(torch.tensor(prefill_tokens))
@@ -442,16 +442,21 @@ class Workflow(Llama):
                 tokens=prefill_tokens.unsqueeze(0),
                 start_pos=len(self.context),
                 mask=torch.hstack([requirements, grouped]),
-                position_ids=position_ids
+                position_ids=incremental_sequence_with_offset(position_ids, prefill_length)
             )
 
-            new_ids = torch.repeat_interleave(torch.arange(self.cur_id, self.cur_id + bsz), prefill_length, dim=0)
-            self.id_map = torch.cat([self.id_map, new_ids])
+            self.id_map = torch.cat([
+                self.id_map,
+                torch.repeat_interleave(
+                    torch.arange(self.cur_id, self.cur_id + bsz),
+                    prefill_length
+                )
+            ])
             self.context = torch.cat([self.context, prefill_tokens])
 
             # need to update these with the new tokens
-            position_ids += prefill_length
             mask = self._dependency_mask(tasks)
+            position_ids += prefill_length
 
         for cur_pos in range(0, bsz * max_gen_len, bsz):
             """
@@ -462,21 +467,25 @@ class Workflow(Llama):
 
                  previous  current
                      v       v
-                   1 0 0   0 0 0
-            mask + 0 1 0 + 0 0 0
-                   0 0 1   0 0 0
+                   1 0 0   1 0 0
+            mask + 0 1 0 + 0 1 0
+                   0 0 1   0 0 1
             """
-            prev_pos = len(self.context) + cur_pos
+
+            interleaved_mask = torch.full((bsz, bsz), float("-inf")).type_as(mask)
+            interleaved_mask.fill_diagonal_(0)
+            mask = torch.hstack([mask, interleaved_mask])
+
             logits = self.model.forward(
                 tokens=tokens[:, cur_pos : cur_pos + bsz],
-                start_pos=prev_pos,
-                mask=torch.hstack([mask, torch.full((bsz, bsz), float("-inf"))]),
+                start_pos=len(self.context) + cur_pos,
+                mask=mask,
                 position_ids=position_ids
             )
 
             if temperature > 0:
                 probs = torch.softmax(logits[:, -bsz:] / temperature, dim=-1)
-                next_token = sample_top_p_parallel(probs, top_p)
+                next_token = sample_top_p_parallel(probs, top_p).squeeze()
             else:
                 next_token = torch.argmax(logits[:, -bsz:], dim=-1)
 
@@ -485,20 +494,16 @@ class Workflow(Llama):
 
             new_ids = torch.where(
                 eos_reached,
-                torch.full((bsz,), pad_id),
-                torch.arange(self.cur_id, self.cur_id + bsz)
+                torch.full((bsz,), pad_id, device=self.id_map.device),
+                torch.arange(self.cur_id, self.cur_id + bsz, device=self.id_map.device)
             )
             self.id_map = torch.cat([self.id_map, new_ids])
 
-            interleaved_mask = torch.full((bsz, bsz), float("-inf")).type_as(mask)
-            interleaved_mask.fill_diagonal_(0)
-            mask = torch.cat([mask, interleaved_mask], dim=1)
             position_ids += 1
 
             if all(eos_reached):
                 break
 
-        # (bsz, max_gen_len)
         tokens = tokens.view(-1, bsz).t()
         out_tokens, out_ids = []
         for i, toks in enumerate(tokens.tolist()):
@@ -535,7 +540,6 @@ def sample_top_p(probs, p):
     mask = probs_sum - probs_sort > p
     probs_sort[mask] = 0.0
     probs_sort.div_(probs_sort.sum(dim=-1, keepdim=True))
-    print(probs_sort.shape)
     next_token = torch.multinomial(probs_sort, num_samples=1)
     next_token = torch.gather(probs_idx, -1, next_token)
     return next_token
@@ -556,3 +560,13 @@ def grouped_causal_mask(message_ids: torch.Tensor) -> torch.Tensor:
     causal = torch.tril(causal)
     same_message = message_ids.unsqueeze(0) == message_ids.unsqueeze(1)
     return torch.where(causal & same_message, torch.zeros(seqlen, seqlen), torch.full((seqlen, seqlen), float("-inf")))
+
+
+def incremental_sequence_with_offset(offsets: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
+    assert len(offsets) == len(lengths)
+    position_ids = torch.repeat_interleave(offsets, lengths)
+    start = 0
+    for n in lengths.tolist():
+        position_ids[start : start + n] += torch.arange(n, device=position_ids.device)
+        start += n
+    return position_ids
