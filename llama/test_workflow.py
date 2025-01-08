@@ -1,6 +1,6 @@
 import torch
 from unittest import TestCase
-from llama.generation import Workflow, grouped_causal_mask
+from llama.generation import Workflow, grouped_causal_mask, incremental_sequence_with_offset
 
 class TestWorkflow(TestCase):
     def setUp(self):
@@ -53,6 +53,11 @@ class TestWorkflow(TestCase):
         self.assertTrue(torch.all(mask[:4, :4] == torch.triu(torch.full((4, 4), float("-inf")), diagonal=1)))
         self.assertTrue(torch.all(mask[4:6, 4:6] == torch.triu(torch.full((2, 2), float("-inf")), diagonal=1)))
         self.assertTrue(torch.all(mask[6:, 6:] == torch.triu(torch.full((3, 3), float("-inf")), diagonal=1)))
+
+    def test_increment_sequence_with_offset(self):
+        offsets = torch.tensor([10, 3, 7, 21])
+        lengths = torch.tensor([3, 1, 4, 2])
+        self.assertTrue(torch.all(incremental_sequence_with_offset(offsets, lengths) == torch.tensor([10, 11, 12, 3, 7, 8, 9, 10, 21, 22])))
 
     def test_insert(self):
         dialog_1 = [{'role': 'system', 'content': ''}, {'role': 'user', 'content': ''}]
