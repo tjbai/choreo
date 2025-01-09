@@ -288,9 +288,7 @@ class Transformer(nn.Module):
         else:
             freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
 
-        if seqlen > 1 and mask is not None:
-            assert mask.shape == (seqlen, start_pos + seqlen)
-        elif seqlen > 1 and mask is None:
+        if seqlen > 1 and mask is None:
             mask = torch.full((seqlen, seqlen), float("-inf"), device=tokens.device)
             mask = torch.triu(mask, diagonal=1)
             mask = torch.hstack([torch.zeros((seqlen, start_pos), device=tokens.device), mask]).type_as(h)
