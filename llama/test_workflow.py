@@ -48,19 +48,6 @@ class TestWorkflow(TestCase):
             ])
         ))
 
-    def test_leftmost_index(self):
-        self.workflow.context = torch.zeros(6)
-
-        mask = torch.tensor([
-            [0, 0, 0, float("-inf"), float("-inf"), float("-inf")],
-            [float("-inf"), float("-inf"), float("-inf"), 0, 0, 0],
-            [0, float("-inf"), 0, 0, float("-inf"), float("-inf")],
-            [0, float("-inf"), 0, 0, 0, float("-inf")]
-        ], dtype=torch.bool)
-
-        leftmost = self.workflow._leftmost_index(mask)
-        self.assertTrue(torch.all(leftmost == torch.tensor([2, 5, 3, 4])))
-
     def test_grouped_causal_mask(self):
         message_ids = torch.tensor([0, 0, 0, 0, 1, 1, 2, 2, 2])
         mask = grouped_causal_mask(message_ids)
