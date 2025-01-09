@@ -403,10 +403,6 @@ class Workflow(Llama):
         mask[:, 0] = 0 # bos
         return mask
 
-    # TODO -- this is gross and there has to be a better way
-    def _leftmost_index(self, mask: torch.Tensor) -> torch.Tensor:
-        return -((mask == 0).flip(-1).int().argmax(-1) - len(self.context)) - 1
-
     @torch.inference_mode()
     def step(
         self,
@@ -511,7 +507,6 @@ class Workflow(Llama):
             tokens[:, cur_pos : cur_pos + bsz][:, ~eos_reached] = next_token[~eos_reached]
             
             # might be able to just do this at the end
-            # TODO -- need to update context as well
             self.id_map = torch.cat([self.id_map, torch.where(
                 eos_reached,
                 torch.full((bsz,), pad_id, device=self.device),
@@ -528,6 +523,8 @@ class Workflow(Llama):
 
             if all(eos_reached):
                 break
+            
+        self.context = torch.cat([self.context, tokens[0, : cur_pos + bsz]])
 
         tokens = tokens.view(-1, bsz).t()
         out_tokens = []
