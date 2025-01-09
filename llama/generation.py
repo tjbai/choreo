@@ -310,6 +310,7 @@ class Llama:
         prompt_tokens = [
             self.formatter.encode_dialog_prompt(dialog) for dialog in dialogs
         ]
+        
         generation_tokens, generation_logprobs = self.generate(
             prompt_tokens=prompt_tokens,
             max_gen_len=max_gen_len,
@@ -500,10 +501,10 @@ class Workflow(Llama):
 
             if temperature > 0:
                 probs = torch.softmax(logits[:, -bsz:] / temperature, dim=-1)
-                next_token = sample_top_p_parallel(probs, top_p).squeeze()
+                next_token = sample_top_p_parallel(probs, top_p).squeeze(0)
             else:
-                next_token = torch.argmax(logits[:, -bsz:], dim=-1).squeeze()
-
+                next_token = torch.argmax(logits[:, -bsz:], dim=-1).squeeze(0)
+                
             tokens[:, cur_pos : cur_pos + bsz][:, ~eos_reached] = next_token[~eos_reached]
             
             # might be able to just do this at the end

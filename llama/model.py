@@ -144,6 +144,11 @@ class Attention(nn.Module):
                 self.head_dim,
             )
         ).cuda()
+   
+    # this is just for testing purposes
+    def clear_cache(self):
+        self.cache_k.zero_()
+        self.cache_v.zero_()
 
     def forward(
         self,
