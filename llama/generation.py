@@ -387,6 +387,10 @@ class Workflow(Llama):
         mask[:, 0] = 0 # bos
         return mask
 
+    # TODO -- this is gross and there has to be a better way
+    def _leftmost_index(self, mask: torch.Tensor) -> torch.Tensor:
+        return -((mask == 0).flip(-1).int().argmax(-1) - len(self.context)) - 1
+
     @torch.inference_mode()
     def step(
         self,
@@ -455,12 +459,8 @@ class Workflow(Llama):
             ])
             self.context = torch.cat([self.context, prefill_tokens])
 
-            # need to update these with the new tokens
             mask = self._dependency_mask(tasks)
             position_ids += prefill_length
-
-        # TODO -- this is gross and probably not necessary
-        tail_mask = -((mask == 0).flip(-1).int().argmax(-1) - len(self.context))
 
         for cur_pos in range(0, bsz * max_gen_len, bsz):
             """
@@ -477,7 +477,7 @@ class Workflow(Llama):
             """
 
             tokens = (
-                self.context[torch.arange(bsz, device=self.device), tail_mask]
+                self.context[torch.arange(bsz, device=self.device), self._leftmost_index(mask)]
                 if cur_pos == 0 else tokens[:, cur_pos : cur_pos + bsz]
             )
 

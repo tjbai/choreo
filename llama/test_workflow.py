@@ -8,6 +8,8 @@ class TestWorkflow(TestCase):
         self.workflow.cur_id = 0
         self.workflow.id_map = torch.tensor([-1], dtype=torch.long)
         self.workflow.context = torch.tensor([128000])
+        self.workflow.device = "cpu"
+
         self.workflow.BOS_ID = 128000
         self.workflow.BOT_ID = 128006
         self.workflow.EOT_ID = 128009
@@ -45,6 +47,19 @@ class TestWorkflow(TestCase):
                 [0, 0, 0, 0]
             ])
         ))
+
+    def test_leftmost_index(self):
+        self.workflow.context = torch.zeros(6)
+
+        mask = torch.tensor([
+            [0, 0, 0, float("-inf"), float("-inf"), float("-inf")],
+            [float("-inf"), float("-inf"), float("-inf"), 0, 0, 0],
+            [0, float("-inf"), 0, 0, float("-inf"), float("-inf")],
+            [0, float("-inf"), 0, 0, 0, float("-inf")]
+        ], dtype=torch.bool)
+
+        leftmost = self.workflow._leftmost_index(mask)
+        self.assertTrue(torch.all(leftmost == torch.tensor([2, 5, 3, 4])))
 
     def test_grouped_causal_mask(self):
         message_ids = torch.tensor([0, 0, 0, 0, 1, 1, 2, 2, 2])
