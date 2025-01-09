@@ -29,23 +29,23 @@ def main(
     outputs, *_ = workflow.step(
         [
             {'requirements': [system, user_1], 'expects': ('assistant', None)},
-            {'requirements': [system, user_1]},
+            {'requirements': [system, user_1], 'expects': ('assistant', None)},
         ]
         max_gen_len, temperature, top_p, log_probs
     )
 
     outputs, *_ = workflow.step(
         [
-            {'requirements': [system, user_2]},
-            {'requirements': [system, user_2]},
+            {'requirements': [system, user_2], 'expects': ('assistant', None)},
+            {'requirements': [system, user_2], 'expects': ('assistant', None)},
         ]
         max_gen_len, temperature, top_p, log_probs
     )
 
     outputs, *_ = workflow.step(
         [
-            {'requirements': [system, user_1]},
-            {'requirements': [system, user_2]},
+            {'requirements': [system, user_1], 'expects': ('assistant', None)},
+            {'requirements': [system, user_2], 'expects': ('assistant', None)},
         ]
         max_gen_len, temperature, top_p, log_probs
     )

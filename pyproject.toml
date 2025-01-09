@@ -8,5 +8,7 @@ dependencies = [
     "blobfile>=3.0.0",
     "fairscale>=0.4.13",
     "fire>=0.7.0",
+    "ipykernel>=6.29.5",
+    "tiktoken>=0.8.0",
     "torch>=2.5.1",
 ]
