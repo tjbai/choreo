@@ -343,8 +343,15 @@ class Llama:
 class Task(TypedDict):
     requirements: List[int]
     expects: Tuple[Role, str]
+    
 
 class Workflow(Llama):
+        
+    # TODO -- this is probably not the right idiom
+    @staticmethod
+    def build(*args, **kwargs) -> "Workflow":
+        llama = Llama.build(*args, **kwargs)
+        return Workflow(llama.model, llama.tokenizer)
 
     # TODO -- shouldn't be hardcoded
     BOS_ID = 128000
@@ -357,6 +364,11 @@ class Workflow(Llama):
         self.id_map = torch.tensor([-1], dtype=torch.long, device="cuda")
         self.context = torch.tensor([self.BOS_ID], dtype=torch.long, device="cuda")
         self.device = "cuda"
+        
+    def reset(self, *args, **kwargs):
+        self.cur_id = 0
+        self.id_map = torch.tensor([-1], dtype=torch.long, device="cuda")
+        self.context = torch.tensor([self.BOS_ID], dtype=torch.long, device="cuda")
 
     def insert(self, dialog: Dialog) -> List[int]:
         prev_id = self.cur_id
@@ -372,11 +384,15 @@ class Workflow(Llama):
 
         eot_increment = torch.cumsum(tokens == self.BOT_ID, dim=0)
         new_ids = torch.full_like(tokens, self.cur_id) + eot_increment - 1
-        self.cur_id += eot_increment[-1].item()
-
-        self.model.forward(tokens, len(self.context))
         self.id_map = torch.cat([self.id_map, new_ids])
         self.context = torch.cat([self.context, tokens])
+        
+        if self.cur_id == 0:
+            self.model.forward(torch.cat([self.context, tokens]).unsqueeze(0), 0)
+        else:
+            self.model.forward(tokens.unsqueeze(0), len(self.context))
+            
+        self.cur_id += eot_increment[-1].item()
 
     def _dependency_mask(self, tasks):
         mask = torch.full((len(tasks), len(self.context)), float("-inf"), device=self.device)
@@ -405,13 +421,13 @@ class Workflow(Llama):
         # TODO -- runtime validations
         bsz = len(tasks)
         pad_id = self.tokenizer.pad_id
-        tokens = torch.full((1, bsz * max_gen_len), pad_id, dtype=torch.long, device="cuda")
-        eos_reached = torch.tensor([False] * bsz, device="cuda")
-        stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens), device="cuda")
+        tokens = torch.full((1, bsz * max_gen_len), pad_id, device=self.device)
+        eos_reached = torch.tensor([False] * bsz, device=self.device)
+        stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens), device=self.device)
 
         # TODO -- this only left-compacts each new generation without repositioning the context
         mask = self._dependency_mask(tasks)
-        position_ids = torch.cumsum(mask == 0, dim=1) # (bsz,)
+        position_ids = torch.sum(mask == 0, dim=1) # (bsz,)
 
         """
         We might want to prefill the start of each message with the expected role
@@ -436,9 +452,14 @@ class Workflow(Llama):
 
             prefill_tokens = torch.tensor(prefill_tokens, device=self.device)
             prefill_length = torch.tensor(prefill_length, device=self.device)
+            
+            new_ids = torch.repeat_interleave(
+                torch.arange(self.cur_id, self.cur_id + bsz, device=self.device),
+                prefill_length
+            )
 
             # (seqlen, seqlen)
-            grouped = grouped_causal_mask(torch.tensor(prefill_tokens))
+            grouped = grouped_causal_mask(new_ids)
 
             # (seqlen, cachelen)
             requirements = torch.repeat_interleave(mask, prefill_length, dim=0)
@@ -450,13 +471,7 @@ class Workflow(Llama):
                 position_ids=incremental_sequence_with_offset(position_ids, prefill_length)
             )
 
-            self.id_map = torch.cat([
-                self.id_map,
-                torch.repeat_interleave(
-                    torch.arange(self.cur_id, self.cur_id + bsz),
-                    prefill_length
-                )
-            ])
+            self.id_map = torch.cat([self.id_map, new_ids])
             self.context = torch.cat([self.context, prefill_tokens])
 
             mask = self._dependency_mask(tasks)
