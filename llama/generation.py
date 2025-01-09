@@ -422,8 +422,6 @@ class Workflow(Llama):
         bsz = len(tasks)
         pad_id = self.tokenizer.pad_id
         tokens = torch.full((1, bsz * max_gen_len), pad_id, device=self.device)
-        eos_reached = torch.tensor([False] * bsz, device=self.device)
-        stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens), device=self.device)
 
         # TODO -- this only left-compacts each new generation without repositioning the context
         mask = self._dependency_mask(tasks)
@@ -464,7 +462,7 @@ class Workflow(Llama):
             # (seqlen, cachelen)
             requirements = torch.repeat_interleave(mask, prefill_length, dim=0)
 
-            self.model.forward(
+            prefill_logits = self.model.forward(
                 tokens=prefill_tokens.unsqueeze(0),
                 start_pos=len(self.context),
                 mask=torch.hstack([requirements, grouped]),
@@ -476,7 +474,10 @@ class Workflow(Llama):
 
             mask = self._dependency_mask(tasks)
             position_ids += prefill_length
-
+            
+        eos_reached = torch.tensor([False] * bsz, device=self.device)
+        stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens), device=self.device)
+        
         for cur_pos in range(0, bsz * max_gen_len, bsz):
             """
             In each step, (cache_len + i) should only be able to attend over
@@ -490,38 +491,38 @@ class Workflow(Llama):
             mask + 0 1 0 + 0 1 0
                    0 0 1   0 0 1
             """
-
-            tokens = (
-                self.context[torch.arange(bsz, device=self.device), self._leftmost_index(mask)]
-                if cur_pos == 0 else tokens[:, cur_pos : cur_pos + bsz]
-            )
-
-            logits = self.model.forward(
-                tokens=tokens,
-                start_pos=len(self.context) + cur_pos,
-                mask=mask,
-                position_ids=position_ids
-            )
+            
+            if cur_pos == 0 and prefill:
+                logits = prefill_logits[:, torch.cumsum(prefill_length, dim=0) - 1]
+            else:
+                logits = self.model.forward(
+                    tokens=tokens[:, cur_pos : cur_pos + bsz],
+                    start_pos=len(self.context) + cur_pos - bsz, # this is a hack for now
+                    mask=mask,
+                    position_ids=position_ids
+                )
 
             if temperature > 0:
                 probs = torch.softmax(logits[:, -bsz:] / temperature, dim=-1)
                 next_token = sample_top_p_parallel(probs, top_p).squeeze()
             else:
-                next_token = torch.argmax(logits[:, -bsz:], dim=-1)
+                next_token = torch.argmax(logits[:, -bsz:], dim=-1).squeeze()
 
+            tokens[:, cur_pos : cur_pos + bsz][:, ~eos_reached] = next_token[~eos_reached]
+            
+            # might be able to just do this at the end
+            # TODO -- need to update context as well
+            self.id_map = torch.cat([self.id_map, torch.where(
+                eos_reached,
+                torch.full((bsz,), pad_id, device=self.device),
+                torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)                
+            )])
+            
             eos_reached |= torch.isin(next_token, stop_tokens)
-            tokens[:, cur_pos : cur_pos + bsz][eos_reached] = next_token[eos_reached]
 
             interleaved_mask = torch.full((bsz, bsz), float("-inf")).type_as(mask)
             interleaved_mask.fill_diagonal_(0)
             mask = torch.hstack([mask, interleaved_mask])
-
-            new_ids = torch.where(
-                eos_reached,
-                torch.full((bsz,), pad_id, device=self.device),
-                torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)
-            )
-            self.id_map = torch.cat([self.id_map, new_ids])
 
             position_ids += 1
 
@@ -529,7 +530,8 @@ class Workflow(Llama):
                 break
 
         tokens = tokens.view(-1, bsz).t()
-        out_tokens, out_ids = []
+        out_tokens = []
+        out_ids = []
         for i, toks in enumerate(tokens.tolist()):
             for stop_token in self.tokenizer.stop_tokens:
                 try:
