@@ -27,7 +27,6 @@ class ModelArgs:
     ffn_dim_multiplier: Optional[float] = None
     norm_eps: float = 1e-5
     rope_theta: float = 500000
-
     max_batch_size: int = 32
     max_seq_len: int = 2048
     use_scaled_rope: bool = True
@@ -89,14 +88,15 @@ def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
 
 
 class Attention(nn.Module):
-    def __init__(self, args: ModelArgs):
+    def __init__(self, args: ModelArgs, cache_k: torch.Tensor, cache_v: torch.Tensor):
         super().__init__()
-        self.n_kv_heads = args.n_heads if args.n_kv_heads is None else args.n_kv_heads
+
         model_parallel_size = fs_init.get_model_parallel_world_size()
-        self.n_local_heads = args.n_heads // model_parallel_size
+        self.n_kv_heads = args.n_heads if args.n_kv_heads is None else args.n_kv_heads
         self.n_local_kv_heads = self.n_kv_heads // model_parallel_size
-        self.n_rep = self.n_local_heads // self.n_local_kv_heads
         self.head_dim = args.dim // args.n_heads
+        self.n_local_heads = args.n_heads // model_parallel_size
+        self.n_rep = self.n_local_heads // self.n_local_kv_heads
 
         self.wq = ColumnParallelLinear(
             args.dim,
@@ -127,25 +127,9 @@ class Attention(nn.Module):
             init_method=lambda x: x,
         )
 
-        # TODO -- for our purposes these should be (1, max_batch_size * max_seq_len)
-        self.cache_k = torch.zeros(
-            (
-                args.max_batch_size,
-                args.max_seq_len,
-                self.n_local_kv_heads,
-                self.head_dim,
-            )
-        ).cuda()
-        self.cache_v = torch.zeros(
-            (
-                args.max_batch_size,
-                args.max_seq_len,
-                self.n_local_kv_heads,
-                self.head_dim,
-            )
-        ).cuda()
-   
-    # this is just for testing purposes
+        self.cache_k = cache_k
+        self.cache_v = cache_v
+
     def clear_cache(self):
         self.cache_k.zero_()
         self.cache_v.zero_()
@@ -221,12 +205,12 @@ class FeedForward(nn.Module):
 
 
 class TransformerBlock(nn.Module):
-    def __init__(self, layer_id: int, args: ModelArgs):
+    def __init__(self, layer_id: int, args: ModelArgs, cache_k: torch.Tensor, cache_v: torch.Tensor):
         super().__init__()
         self.n_heads = args.n_heads
         self.dim = args.dim
         self.head_dim = args.dim // args.n_heads
-        self.attention = Attention(args)
+        self.attention = Attention(args, cache_k, cache_v)
         self.feed_forward = FeedForward(
             dim=args.dim,
             hidden_dim=4 * args.dim,
@@ -256,17 +240,48 @@ class Transformer(nn.Module):
         self.vocab_size = params.vocab_size
         self.n_layers = params.n_layers
 
+        model_parallel_size = fs_init.get_model_parallel_world_size()
+        self.n_kv_heads = params.n_heads if params.n_kv_heads is None else params.n_kv_heads
+        self.n_local_kv_heads = self.n_kv_heads // model_parallel_size
+        self.head_dim = params.dim // params.n_heads
+
         self.tok_embeddings = VocabParallelEmbedding(
-            params.vocab_size, params.dim, init_method=lambda x: x
+            params.vocab_size,
+            params.dim,
+            init_method=lambda x: x
         )
 
-        self.layers = torch.nn.ModuleList()
-        for layer_id in range(params.n_layers):
-            self.layers.append(TransformerBlock(layer_id, params))
+        # TODO -- might want to flatten batch size and seq len here, or just pass custom args
+        self.cache_k = torch.zeros((
+            params.n_layers,
+            params.max_batch_size,
+            params.max_seq_len,
+            self.n_local_kv_heads,
+            self.head_dim,
+        ), device="cuda")
+
+        self.cache_v = torch.zeros((
+            params.n_layers,
+            params.max_batch_size,
+            params.max_seq_len,
+            self.n_local_kv_heads,
+            self.head_dim,
+        ), device="cuda")
+
+        self.layers = torch.nn.ModuleList([
+            TransformerBlock(
+                layer_id,
+                params,
+                self.cache_k[layer_id],
+                self.cache_v[layer_id]
+            ) for layer_id in range(params.n_layers)
+        ])
 
         self.norm = RMSNorm(params.dim, eps=params.norm_eps)
         self.output = ColumnParallelLinear(
-            params.dim, params.vocab_size, bias=False, init_method=lambda x: x
+            params.dim,
+            params.vocab_size,
+            bias=False, init_method=lambda x: x
         )
 
         self.freqs_cis = precompute_freqs_cis(
