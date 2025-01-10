@@ -1,6 +1,6 @@
 import torch
 from unittest import TestCase
-from llama.generation import Workflow, grouped_causal_mask, incremental_sequence_with_offset
+from llama.workflow import Workflow, grouped_causal_mask, incremental_sequence_with_offset
 
 class TestWorkflow(TestCase):
     def setUp(self):
@@ -19,6 +19,9 @@ class TestWorkflow(TestCase):
                 pass
 
         class MockFormatter:
+            def encode_message(self, message):
+                return [128006, 1, 128009]
+
             def encode_dialog_prompt(self, dialog, prefill):
                 tokens = [128000]
                 for _ in dialog:
@@ -62,15 +65,28 @@ class TestWorkflow(TestCase):
         self.assertTrue(torch.all(incremental_sequence_with_offset(offsets, lengths) == torch.tensor([10, 11, 12, 3, 7, 8, 9, 10, 21, 22])))
 
     def test_insert(self):
-        dialog_1 = [{'role': 'system', 'content': ''}, {'role': 'user', 'content': ''}]
-        dialog_2 = [{'role': 'system', 'content': ''}]
+        ids = self.workflow.insert([
+            {
+                'message': {'role': 'system', 'content': ''},
+                'requirements': []
+            }
+        ])
 
-        ids = self.workflow.insert(dialog_1)
-        self.assertEqual(ids, [0, 1])
-        self.assertEqual(self.workflow.cur_id, 2)
-        self.assertTrue(torch.all(self.workflow.context == torch.tensor([128000, 128006, 1, 128009, 128006, 1, 128009])))
-        self.assertTrue(torch.all(self.workflow.id_map == torch.tensor([-1, 0, 0, 0, 1, 1, 1])))
+        self.assertEqual(ids, [0])
+        self.assertEqual(self.workflow.cur_id, 1)
+        self.assertTrue(torch.all(self.workflow.context == torch.tensor([128000, 128006, 1, 128009])))
+        self.assertTrue(torch.all(self.workflow.id_map == torch.tensor([-1, 0, 0, 0])))
 
-        ids = self.workflow.insert(dialog_2)
-        self.assertEqual(ids, [2])
+        ids = self.workflow.insert([
+            {
+                'message': {'role': 'user', 'content': ''},
+                'requirements': ids
+            },
+            {
+                'message': {'role': 'user', 'content': ''},
+                'requirements': ids
+            }
+        ])
+
+        self.assertEqual(ids, [1, 2])
         self.assertEqual(self.workflow.cur_id, 3)
