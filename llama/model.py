@@ -23,7 +23,7 @@ class ModelArgs:
     n_heads: int = 32
     n_kv_heads: Optional[int] = None
     vocab_size: int = -1
-    multiple_of: int = 256  # make SwiGLU hidden layer size multiple of large power of 2
+    multiple_of: int = 256
     ffn_dim_multiplier: Optional[float] = None
     norm_eps: float = 1e-5
     rope_theta: float = 500000
@@ -251,22 +251,21 @@ class Transformer(nn.Module):
             init_method=lambda x: x
         )
 
-        # TODO -- might want to flatten batch size and seq len here, or just pass custom args
-        self.cache_k = torch.zeros((
+        self.register_buffer('cache_k', torch.zeros((
             params.n_layers,
             params.max_batch_size,
             params.max_seq_len,
             self.n_local_kv_heads,
             self.head_dim,
-        ), device="cuda")
+        )), persistent=False)
 
-        self.cache_v = torch.zeros((
+        self.register_buffer('cache_v', torch.zeros((
             params.n_layers,
             params.max_batch_size,
             params.max_seq_len,
             self.n_local_kv_heads,
             self.head_dim,
-        ), device="cuda")
+        )), persistent=False)
 
         self.layers = torch.nn.ModuleList([
             TransformerBlock(
@@ -281,7 +280,8 @@ class Transformer(nn.Module):
         self.output = ColumnParallelLinear(
             params.dim,
             params.vocab_size,
-            bias=False, init_method=lambda x: x
+            bias=False,
+            init_method=lambda x: x
         )
 
         self.freqs_cis = precompute_freqs_cis(
