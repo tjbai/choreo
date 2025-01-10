@@ -418,6 +418,8 @@ class Workflow(Llama):
         # TODO -- runtime validations
         bsz = len(tasks)
         pad_id = self.tokenizer.pad_id
+        
+        # TODO -- might be unnecessary to have this as a separate buffer since we append to context on the fly
         tokens = torch.full((1, bsz * max_gen_len), pad_id, device=self.device)
 
         # TODO -- this only left-compacts each new generation without repositioning the context
@@ -493,8 +495,8 @@ class Workflow(Llama):
                 logits = prefill_logits[:, torch.cumsum(prefill_length, dim=0) - 1]
             else:
                 logits = self.model.forward(
-                    tokens=tokens[:, cur_pos : cur_pos + bsz],
-                    start_pos=len(self.context) + cur_pos - bsz, # this is a hack for now
+                    tokens=tokens[:, cur_pos - bsz : cur_pos],
+                    start_pos=len(self.context) - bsz,
                     mask=mask,
                     position_ids=position_ids
                 )
@@ -511,8 +513,10 @@ class Workflow(Llama):
             self.id_map = torch.cat([self.id_map, torch.where(
                 eos_reached,
                 torch.full((bsz,), pad_id, device=self.device),
-                torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)                
+                torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)
             )])
+            
+            self.context = torch.cat([self.context, tokens[:, cur_pos : cur_pos + bsz].squeeze(0)])
             
             eos_reached |= torch.isin(next_token, stop_tokens)
 
@@ -524,8 +528,6 @@ class Workflow(Llama):
 
             if all(eos_reached):
                 break
-            
-        self.context = torch.cat([self.context, tokens[0, : cur_pos + bsz]])
 
         tokens = tokens.view(-1, bsz).t()
         out_tokens = []
