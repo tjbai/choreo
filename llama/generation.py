@@ -310,7 +310,7 @@ class Llama:
         prompt_tokens = [
             self.formatter.encode_dialog_prompt(dialog) for dialog in dialogs
         ]
-        
+
         generation_tokens, generation_logprobs = self.generate(
             prompt_tokens=prompt_tokens,
             max_gen_len=max_gen_len,
@@ -344,10 +344,10 @@ class Llama:
 class Task(TypedDict):
     requirements: List[int]
     expects: Tuple[Role, str]
-    
+
 
 class Workflow(Llama):
-        
+
     # TODO -- this is probably not the right idiom
     @staticmethod
     def build(*args, **kwargs) -> "Workflow":
@@ -365,7 +365,7 @@ class Workflow(Llama):
         self.id_map = torch.tensor([-1], dtype=torch.long, device="cuda")
         self.context = torch.tensor([self.BOS_ID], dtype=torch.long, device="cuda")
         self.device = "cuda"
-        
+
     def reset(self, *args, **kwargs):
         self.cur_id = 0
         self.id_map = torch.tensor([-1], dtype=torch.long, device="cuda")
@@ -387,12 +387,12 @@ class Workflow(Llama):
         new_ids = torch.full_like(tokens, self.cur_id) + eot_increment - 1
         self.id_map = torch.cat([self.id_map, new_ids])
         self.context = torch.cat([self.context, tokens])
-        
+
         if self.cur_id == 0:
             self.model.forward(torch.cat([self.context, tokens]).unsqueeze(0), 0)
         else:
             self.model.forward(tokens.unsqueeze(0), len(self.context))
-            
+
         self.cur_id += eot_increment[-1].item()
 
     def _dependency_mask(self, tasks):
@@ -412,13 +412,17 @@ class Workflow(Llama):
         temperature: float = 0.6,
         top_p: float = 0.9,
         log_probs: bool = True,
-        prefill: bool = True
+        prefill: bool = True,
+        seed: int = 42
     ) -> Tuple[List[List[int]], List[int], Optional[List[List[float]]]]:
+
+        # deterministic sampling
+        generator = torch.Generator(device=self.device).manual_seed(seed) if seed else None
 
         # TODO -- runtime validations
         bsz = len(tasks)
         pad_id = self.tokenizer.pad_id
-        
+
         # TODO -- might be unnecessary to have this as a separate buffer since we append to context on the fly
         tokens = torch.full((1, bsz * max_gen_len), pad_id, device=self.device)
 
@@ -449,7 +453,7 @@ class Workflow(Llama):
 
             prefill_tokens = torch.tensor(prefill_tokens, device=self.device)
             prefill_length = torch.tensor(prefill_length, device=self.device)
-            
+
             new_ids = torch.repeat_interleave(
                 torch.arange(self.cur_id, self.cur_id + bsz, device=self.device),
                 prefill_length
@@ -473,10 +477,10 @@ class Workflow(Llama):
 
             mask = self._dependency_mask(tasks)
             position_ids += prefill_length
-            
+
         eos_reached = torch.tensor([False] * bsz, device=self.device)
         stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens), device=self.device)
-        
+
         for cur_pos in range(0, bsz * max_gen_len, bsz):
             """
             In each step, (cache_len + i) should only be able to attend over
@@ -490,7 +494,7 @@ class Workflow(Llama):
             mask + 0 1 0 + 0 1 0
                    0 0 1   0 0 1
             """
-            
+
             if cur_pos == 0 and prefill:
                 logits = prefill_logits[:, torch.cumsum(prefill_length, dim=0) - 1]
             else:
@@ -503,21 +507,21 @@ class Workflow(Llama):
 
             if temperature > 0:
                 probs = torch.softmax(logits[:, -bsz:] / temperature, dim=-1)
-                next_token = sample_top_p_parallel(probs, top_p).squeeze(0)
+                next_token = sample_top_p_parallel(probs, top_p, generator=generator).squeeze(0)
             else:
                 next_token = torch.argmax(logits[:, -bsz:], dim=-1).squeeze(0)
-                
+
             tokens[:, cur_pos : cur_pos + bsz][:, ~eos_reached] = next_token[~eos_reached]
-            
+
             # might be able to just do this at the end
             self.id_map = torch.cat([self.id_map, torch.where(
                 eos_reached,
                 torch.full((bsz,), pad_id, device=self.device),
                 torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)
             )])
-            
+
             self.context = torch.cat([self.context, tokens[:, cur_pos : cur_pos + bsz].squeeze(0)])
-            
+
             eos_reached |= torch.isin(next_token, stop_tokens)
 
             interleaved_mask = torch.full((bsz, bsz), float("-inf")).type_as(mask)
@@ -546,7 +550,7 @@ class Workflow(Llama):
         return out_tokens, out_ids, None
 
 
-def sample_top_p(probs, p):
+def sample_top_p(probs, p, generator):
     """
     Perform top-p (nucleus) sampling on a probability distribution.
 
@@ -566,17 +570,17 @@ def sample_top_p(probs, p):
     mask = probs_sum - probs_sort > p
     probs_sort[mask] = 0.0
     probs_sort.div_(probs_sort.sum(dim=-1, keepdim=True))
-    next_token = torch.multinomial(probs_sort, num_samples=1)
+    next_token = torch.multinomial(probs_sort, num_samples=1, generator=generator)
     next_token = torch.gather(probs_idx, -1, next_token)
     return next_token
 
 
-def sample_top_p_parallel(probs, p):
+def sample_top_p_parallel(probs, p, generator):
     """
     Akin to `sample_top_p` but expecting a BxNxV shape tensor for probs.
     Returns a shape BxN tensor of samples.
     """
-    next_token = sample_top_p(probs.view(-1, probs.shape[-1]), p)
+    next_token = sample_top_p(probs.view(-1, probs.shape[-1]), p, generator)
     return next_token.view(probs.shape[0], probs.shape[1])
 
 
