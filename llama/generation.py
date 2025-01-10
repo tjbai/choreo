@@ -6,7 +6,7 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple, TypedDict
+from typing import List, Optional, Tuple, TypedDict, Sequence
 
 import torch
 import torch.nn.functional as F
@@ -341,10 +341,14 @@ class Llama:
         ]
 
 
-class Task(TypedDict):
+class Node(TypedDict):
     requirements: List[int]
+
+class Task(Node):
     expects: Tuple[Role, str]
 
+class Prompt(Node):
+    message: Message
 
 class Workflow(Llama):
 
@@ -371,34 +375,59 @@ class Workflow(Llama):
         self.id_map = torch.tensor([-1], dtype=torch.long, device="cuda")
         self.context = torch.tensor([self.BOS_ID], dtype=torch.long, device="cuda")
 
-    def insert(self, dialog: Dialog) -> List[int]:
-        prev_id = self.cur_id
-        self._insert(self.formatter.encode_dialog_prompt(dialog, prefill=False))
-        assert self.cur_id - prev_id == len(dialog)
-        return list(range(self.cur_id - len(dialog), self.cur_id))
+    # TODO -- this is implemented virtually the same as prefilling
+    # TODO -- have some way to bring back the old api for ergonomics (fully sequential and causal)
+    def insert(self, prompts: List[Prompt]) -> List[int]:
+        prompt_tokens = []
+        prompt_length = []
+        for prompt in prompts:
+            message = self.formatter.encode_message(prompt['message'])
+            prompt_tokens.extend(message)
+            prompt_length.append(len(message))
 
-    # TODO -- implement masking analogous to step
-    def _insert(self, token_ids: List[int]):
-        if token_ids[0] == self.BOS_ID:
-            token_ids = token_ids[1:]
-        tokens = torch.tensor(token_ids, dtype=torch.long)
+        prompt_tokens = torch.tensor(prompt_tokens, device=self.device)
+        prompt_length = torch.tensor(prompt_length, device=self.device)
 
-        eot_increment = torch.cumsum(tokens == self.BOT_ID, dim=0)
-        new_ids = torch.full_like(tokens, self.cur_id) + eot_increment - 1
-        self.id_map = torch.cat([self.id_map, new_ids])
-        self.context = torch.cat([self.context, tokens])
+        new_ids = torch.repeat_interleave(
+            torch.arange(self.cur_id, self.cur_id + len(prompts), device=self.device),
+            prompt_length
+        )
+
+        prompt_mask = self._dependency_mask(prompts)
+        position_ids = torch.sum(prompt_mask == 0, dim=1)
+
+        grouped = grouped_causal_mask(new_ids)
+        requirements = torch.repeat_interleave(prompt_mask, prompt_length, dim=0)
 
         if self.cur_id == 0:
-            self.model.forward(torch.cat([self.context, tokens]).unsqueeze(0), 0)
+            self.model.forward(
+                tokens=prompt_tokens.unsqueeze(0),
+                start_pos=0,
+                mask=torch.hstack([
+                    torch.zeros((len(prompt_tokens), 1), device=self.device),
+                    requirements,
+                    grouped
+                ]),
+                position_ids=incremental_sequence_with_offset(position_ids, prompt_length)
+            )
         else:
-            self.model.forward(tokens.unsqueeze(0), len(self.context))
+            self.model.forward(
+                tokens=prompt_tokens.unsqueeze(0),
+                start_pos=len(self.context),
+                mask=torch.hstack([requirements, grouped]),
+                position_ids=incremental_sequence_with_offset(position_ids, prompt_length)
+            )
 
-        self.cur_id += eot_increment[-1].item()
+        self.id_map = torch.cat([self.id_map, new_ids])
+        self.context = torch.cat([self.context, prompt_tokens])
+        self.cur_id += len(prompts)
 
-    def _dependency_mask(self, tasks):
-        mask = torch.full((len(tasks), len(self.context)), float("-inf"), device=self.device)
-        for i, task in enumerate(tasks):
-            meets_requirement = torch.isin(self.id_map, torch.tensor(task['requirements'], device=self.device))
+        return list(range(self.cur_id - len(prompts), self.cur_id))
+
+    def _dependency_mask(self, nodes: Sequence[Node]) -> torch.Tensor:
+        mask = torch.full((len(nodes), len(self.context)), float("-inf"), device=self.device)
+        for i, node in enumerate(nodes):
+            meets_requirement = torch.isin(self.id_map, torch.tensor(node['requirements'], device=self.device))
             is_identity = (self.id_map == (self.cur_id + i))
             mask[i, meets_requirement | is_identity] = 0
         mask[:, 0] = 0 # bos
@@ -445,7 +474,7 @@ class Workflow(Llama):
         if prefill:
             prefill_tokens = []
             prefill_length = []
-            for i, task in enumerate(tasks):
+            for task in tasks:
                 role = f"{task['expects'][0]}:{task['expects'][1]}" if task['expects'][1] else task['expects'][0]
                 header = self.formatter.encode_header({"role": role}) # type: ignore
                 prefill_tokens.extend(header)
