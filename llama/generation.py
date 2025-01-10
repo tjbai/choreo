@@ -401,14 +401,16 @@ class Workflow(Llama):
 
         if self.cur_id == 0:
             self.model.forward(
-                tokens=prompt_tokens.unsqueeze(0),
+                tokens=torch.cat([self.context, prompt_tokens]).unsqueeze(0),
                 start_pos=0,
-                mask=torch.hstack([
-                    torch.zeros((len(prompt_tokens), 1), device=self.device),
-                    requirements,
-                    grouped
+                mask=torch.vstack([
+                    torch.zeros((1, 1 + len(prompt_tokens)), device=self.device),
+                    torch.hstack([requirements, grouped])
                 ]),
-                position_ids=incremental_sequence_with_offset(position_ids, prompt_length)
+                position_ids=torch.hstack([
+                    torch.tensor(0, device=self.device),
+                    incremental_sequence_with_offset(position_ids, prompt_length)
+                ])
             )
         else:
             self.model.forward(
@@ -427,7 +429,10 @@ class Workflow(Llama):
     def _dependency_mask(self, nodes: Sequence[Node]) -> torch.Tensor:
         mask = torch.full((len(nodes), len(self.context)), float("-inf"), device=self.device)
         for i, node in enumerate(nodes):
-            meets_requirement = torch.isin(self.id_map, torch.tensor(node['requirements'], device=self.device))
+            meets_requirement = torch.isin(
+                self.id_map,
+                torch.tensor(node['requirements'], device=self.device, dtype=torch.int64)
+            )
             is_identity = (self.id_map == (self.cur_id + i))
             mask[i, meets_requirement | is_identity] = 0
         mask[:, 0] = 0 # bos
@@ -527,6 +532,12 @@ class Workflow(Llama):
             if cur_pos == 0 and prefill:
                 logits = prefill_logits[:, torch.cumsum(prefill_length, dim=0) - 1]
             else:
+                # print('####')
+                # for i, b_mask in enumerate(mask):
+                #     attends_over = self.context[b_mask == 0]
+                #     print(f'batch index {i}:')
+                #     print(self.tokenizer.decode(attends_over.squeeze().tolist()))
+                
                 logits = self.model.forward(
                     tokens=tokens[:, cur_pos - bsz : cur_pos],
                     start_pos=len(self.context) - bsz,
@@ -579,7 +590,7 @@ class Workflow(Llama):
         return out_tokens, out_ids, None
 
 
-def sample_top_p(probs, p, generator):
+def sample_top_p(probs, p, generator=None):
     """
     Perform top-p (nucleus) sampling on a probability distribution.
 
@@ -604,7 +615,7 @@ def sample_top_p(probs, p, generator):
     return next_token
 
 
-def sample_top_p_parallel(probs, p, generator):
+def sample_top_p_parallel(probs, p, generator=None):
     """
     Akin to `sample_top_p` but expecting a BxNxV shape tensor for probs.
     Returns a shape BxN tensor of samples.
