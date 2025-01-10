@@ -54,12 +54,16 @@ def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> torch.Te
     return freqs_cis
 
 
-# TODO -- should be able to broadcast across layers too
 def reshape_for_broadcast(freqs_cis: torch.Tensor, x: torch.Tensor) -> torch.Tensor:
     ndim = x.ndim
-    assert 0 <= 1 < ndim
-    assert freqs_cis.shape == (x.shape[1], x.shape[-1])
-    shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
+    if x.ndim == 4:
+        assert freqs_cis.shape == (x.shape[1], x.shape[-1])
+        shape = [d if i == 1 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
+    elif x.ndim == 5:
+        assert freqs_cis.shape == (x.shape[2], x.shape[-1])
+        shape = [d if i == 2 or i == ndim - 1 else 1 for i, d in enumerate(x.shape)]
+    else:
+        raise Exception("Bad shape for broadcast")
     return freqs_cis.view(*shape)
 
 

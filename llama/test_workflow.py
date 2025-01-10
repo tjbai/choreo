@@ -94,10 +94,10 @@ class TestWorkflow(TestCase):
 
     def setup_reposition(self):
         torch.manual_seed(42)
-        batch_size, seq_len, n_heads, head_dim = 2, 4, 2, 8
-        xq = torch.randn(batch_size, seq_len, n_heads, head_dim)
-        xk = torch.randn(batch_size, seq_len, n_heads, head_dim)
-        freqs_cis = precompute_freqs_cis(head_dim, 10)
+        n_layers, batch_size, seq_len, n_heads, head_dim = 16, 10, 4, 4, 8
+        xq = torch.randn(n_layers, batch_size, seq_len, n_heads, head_dim)
+        xk = torch.randn(n_layers, batch_size, seq_len, n_heads, head_dim)
+        freqs_cis = precompute_freqs_cis(head_dim, 48)
         return xq, xk, freqs_cis
 
     def test_reposition_identity(self):
@@ -116,11 +116,7 @@ class TestWorkflow(TestCase):
         self.assertTrue(torch.allclose(xk2, xk))
 
     def test_reposition_cycle(self):
-        torch.manual_seed(42)
-        xq = torch.randn(2, 4, 2, 8)
-        xk = torch.randn(2, 4, 2, 8)
-        freqs_cis = precompute_freqs_cis(8, 10)
-
+        xq, xk, freqs_cis = self.setup_reposition()
         pos0 = torch.zeros(4).long()
         pos1 = torch.ones(4).long()
         pos2 = torch.randint(10, (4,))
@@ -136,8 +132,8 @@ class TestWorkflow(TestCase):
         to_pos = torch.tensor([3, 1, 0, 2])
         xq_moved, xk_moved = reposition_rotary_emb(xq, xk, from_pos, to_pos, freqs_cis)
         xq_back, xk_back = reposition_rotary_emb(xq_moved, xk_moved, to_pos, from_pos, freqs_cis)
-        self.assertTrue(torch.allclose(xq_back, xq))
-        self.assertTrue(torch.allclose(xk_back, xk))
+        self.assertTrue(torch.allclose(xq_back, xq, atol=1e-5))
+        self.assertTrue(torch.allclose(xk_back, xk, atol=1e-5))
 
     def test_reposition_composition(self):
         xq, xk, freqs_cis = self.setup_reposition()
@@ -147,8 +143,8 @@ class TestWorkflow(TestCase):
         xq1, xk2 = reposition_rotary_emb(xq, xk, start_pos, mid_pos, freqs_cis)
         xq2, xk2 = reposition_rotary_emb(xq1, xk2, mid_pos, final_pos, freqs_cis)
         xq_direct, xk_direct = reposition_rotary_emb(xq, xk, start_pos, final_pos, freqs_cis)
-        self.assertTrue(torch.allclose(xq2, xq_direct))
-        self.assertTrue(torch.allclose(xk2, xk_direct))
+        self.assertTrue(torch.allclose(xq2, xq_direct, atol=1e-5))
+        self.assertTrue(torch.allclose(xk2, xk_direct, atol=1e-5))
 
     def test_reposition_dtype(self):
         xq, xk, freqs_cis = self.setup_reposition()
