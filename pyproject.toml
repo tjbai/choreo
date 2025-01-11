@@ -9,6 +9,7 @@ dependencies = [
     "fairscale>=0.4.13",
     "fire>=0.7.0",
     "ipykernel>=6.29.5",
+    "llama-stack>=0.0.63",
     "tiktoken>=0.8.0",
     "torch>=2.5.1",
 ]
