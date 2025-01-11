@@ -67,14 +67,16 @@ class Workflow:
 
         if self.cur_id == 0:
             self.model.forward(
-                tokens=prompt_tokens.unsqueeze(0),
+                tokens=torch.cat([self.context, prompt_tokens]).unsqueeze(0),
                 start_pos=0,
-                mask=torch.hstack([
-                    torch.zeros((len(prompt_tokens), 1), device=self.device),
-                    requirements,
-                    grouped
+                mask=torch.vstack([
+                    torch.zeros((1, 1 + len(prompt_tokens)), device=self.device),
+                    torch.hstack([requirements, grouped])
                 ]),
-                position_ids=incremental_sequence_with_offset(position_ids, prompt_length)
+                position_ids=torch.hstack([
+                    torch.tensor(0, device=self.device),
+                    incremental_sequence_with_offset(position_ids, prompt_length)
+                ])
             )
         else:
             self.model.forward(
@@ -93,7 +95,7 @@ class Workflow:
     def _dependency_mask(self, nodes: Sequence[Node]) -> torch.Tensor:
         mask = torch.full((len(nodes), len(self.context)), float("-inf"), device=self.device)
         for i, node in enumerate(nodes):
-            meets_requirement = torch.isin(self.id_map, torch.tensor(node['requirements'], device=self.device))
+            meets_requirement = torch.isin(self.id_map, torch.tensor(node['requirements'], dtype=torch.long, device=self.device))
             is_identity = (self.id_map == (self.cur_id + i))
             mask[i, meets_requirement | is_identity] = 0
         mask[:, 0] = 0 # bos
@@ -243,7 +245,7 @@ class Workflow:
 
         return out_tokens, out_ids, None
 
-def sample_top_p_parallel(probs, p, generator):
+def sample_top_p_parallel(probs, p, generator=None):
     next_token = sample_top_p(probs.view(-1, probs.shape[-1]), p, generator)
     return next_token.view(probs.shape[0], probs.shape[1])
 
