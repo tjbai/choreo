@@ -32,14 +32,16 @@ class Workflow:
         self.tokenizer = tokenizer
         self.formatter = ChatFormat(tokenizer)
         self.cur_id = 0
-        self.id_map = torch.tensor([-1], dtype=torch.long, device="cuda")
-        self.context = torch.tensor([self.BOS_ID], dtype=torch.long, device="cuda")
         self.device = "cuda"
+        self.id_map = torch.tensor([-1], dtype=torch.long, device=self.device)
+        self.position_map = torch.tensor([0], dtype=torch.long, device=self.device)
+        self.context = torch.tensor([self.BOS_ID], dtype=torch.long, device=self.device)
 
     def reset(self, *args, **kwargs):
         self.cur_id = 0
-        self.id_map = torch.tensor([-1], dtype=torch.long, device="cuda")
-        self.context = torch.tensor([self.BOS_ID], dtype=torch.long, device="cuda")
+        self.id_map = torch.tensor([-1], dtype=torch.long, device=self.device)
+        self.position_map = torch.tensor([0], dtype=torch.long, device=self.device)
+        self.context = torch.tensor([self.BOS_ID], dtype=torch.long, device=self.device)
 
     # TODO -- this is implemented virtually the same as prefilling
     # TODO -- have some way to bring back the old api for ergonomics (fully sequential and causal)
@@ -54,39 +56,34 @@ class Workflow:
         prompt_tokens = torch.tensor(prompt_tokens, device=self.device)
         prompt_length = torch.tensor(prompt_length, device=self.device)
 
+        prompt_mask = self._dependency_mask(prompts)
         new_ids = torch.repeat_interleave(
             torch.arange(self.cur_id, self.cur_id + len(prompts), device=self.device),
             prompt_length
         )
-
-        prompt_mask = self._dependency_mask(prompts)
-        position_ids = torch.sum(prompt_mask == 0, dim=1)
-
-        grouped = grouped_causal_mask(new_ids)
-        requirements = torch.repeat_interleave(prompt_mask, prompt_length, dim=0)
+        full_mask = torch.hstack([
+            grouped_causal_mask(new_ids),
+            torch.repeat_interleave(prompt_mask, prompt_length, dim=0)
+        ])
+        position_ids = torch.sum(full_mask == 0, dim=1)
 
         if self.cur_id == 0:
             self.model.forward(
                 tokens=torch.cat([self.context, prompt_tokens]).unsqueeze(0),
                 start_pos=0,
-                mask=torch.vstack([
-                    torch.zeros((1, 1 + len(prompt_tokens)), device=self.device),
-                    torch.hstack([requirements, grouped])
-                ]),
-                position_ids=torch.hstack([
-                    torch.tensor(0, device=self.device),
-                    incremental_sequence_with_offset(position_ids, prompt_length)
-                ])
+                mask=torch.vstack([torch.zeros((1, 1 + len(prompt_tokens)), device=self.device), full_mask]),
+                position_ids=torch.hstack([torch.tensor(0, device=self.device), position_ids])
             )
         else:
             self.model.forward(
                 tokens=prompt_tokens.unsqueeze(0),
                 start_pos=len(self.context),
-                mask=torch.hstack([requirements, grouped]),
-                position_ids=incremental_sequence_with_offset(position_ids, prompt_length)
+                mask=full_mask,
+                position_ids=position_ids
             )
 
         self.id_map = torch.cat([self.id_map, new_ids])
+        self.position_map = torch.cat([self.position_map, position_ids])
         self.context = torch.cat([self.context, prompt_tokens])
         self.cur_id += len(prompts)
 
@@ -156,22 +153,24 @@ class Workflow:
                 prefill_length
             )
 
-            # (seqlen, seqlen)
             grouped = grouped_causal_mask(new_ids)
-
-            # (seqlen, cachelen)
             requirements = torch.repeat_interleave(mask, prefill_length, dim=0)
+            full_mask = torch.hstack([requirements, grouped])
+            prefill_position_ids = torch.sum(full_mask == 0, dim=1)
+            # incremental_sequence_with_offset(position_ids, prefill_length)
 
             prefill_logits = self.model.forward(
                 tokens=prefill_tokens.unsqueeze(0),
                 start_pos=len(self.context),
-                mask=torch.hstack([requirements, grouped]),
-                position_ids=incremental_sequence_with_offset(position_ids, prefill_length)
+                mask=full_mask,
+                position_ids=prefill_position_ids
             )
 
             self.id_map = torch.cat([self.id_map, new_ids])
+            self.position_map = torch.cat([self.position_map, prefill_position_ids])
             self.context = torch.cat([self.context, prefill_tokens])
 
+            # update for decoding loop
             mask = self._dependency_mask(tasks)
             position_ids += prefill_length
 
@@ -215,15 +214,13 @@ class Workflow:
                 torch.full((bsz,), pad_id, device=self.device),
                 torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)
             )])
-
+            self.position_map = torch.cat([self.position_map, position_ids])
             self.context = torch.cat([self.context, tokens[:, cur_pos : cur_pos + bsz].squeeze(0)])
 
             eos_reached |= torch.isin(next_token, stop_tokens)
-
             interleaved_mask = torch.full((bsz, bsz), float("-inf")).type_as(mask)
             interleaved_mask.fill_diagonal_(0)
             mask = torch.hstack([mask, interleaved_mask])
-
             position_ids += 1
 
             if all(eos_reached):
