@@ -341,7 +341,7 @@ class Llama:
         ]
 
 
-def sample_top_p(probs, p, generator):
+def sample_top_p(probs, p, generator=None):
     """
     Perform top-p (nucleus) sampling on a probability distribution.
 
