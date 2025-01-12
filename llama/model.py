@@ -75,27 +75,24 @@ def apply_rotary_emb(
     xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
     xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
     freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
-    xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(3)
-    xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(3)
+    xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(-2)
+    xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(-2)
     return xq_out.type_as(xq), xk_out.type_as(xk)
 
 
 def reposition_rotary_emb(
-    xq: torch.Tensor,
     xk: torch.Tensor,
     from_pos: torch.Tensor,
     to_pos: torch.Tensor,
     freqs_cis: torch.Tensor
-) -> Tuple[torch.Tensor, torch.Tensor]:
-    xq_ = torch.view_as_complex(xq.float().reshape(*xq.shape[:-1], -1, 2))
+) -> torch.Tensor:
     xk_ = torch.view_as_complex(xk.float().reshape(*xk.shape[:-1], -1, 2))
     delta = to_pos - from_pos
     freqs_cis = freqs_cis[delta.abs()]
     freqs_cis = torch.where(delta.unsqueeze(-1) < 0, freqs_cis.conj(), freqs_cis)
-    freqs_cis = reshape_for_broadcast(freqs_cis, xq_)
-    xq_out = torch.view_as_real(xq_ * freqs_cis).flatten(-2)
+    freqs_cis = reshape_for_broadcast(freqs_cis, xk_)
     xk_out = torch.view_as_real(xk_ * freqs_cis).flatten(-2)
-    return xq_out.type_as(xq), xk_out.type_as(xk)
+    return xk_out.type_as(xk)
 
 
 def repeat_kv(x: torch.Tensor, n_rep: int) -> torch.Tensor:
@@ -311,6 +308,16 @@ class Transformer(nn.Module):
             params.dim // params.n_heads,
             params.max_seq_len * 2,
             params.rope_theta,
+        )
+
+    # TODO -- for training this would ideally happen in-place without breaking autograd
+    def reposition_cache(self, where: torch.Tensor, from_pos: torch.Tensor, to_pos: torch.Tensor):
+        assert where.shape == from_pos.shape == to_pos.shape
+        self.cache_k[:, :, where] = reposition_rotary_emb(
+            self.cache_k[:, :, where],
+            from_pos,
+            to_pos,
+            self.freqs_cis
         )
 
     @torch.inference_mode()

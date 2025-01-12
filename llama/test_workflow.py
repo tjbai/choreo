@@ -12,10 +12,6 @@ class TestWorkflow(TestCase):
         self.workflow.context = torch.tensor([128000])
         self.workflow.device = "cpu"
 
-        self.workflow.BOS_ID = 128000
-        self.workflow.BOT_ID = 128006
-        self.workflow.EOT_ID = 128009
-
         class MockModel:
             def forward(self, *args, **kwargs):
                 pass
@@ -113,80 +109,61 @@ class TestWorkflow(TestCase):
     def setup_reposition(self):
         torch.manual_seed(42)
         n_layers, batch_size, seq_len, n_heads, head_dim = 16, 10, 4, 4, 8
-        xq = torch.randn(n_layers, batch_size, seq_len, n_heads, head_dim)
         xk = torch.randn(n_layers, batch_size, seq_len, n_heads, head_dim)
         freqs_cis = precompute_freqs_cis(head_dim, 48)
-        return xq, xk, freqs_cis
+        return xk, freqs_cis
 
     def test_reposition_identity(self):
-        xq, xk, freqs_cis = self.setup_reposition()
-        xq_moved, xk_moved = reposition_rotary_emb(xq, xk, torch.ones(4).long(), torch.ones(4).long(), freqs_cis)
-        self.assertEqual(xq_moved.shape, xq.shape)
+        xk, freqs_cis = self.setup_reposition()
+        xk_moved = reposition_rotary_emb(xk, torch.ones(4).long(), torch.ones(4).long(), freqs_cis)
         self.assertEqual(xk_moved.shape, xk.shape)
-        self.assertTrue(torch.allclose(xq_moved, xq))
         self.assertTrue(torch.allclose(xk_moved, xk))
 
     def test_reposition_forwards_backwards(self):
-        xq, xk, freqs_cis = self.setup_reposition()
-        xq1, xk1 = reposition_rotary_emb(xq, xk, torch.zeros(4).long(), torch.ones(4).long(), freqs_cis)
-        xq2, xk2 = reposition_rotary_emb(xq1, xk1, torch.ones(4).long(), torch.zeros(4).long(), freqs_cis)
-        self.assertTrue(torch.allclose(xq2, xq))
+        xk, freqs_cis = self.setup_reposition()
+        xk1 = reposition_rotary_emb(xk, torch.zeros(4).long(), torch.ones(4).long(), freqs_cis)
+        xk2 = reposition_rotary_emb(xk1, torch.ones(4).long(), torch.zeros(4).long(), freqs_cis)
         self.assertTrue(torch.allclose(xk2, xk))
 
     def test_reposition_cycle(self):
-        xq, xk, freqs_cis = self.setup_reposition()
+        xk, freqs_cis = self.setup_reposition()
         pos0 = torch.zeros(4).long()
         pos1 = torch.ones(4).long()
         pos2 = torch.randint(10, (4,))
 
-        xq1, xk1 = reposition_rotary_emb(xq, xk, pos0, pos1, freqs_cis)
-        xq2, xk2 = reposition_rotary_emb(xq1, xk1, pos1, pos2, freqs_cis)
-        xq1_back, xk1_back = reposition_rotary_emb(xq2, xk2, pos2, pos1, freqs_cis)
-        xq0_back, xk0_back = reposition_rotary_emb(xq1_back, xk1_back, pos1, pos0, freqs_cis)
-        self.assertTrue(torch.allclose(xq0_back, xq, atol=1e-5))
+        xk1 = reposition_rotary_emb(xk, pos0, pos1, freqs_cis)
+        xk2 = reposition_rotary_emb(xk1, pos1, pos2, freqs_cis)
+        xk1_back = reposition_rotary_emb(xk2, pos2, pos1, freqs_cis)
+        xk0_back = reposition_rotary_emb(xk1_back, pos1, pos0, freqs_cis)
         self.assertTrue(torch.allclose(xk0_back, xk, atol=1e-5))
 
         from_pos = torch.tensor([0, 1, 2, 3])
         to_pos = torch.tensor([3, 1, 0, 2])
-        xq_moved, xk_moved = reposition_rotary_emb(xq, xk, from_pos, to_pos, freqs_cis)
-        xq_back, xk_back = reposition_rotary_emb(xq_moved, xk_moved, to_pos, from_pos, freqs_cis)
-        self.assertTrue(torch.allclose(xq_back, xq, atol=1e-5))
+        xk_moved = reposition_rotary_emb(xk, from_pos, to_pos, freqs_cis)
+        xk_back = reposition_rotary_emb(xk_moved, to_pos, from_pos, freqs_cis)
         self.assertTrue(torch.allclose(xk_back, xk, atol=1e-5))
 
     def test_reposition_composition(self):
-        xq, xk, freqs_cis = self.setup_reposition()
+        xk, freqs_cis = self.setup_reposition()
         start_pos = torch.tensor([0, 1, 2, 3])
         mid_pos = torch.tensor([1, 2, 3, 4])
         final_pos = torch.tensor([2, 3, 4, 5])
-        xq1, xk2 = reposition_rotary_emb(xq, xk, start_pos, mid_pos, freqs_cis)
-        xq2, xk2 = reposition_rotary_emb(xq1, xk2, mid_pos, final_pos, freqs_cis)
-        xq_direct, xk_direct = reposition_rotary_emb(xq, xk, start_pos, final_pos, freqs_cis)
-        self.assertTrue(torch.allclose(xq2, xq_direct, atol=1e-5))
+        xk2 = reposition_rotary_emb(xk, start_pos, mid_pos, freqs_cis)
+        xk2 = reposition_rotary_emb(xk2, mid_pos, final_pos, freqs_cis)
+        xk_direct = reposition_rotary_emb(xk, start_pos, final_pos, freqs_cis)
         self.assertTrue(torch.allclose(xk2, xk_direct, atol=1e-5))
 
-    def test_reposition_dtype(self):
-        xq, xk, freqs_cis = self.setup_reposition()
-        xq_half = xq.half()
-        xk_half = xk.half()
-        pos = torch.zeros(4).long()
-        new_pos = torch.ones(4).long()
-        xq_moved, xk_moved = reposition_rotary_emb(xq_half, xk_half, pos, new_pos, freqs_cis)
-        self.assertEqual(xq_moved.dtype, torch.float16)
-        self.assertEqual(xk_moved.dtype, torch.float16)
-
     def test_reposition_equality(self):
-        xq, xk, freqs_cis = self.setup_reposition()
+        xk, freqs_cis = self.setup_reposition()
 
         start_pos = torch.zeros(4).long()
         mid_pos = torch.tensor([1, 2, 3, 4])
         final_pos = torch.tensor([2, 3, 4, 5])
 
-        xq1, xk1 = reposition_rotary_emb(xq, xk, start_pos, mid_pos, freqs_cis)
-        xq1_apply, xk1_apply = apply_rotary_emb(xq, xk, freqs_cis[mid_pos])
-        self.assertTrue(torch.allclose(xq1, xq1_apply, atol=1e-5))
+        xk1 = reposition_rotary_emb(xk, start_pos, mid_pos, freqs_cis)
+        _, xk1_apply = apply_rotary_emb(torch.zeros_like(xk), xk, freqs_cis[mid_pos])
         self.assertTrue(torch.allclose(xk1, xk1_apply, atol=1e-5))
 
-        xq2, xk2 = reposition_rotary_emb(xq1, xk1, mid_pos, final_pos, freqs_cis)
-        xq2_apply, xk2_apply = apply_rotary_emb(xq, xk, freqs_cis[final_pos])
-        self.assertTrue(torch.allclose(xq2, xq2_apply, atol=1e-5))
+        xk2 = reposition_rotary_emb(xk1, mid_pos, final_pos, freqs_cis)
+        _, xk2_apply = apply_rotary_emb(torch.zeros_like(xk), xk, freqs_cis[final_pos])
         self.assertTrue(torch.allclose(xk2, xk2_apply, atol=1e-5))
