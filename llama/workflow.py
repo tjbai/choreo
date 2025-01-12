@@ -22,11 +22,6 @@ class Workflow:
         llama = Llama.build(*args, **kwargs)
         return Workflow(llama.model, llama.tokenizer)
 
-    # TODO -- shouldn't be hardcoded
-    BOS_ID = 128000
-    BOT_ID = 128006
-    EOT_ID = 128009
-
     def __init__(self, model: Transformer, tokenizer: Tokenizer):
         self.model = model
         self.tokenizer = tokenizer
@@ -35,16 +30,14 @@ class Workflow:
         self.device = "cuda"
         self.id_map = torch.tensor([-1], dtype=torch.long, device=self.device)
         self.position_map = torch.tensor([0], dtype=torch.long, device=self.device)
-        self.context = torch.tensor([self.BOS_ID], dtype=torch.long, device=self.device)
+        self.context = torch.tensor([self.tokenizer.bos_id], dtype=torch.long, device=self.device)
 
     def reset(self, *args, **kwargs):
         self.cur_id = 0
         self.id_map = torch.tensor([-1], dtype=torch.long, device=self.device)
         self.position_map = torch.tensor([0], dtype=torch.long, device=self.device)
-        self.context = torch.tensor([self.BOS_ID], dtype=torch.long, device=self.device)
+        self.context = torch.tensor([self.tokenizer.bos_id], dtype=torch.long, device=self.device)
 
-    # TODO -- this is implemented virtually the same as prefilling
-    # TODO -- have some way to bring back the old api for ergonomics (fully sequential and causal)
     def insert(self, prompts: Sequence[Prompt]) -> List[int]:
         prompt_tokens = []
         prompt_length = []
@@ -65,7 +58,10 @@ class Workflow:
             grouped_causal_mask(new_ids),
             torch.repeat_interleave(prompt_mask, prompt_length, dim=0)
         ])
-        position_ids = torch.sum(full_mask == 0, dim=1)
+        position_ids = incremental_sequence_with_offset(
+            torch.sum(prompt_mask == 0, dim=1),
+            prompt_length
+        )
 
         if self.cur_id == 0:
             self.model.forward(
@@ -92,7 +88,10 @@ class Workflow:
     def _dependency_mask(self, nodes: Sequence[Node]) -> torch.Tensor:
         mask = torch.full((len(nodes), len(self.context)), float("-inf"), device=self.device)
         for i, node in enumerate(nodes):
-            meets_requirement = torch.isin(self.id_map, torch.tensor(node['requirements'], dtype=torch.long, device=self.device))
+            meets_requirement = torch.isin(
+                self.id_map,
+                torch.tensor(node['requirements'], dtype=torch.long, device=self.device)
+            )
             is_identity = (self.id_map == (self.cur_id + i))
             mask[i, meets_requirement | is_identity] = 0
         mask[:, 0] = 0 # bos
@@ -102,26 +101,49 @@ class Workflow:
     def step(
         self,
         tasks: List[Task],
-        max_gen_len: int,
+        compact: bool = False,
+        max_gen_len: int = 512,
         temperature: float = 0.6,
         top_p: float = 0.9,
         log_probs: bool = True,
         prefill: bool = True,
         seed: int = 42
     ) -> Tuple[List[List[int]], List[int], Optional[List[List[float]]]]:
-
-        # deterministic sampling
         generator = torch.Generator(device=self.device).manual_seed(seed) if seed else None
 
-        # TODO -- runtime validations
+        # TODO -- runtime validations for remaining output buffer size
         bsz = len(tasks)
         pad_id = self.tokenizer.pad_id
 
-        # TODO -- might be unnecessary to have this as a separate buffer since we append to context on the fly
+        # TODO -- this doesn't need to be a separate buffer
         tokens = torch.full((1, bsz * max_gen_len), pad_id, device=self.device)
 
-        # TODO -- this only left-compacts each new generation without repositioning the context
+        """
+        TODO -- if we compact and produce a multi-task alignment, then the
+        postion ids might not left-compacted.
+
+        For example, say the context is A B C and we want to generate both
+        A B -> D as well as B C -> E n parallel. Rather than position both
+        A B and B C at position 0, thus losing parallelism, we can just line
+        them up as A B C sequentially. Then, we can generate D from offset
+        len(A) + len(B) and E from offset len(A) + len(B) + len(C):
+
+            pos 0
+            v
+            <message A><message B><message C>
+                                    <message D><message E> <- in parallel!
+
+        TODO -- there's a few too many indirections and allocations here for
+        this to be really clean and fast, but the way it is now is flexible.
+        """
         mask = self._dependency_mask(tasks)
+        if compact:
+            if len(tasks) > 1:
+                raise NotImplementedError()
+            where = mask[0] == 0
+            from_pos = self.position_map[where] # (len(context),)
+            to_pos = torch.arange(len(from_pos), device=self.device)
+            self.model.reposition_cache(where, from_pos, to_pos)
         position_ids = torch.sum(mask == 0, dim=1) # (bsz,)
 
         """
@@ -156,8 +178,7 @@ class Workflow:
             grouped = grouped_causal_mask(new_ids)
             requirements = torch.repeat_interleave(mask, prefill_length, dim=0)
             full_mask = torch.hstack([requirements, grouped])
-            prefill_position_ids = torch.sum(full_mask == 0, dim=1)
-            # incremental_sequence_with_offset(position_ids, prefill_length)
+            prefill_position_ids = incremental_sequence_with_offset(position_ids, prefill_length)
 
             prefill_logits = self.model.forward(
                 tokens=prefill_tokens.unsqueeze(0),
