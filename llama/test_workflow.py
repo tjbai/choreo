@@ -8,6 +8,7 @@ class TestWorkflow(TestCase):
         self.workflow = Workflow.__new__(Workflow)
         self.workflow.cur_id = 0
         self.workflow.id_map = torch.tensor([-1], dtype=torch.long)
+        self.workflow.position_map = torch.tensor([0], dtype=torch.long)
         self.workflow.context = torch.tensor([128000])
         self.workflow.device = "cpu"
 
@@ -66,31 +67,48 @@ class TestWorkflow(TestCase):
         self.assertTrue(torch.all(incremental_sequence_with_offset(offsets, lengths) == torch.tensor([10, 11, 12, 3, 7, 8, 9, 10, 21, 22])))
 
     def test_insert(self):
-        ids = self.workflow.insert([
+        [system] = self.workflow.insert([
             {
                 'message': {'role': 'system', 'content': ''},
                 'requirements': []
             }
         ])
 
-        self.assertEqual(ids, [0])
+        self.assertEqual(system, 0)
         self.assertEqual(self.workflow.cur_id, 1)
-        self.assertTrue(torch.all(self.workflow.context == torch.tensor([128000, 128006, 1, 128009])))
         self.assertTrue(torch.all(self.workflow.id_map == torch.tensor([-1, 0, 0, 0])))
+        self.assertTrue(torch.all(self.workflow.position_map == torch.tensor([0, 1, 2, 3])))
+        self.assertTrue(torch.all(self.workflow.context == torch.tensor([128000, 128006, 1, 128009])))
 
-        ids = self.workflow.insert([
+        user_1, user_2 = self.workflow.insert([
             {
                 'message': {'role': 'user', 'content': ''},
-                'requirements': ids
+                'requirements': [system]
             },
             {
                 'message': {'role': 'user', 'content': ''},
-                'requirements': ids
+                'requirements': [system]
             }
         ])
 
-        self.assertEqual(ids, [1, 2])
+        self.assertEqual([user_1, user_2], [1, 2])
         self.assertEqual(self.workflow.cur_id, 3)
+        self.assertTrue(torch.all(self.workflow.id_map == torch.tensor([-1, 0, 0, 0, 1, 1, 1, 2, 2, 2])))
+        self.assertTrue(torch.all(self.workflow.position_map == torch.tensor([0, 1, 2, 3, 4, 5, 6, 4, 5, 6])))
+
+        _ = self.workflow.insert([
+            {
+                'message': {'role': 'user', 'content': ''},
+                'requirements': [system, user_1]
+            },
+            {
+                'message': {'role': 'user', 'content': ''},
+                'requirements': [system, user_1, user_2]
+            }
+        ])
+
+        # this case is a bit tricky to define, expected behavior here might change
+        self.assertTrue(torch.all(self.workflow.position_map[-6:] == torch.tensor([7, 8, 9, 10, 11, 12])))
 
     def setup_reposition(self):
         torch.manual_seed(42)
@@ -155,3 +173,20 @@ class TestWorkflow(TestCase):
         xq_moved, xk_moved = reposition_rotary_emb(xq_half, xk_half, pos, new_pos, freqs_cis)
         self.assertEqual(xq_moved.dtype, torch.float16)
         self.assertEqual(xk_moved.dtype, torch.float16)
+
+    def test_reposition_equality(self):
+        xq, xk, freqs_cis = self.setup_reposition()
+
+        start_pos = torch.zeros(4).long()
+        mid_pos = torch.tensor([1, 2, 3, 4])
+        final_pos = torch.tensor([2, 3, 4, 5])
+
+        xq1, xk1 = reposition_rotary_emb(xq, xk, start_pos, mid_pos, freqs_cis)
+        xq1_apply, xk1_apply = apply_rotary_emb(xq, xk, freqs_cis[mid_pos])
+        self.assertTrue(torch.allclose(xq1, xq1_apply, atol=1e-5))
+        self.assertTrue(torch.allclose(xk1, xk1_apply, atol=1e-5))
+
+        xq2, xk2 = reposition_rotary_emb(xq1, xk1, mid_pos, final_pos, freqs_cis)
+        xq2_apply, xk2_apply = apply_rotary_emb(xq, xk, freqs_cis[final_pos])
+        self.assertTrue(torch.allclose(xq2, xq2_apply, atol=1e-5))
+        self.assertTrue(torch.allclose(xk2, xk2_apply, atol=1e-5))
