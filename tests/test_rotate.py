@@ -77,7 +77,7 @@ class TestRotate(TestCase):
         _, xk2_apply = apply_rotary_emb(torch.zeros_like(xk), xk, freqs_cis[final_pos])
         self.assertTrue(torch.allclose(xk2, xk2_apply, atol=1e-5))
 
-    def test_reposition_cache_selective(self):
+    def setup_transformer(self):
         params = ModelArgs(
             dim=32,
             n_layers=2,
@@ -87,7 +87,10 @@ class TestRotate(TestCase):
             max_seq_len=8,
             rope_theta=10000
         )
-        model = Transformer(params)
+        return Transformer(params)
+
+    def test_reposition_cache(self):
+        model = self.setup_transformer()
 
         torch.manual_seed(42)
         cache_k_original = torch.randn_like(model.cache_k)
@@ -98,20 +101,50 @@ class TestRotate(TestCase):
         to_pos = torch.tensor([4, 6, 2])
         model.reposition_cache(where, from_pos, to_pos)
 
-        # # Verify only selected positions were modified
-        # unmodified_pos = torch.ones(params.max_seq_len, dtype=bool)
-        # unmodified_pos[where] = False
-        # self.assertTrue(torch.allclose(
-        #     model.cache_k[:, :, unmodified_pos],
-        #     cache_k_original[:, :, unmodified_pos]
-        # ))
+        unmodified_pos = torch.ones(model.params.max_seq_len, dtype=bool)
+        unmodified_pos[where] = False
+        self.assertTrue(torch.allclose(
+            model.cache_k[:, :, unmodified_pos],
+            cache_k_original[:, :, unmodified_pos]
+        ))
 
-        # # Verify positions can be moved back
-        # cache_k_moved = model.cache_k.clone()
-        # model.reposition_cache(where, to_pos, from_pos)
-        # self.assertTrue(torch.allclose(model.cache_k, cache_k_original, atol=1e-5))
+        model.reposition_cache(where, to_pos, from_pos)
+        self.assertTrue(torch.allclose(model.cache_k, cache_k_original, atol=1e-5))
 
-        # # Test moving to same position (should be identity)
-        # model.cache_k.copy_(cache_k_original)
-        # model.reposition_cache(where, from_pos, from_pos)
-        # self.assertTrue(torch.allclose(model.cache_k, cache_k_original))
+    def test_reposition_cache_piecewise(self):
+        model = self.setup_transformer()
+        torch.manual_seed(42)
+
+        cache_k_original = torch.randn_like(model.cache_k)
+        model.cache_k.copy_(cache_k_original)
+
+        where1 = torch.tensor([1, 3])
+        where2 = torch.tensor([5, 7])
+        from_pos = torch.tensor([1, 3, 5, 7])
+        to_pos = torch.tensor([4, 6, 2, 0])
+
+        model.reposition_cache(where1, from_pos[0:2], to_pos[0:2])
+        model.reposition_cache(where2, from_pos[2:4], to_pos[2:4])
+        cache_k_piecewise = model.cache_k.clone()
+
+        model.cache_k.copy_(cache_k_original)
+        model.reposition_cache(torch.cat([where1, where2]), from_pos, to_pos)
+
+        self.assertTrue(torch.allclose(cache_k_piecewise, model.cache_k, atol=1e-5))
+
+        model.cache_k.copy_(cache_k_original)
+        where1 = torch.tensor([1, 3, 5])
+        where2 = torch.tensor([3, 5, 7])
+        from_pos = torch.tensor([1, 3, 5, 6, 2, 7])
+        to_pos = torch.tensor([4, 6, 2, 0, 1, 3])
+
+        model.reposition_cache(where1, from_pos[0:3], to_pos[0:3])
+        model.reposition_cache(where2, from_pos[3:6], to_pos[3:6])
+        cache_k_piecewise = model.cache_k.clone()
+
+        model.cache_k.copy_(cache_k_original)
+        where_all = torch.tensor([1, 3, 5, 7])
+        from_pos_final = torch.tensor([1, 3, 5, 7])
+        to_pos_final = torch.tensor([4, 0, 1, 3])
+        model.reposition_cache(where_all, from_pos_final, to_pos_final)
+        self.assertTrue(torch.allclose(cache_k_piecewise, model.cache_k, atol=1e-5))
