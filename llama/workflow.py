@@ -53,7 +53,7 @@ class Workflow:
             prompt_tokens.extend(message)
             prompt_length.append(len(message))
             outputs.append({
-                'id': id,
+                'id': self.cur_id + i,
                 'parent_ids': prompt['parent_ids'],
                 'tokens': message,
                 'length': len(message)
