@@ -69,7 +69,7 @@ class TestWorkflow(TestCase):
             }
         ])
 
-        self.assertEqual(system, 0)
+        self.assertEqual(system['id'], 0)
         self.assertEqual(self.workflow.cur_id, 1)
         self.assertTrue(torch.all(self.workflow.id_map == torch.tensor([-1, 0, 0, 0])))
         self.assertTrue(torch.all(self.workflow.position_map == torch.tensor([0, 1, 2, 3])))
@@ -78,15 +78,15 @@ class TestWorkflow(TestCase):
         user_1, user_2 = self.workflow.insert([
             {
                 'message': {'role': 'user', 'content': ''},
-                'parent_ids': [system]
+                'parent_ids': [system['id']]
             },
             {
                 'message': {'role': 'user', 'content': ''},
-                'parent_ids': [system]
+                'parent_ids': [system['id']]
             }
         ])
 
-        self.assertEqual([user_1, user_2], [1, 2])
+        self.assertEqual([user_1['id'], user_2['id']], [1, 2])
         self.assertEqual(self.workflow.cur_id, 3)
         self.assertTrue(torch.all(self.workflow.id_map == torch.tensor([-1, 0, 0, 0, 1, 1, 1, 2, 2, 2])))
         self.assertTrue(torch.all(self.workflow.position_map == torch.tensor([0, 1, 2, 3, 4, 5, 6, 4, 5, 6])))
@@ -94,11 +94,11 @@ class TestWorkflow(TestCase):
         _ = self.workflow.insert([
             {
                 'message': {'role': 'user', 'content': ''},
-                'parent_ids': [system, user_1]
+                'parent_ids': [system['id'], user_1['id']]
             },
             {
                 'message': {'role': 'user', 'content': ''},
-                'parent_ids': [system, user_1, user_2]
+                'parent_ids': [system['id'], user_1['id'], user_2['id']]
             }
         ])
 
