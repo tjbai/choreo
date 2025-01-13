@@ -313,8 +313,8 @@ class Transformer(nn.Module):
     # TODO -- for training this would ideally happen in-place without breaking autograd
     def reposition_cache(self, where: torch.Tensor, from_pos: torch.Tensor, to_pos: torch.Tensor):
         assert where.shape == from_pos.shape == to_pos.shape
-        self.cache_k[:, :, where] = reposition_rotary_emb(
-            self.cache_k[:, :, where],
+        self.cache_k[:, :, where, :, :] = reposition_rotary_emb(
+            self.cache_k[:, :, where, :, :],
             from_pos,
             to_pos,
             self.freqs_cis
