@@ -132,17 +132,17 @@ class Workflow:
         """
         prefix_tokens: List[List[int]] = [[] for _ in tasks]
         if prefill:
-            tokens = []
-            length = []
+            prefill_tokens = []
+            prefill_length = []
             for i, task in enumerate(tasks):
                 role = f"{task['expects'][0]}:{task['expects'][1]}" if task['expects'][1] else task['expects'][0]
                 header = self.formatter.encode_header({"role": role}) # type: ignore
-                tokens.extend(header)
-                length.append(len(header))
+                prefill_tokens.extend(header)
+                prefill_length.append(len(header))
                 prefix_tokens[i] = header
-            self._extend_context(
-                tokens,
-                length,
+            prefill_logits = self._extend_context(
+                prefill_tokens,
+                prefill_length,
                 tasks,
                 msg_dep_mask=mask,
                 msg_pos_ids=position_ids
@@ -168,7 +168,7 @@ class Workflow:
                    0 0 1   0 0 1
             """
             if cur_pos == 0 and prefill:
-                logits = prefill_logits[:, torch.cumsum(prefill_length, dim=0) - 1]
+                logits = prefill_logits[:, torch.cumsum(torch.tensor(prefill_length, device=self.device), dim=0) - 1]
             else:
                 logits = self.model.forward(
                     tokens=self.context[self.context_len - bsz : self.context_len].unsqueeze(0),
@@ -232,13 +232,13 @@ class Workflow:
     ) -> torch.Tensor:
         tokens = torch.tensor(_tokens, device=self.device)
         length = torch.tensor(_length, device=self.device)
-        if not msg_dep_mask:
+        if msg_dep_mask is None:
             msg_dep_mask = self._dependency_mask(nodes)
-        if not msg_pos_ids:
+        if msg_pos_ids is None:
             msg_pos_ids = torch.sum(msg_dep_mask == 0, dim=1)
 
         new_ids = torch.repeat_interleave(
-            torch.arange(self.cur_id, self.cur_id + len(tokens), device=self.device),
+            torch.arange(self.cur_id, self.cur_id + len(nodes), device=self.device),
             length
         )
         full_mask = torch.hstack([
@@ -249,7 +249,7 @@ class Workflow:
 
         if self.cur_id == 0:
             logits = self.model.forward(
-                tokens=torch.cat([self.context, tokens]).unsqueeze(0),
+                tokens=torch.cat([self.context[:self.context_len], tokens]).unsqueeze(0),
                 start_pos=0,
                 mask=torch.vstack([torch.zeros((1, 1 + len(tokens)), device=self.device), full_mask]),
                 position_ids=torch.hstack([torch.tensor(0, device=self.device), position_ids])
@@ -273,8 +273,8 @@ class Workflow:
     def _dependency_mask(self, nodes: Sequence[Node]) -> torch.Tensor:
         mask = torch.full((len(nodes), self.context_len), float("-inf"), device=self.device)
         for i, node in enumerate(nodes):
-            is_parent = torch.isin(self.id_map, torch.tensor(node['parent_ids'], dtype=torch.long, device=self.device))
-            is_identity = (self.id_map == (self.cur_id + i))
+            is_parent = torch.isin(self.id_map[:self.context_len], torch.tensor(node['parent_ids'], dtype=torch.long, device=self.device))
+            is_identity = (self.id_map[:self.context_len] == (self.cur_id + i))
             mask[i, is_parent | is_identity] = 0
         mask[:, 0] = 0 # bos
         return mask
