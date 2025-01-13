@@ -108,7 +108,7 @@ class Llama:
         else:
             torch.set_default_device('cuda')
             torch.set_default_dtype(torch.float16)
-        model = Transformer(model_args)
+        model = Transformer(model_args).cuda()
         model.load_state_dict(checkpoint, strict=False)
         print(f"Loaded in {time.time() - start_time:.2f} seconds")
 
