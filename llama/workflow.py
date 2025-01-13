@@ -31,8 +31,9 @@ class Workflow:
         self.model = model
         self.tokenizer = tokenizer
         self.formatter = ChatFormat(tokenizer)
-        self.cur_id = 0
+        self.max_seq_len = self.model.params.max_seq_len
         self.device = "cuda"
+        self.cur_id = 0
         self.id_map = torch.tensor([-1], dtype=torch.long, device=self.device)
         self.position_map = torch.tensor([0], dtype=torch.long, device=self.device)
         self.context = torch.tensor([self.tokenizer.bos_id], dtype=torch.long, device=self.device)
@@ -43,7 +44,7 @@ class Workflow:
         self.position_map = torch.tensor([0], dtype=torch.long, device=self.device)
         self.context = torch.tensor([self.tokenizer.bos_id], dtype=torch.long, device=self.device)
 
-    # TODO -- we could make this lazier for even more parallelism
+    # TODO -- we can make this lazy for better parallelism
     def insert(self, prompts: Sequence[Prompt]) -> List[Cached]:
         prompt_tokens = []
         prompt_length = []
@@ -58,54 +59,9 @@ class Workflow:
                 'tokens': message,
                 'length': len(message)
             })
-
-        prompt_tokens = torch.tensor(prompt_tokens, device=self.device)
-        prompt_length = torch.tensor(prompt_length, device=self.device)
-
-        prompt_mask = self._dependency_mask(prompts)
-        new_ids = torch.repeat_interleave(
-            torch.arange(self.cur_id, self.cur_id + len(prompts), device=self.device),
-            prompt_length
-        )
-        full_mask = torch.hstack([
-            torch.repeat_interleave(prompt_mask, prompt_length, dim=0),
-            grouped_causal_mask(new_ids),
-        ])
-        position_ids = incremental_sequence_with_offset(
-            torch.sum(prompt_mask == 0, dim=1),
-            prompt_length
-        )
-
-        if self.cur_id == 0:
-            self.model.forward(
-                tokens=torch.cat([self.context, prompt_tokens]).unsqueeze(0),
-                start_pos=0,
-                mask=torch.vstack([torch.zeros((1, 1 + len(prompt_tokens)), device=self.device), full_mask]),
-                position_ids=torch.hstack([torch.tensor(0, device=self.device), position_ids])
-            )
-        else:
-            self.model.forward(
-                tokens=prompt_tokens.unsqueeze(0),
-                start_pos=len(self.context),
-                mask=full_mask,
-                position_ids=position_ids
-            )
-
-        self.id_map = torch.cat([self.id_map, new_ids])
-        self.position_map = torch.cat([self.position_map, position_ids])
-        self.context = torch.cat([self.context, prompt_tokens])
+        self._extend_context(prompt_tokens, prompt_length, prompts)
         self.cur_id += len(prompts)
-
         return outputs
-
-    def _dependency_mask(self, nodes: Sequence[Node]) -> torch.Tensor:
-        mask = torch.full((len(nodes), len(self.context)), float("-inf"), device=self.device)
-        for i, node in enumerate(nodes):
-            is_parent = torch.isin(self.id_map, torch.tensor(node['parent_ids'], dtype=torch.long, device=self.device))
-            is_identity = (self.id_map == (self.cur_id + i))
-            mask[i, is_parent | is_identity] = 0
-        mask[:, 0] = 0 # bos
-        return mask
 
     @torch.inference_mode()
     def step(
@@ -125,8 +81,10 @@ class Workflow:
         bsz = len(tasks)
         pad_id = self.tokenizer.pad_id
 
-        # TODO -- this doesn't need to be a separate buffer
+        # TODO -- this doesn't necessarily need to be a separate buffer
         tokens = torch.full((1, bsz * max_gen_len), pad_id, device=self.device)
+        eos_reached = torch.tensor([False] * bsz, device=self.device)
+        stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens), device=self.device)
         prefix_tokens: List[List[int]] = [[] for _ in tasks]
 
         """
@@ -187,40 +145,15 @@ class Workflow:
                 prefill_tokens.extend(header)
                 prefill_length.append(len(header))
                 prefix_tokens[i] = header
-
-            prefill_tokens = torch.tensor(prefill_tokens, device=self.device)
-            prefill_length = torch.tensor(prefill_length, device=self.device)
-
-            new_ids = torch.repeat_interleave(
-                torch.arange(self.cur_id, self.cur_id + bsz, device=self.device),
-                prefill_length
+            self._extend_context(
+                prefill_tokens,
+                prefill_length,
+                tasks,
+                msg_dep_mask=mask,
+                msg_pos_ids=position_ids
             )
-            full_mask = torch.hstack([
-                torch.repeat_interleave(mask, prefill_length, dim=0),
-                grouped_causal_mask(new_ids)
-            ])
-            prefill_position_ids = incremental_sequence_with_offset(
-                position_ids,
-                prefill_length
-            )
-
-            prefill_logits = self.model.forward(
-                tokens=prefill_tokens.unsqueeze(0),
-                start_pos=len(self.context),
-                mask=full_mask,
-                position_ids=prefill_position_ids
-            )
-
-            self.id_map = torch.cat([self.id_map, new_ids])
-            self.position_map = torch.cat([self.position_map, prefill_position_ids])
-            self.context = torch.cat([self.context, prefill_tokens])
-
-            # update for decoding loop
             mask = self._dependency_mask(tasks)
             position_ids += prefill_length
-
-        eos_reached = torch.tensor([False] * bsz, device=self.device)
-        stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens), device=self.device)
 
         for cur_pos in range(0, bsz * max_gen_len, bsz):
             """
@@ -290,6 +223,61 @@ class Workflow:
             self.cur_id += 1
 
         return out_tokens, out_nodes
+
+    def _extend_context(
+        self,
+        _tokens: List[List[int]],
+        _length: List[int],
+        nodes: Sequence[Node],
+        msg_dep_mask: Optional[torch.Tensor] = None,
+        msg_pos_ids: Optional[torch.Tensor] = None,
+    ) -> torch.Tensor:
+        tokens = torch.tensor(_tokens, device=self.device)
+        length = torch.tensor(_length, device=self.device)
+        if not msg_dep_mask:
+            msg_dep_mask = self._dependency_mask(nodes)
+        if not msg_pos_ids:
+            msg_pos_ids = torch.sum(msg_dep_mask == 0, dim=1)
+
+        new_ids = torch.repeat_interleave(
+            torch.arange(self.cur_id, self.cur_id + len(tokens), device=self.device),
+            length
+        )
+        full_mask = torch.hstack([
+            torch.repeat_interleave(msg_dep_mask, length, dim=0),
+            grouped_causal_mask(new_ids)
+        ])
+        position_ids = incremental_sequence_with_offset(msg_pos_ids, length)
+
+        if self.cur_id == 0:
+            logits = self.model.forward(
+                tokens=torch.cat([self.context, tokens]).unsqueeze(0),
+                start_pos=0,
+                mask=torch.vstack([torch.zeros((1, 1 + len(tokens)), device=self.device), full_mask]),
+                position_ids=torch.hstack([torch.tensor(0, device=self.device), position_ids])
+            )
+        else:
+            logits = self.model.forward(
+                tokens=tokens.unsqueeze(0),
+                start_pos=len(self.context),
+                mask=full_mask,
+                position_ids=position_ids
+            )
+
+        self.id_map = torch.cat([self.id_map, new_ids])
+        self.position_map = torch.cat([self.position_map, position_ids])
+        self.context = torch.cat([self.context, tokens])
+
+        return logits
+
+    def _dependency_mask(self, nodes: Sequence[Node]) -> torch.Tensor:
+        mask = torch.full((len(nodes), len(self.context)), float("-inf"), device=self.device)
+        for i, node in enumerate(nodes):
+            is_parent = torch.isin(self.id_map, torch.tensor(node['parent_ids'], dtype=torch.long, device=self.device))
+            is_identity = (self.id_map == (self.cur_id + i))
+            mask[i, is_parent | is_identity] = 0
+        mask[:, 0] = 0 # bos
+        return mask
 
 def sample_top_p_parallel(probs, p, generator=None):
     next_token = sample_top_p(probs.view(-1, probs.shape[-1]), p, generator)
