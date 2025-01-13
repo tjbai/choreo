@@ -77,11 +77,12 @@ class Workflow:
     ) -> Tuple[List[List[int]], List[Cached]]:
         generator = torch.Generator(device=self.device).manual_seed(seed) if seed else None
 
-        # TODO -- runtime validations for remaining output buffer size
         bsz = len(tasks)
-        pad_id = self.tokenizer.pad_id
+        if len(self.context) + (bsz * max_gen_len) > self.max_seq_len:
+            raise Exception(f"Output buffers do not have capacity for {bsz * max_gen_len} tokens.")
 
         # TODO -- this doesn't necessarily need to be a separate buffer
+        pad_id = self.tokenizer.pad_id
         tokens = torch.full((1, bsz * max_gen_len), pad_id, device=self.device)
         eos_reached = torch.tensor([False] * bsz, device=self.device)
         stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens), device=self.device)
