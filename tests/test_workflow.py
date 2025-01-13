@@ -33,9 +33,9 @@ class TestWorkflow(TestCase):
         self.workflow.id_map = torch.tensor([-1, 0, 0, 1])
 
         tasks = [
-            {'requirements': [0], 'expects': ('assistant', None)},
-            {'requirements': [1], 'expects': ('assistant', None)},
-            {'requirements': [0, 1], 'expects': ('assistant', None)}
+            {'parent_ids': [0], 'expects': ('assistant', None)},
+            {'parent_ids': [1], 'expects': ('assistant', None)},
+            {'parent_ids': [0, 1], 'expects': ('assistant', None)}
         ]
 
         mask = self.workflow._dependency_mask(tasks)
@@ -65,7 +65,7 @@ class TestWorkflow(TestCase):
         [system] = self.workflow.insert([
             {
                 'message': {'role': 'system', 'content': ''},
-                'requirements': []
+                'parent_ids': []
             }
         ])
 
@@ -78,11 +78,11 @@ class TestWorkflow(TestCase):
         user_1, user_2 = self.workflow.insert([
             {
                 'message': {'role': 'user', 'content': ''},
-                'requirements': [system]
+                'parent_ids': [system]
             },
             {
                 'message': {'role': 'user', 'content': ''},
-                'requirements': [system]
+                'parent_ids': [system]
             }
         ])
 
@@ -94,11 +94,11 @@ class TestWorkflow(TestCase):
         _ = self.workflow.insert([
             {
                 'message': {'role': 'user', 'content': ''},
-                'requirements': [system, user_1]
+                'parent_ids': [system, user_1]
             },
             {
                 'message': {'role': 'user', 'content': ''},
-                'requirements': [system, user_1, user_2]
+                'parent_ids': [system, user_1, user_2]
             }
         ])
 

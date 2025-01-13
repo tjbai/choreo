@@ -7,13 +7,18 @@ from .generation import Llama, sample_top_p
 from .tokenizer import ChatFormat, Message, Tokenizer, Role
 
 class Node(TypedDict):
-    requirements: List[int]
+    parent_ids: List[int]
 
 class Task(Node):
     expects: Tuple[Role, str]
 
 class Prompt(Node):
     message: Message
+
+class Cached(Node):
+    id: int
+    tokens: List[int]
+    length: int
 
 class Workflow:
 
@@ -38,13 +43,21 @@ class Workflow:
         self.position_map = torch.tensor([0], dtype=torch.long, device=self.device)
         self.context = torch.tensor([self.tokenizer.bos_id], dtype=torch.long, device=self.device)
 
-    def insert(self, prompts: Sequence[Prompt]) -> List[int]:
+    # TODO -- we could make this lazier for even more parallelism
+    def insert(self, prompts: Sequence[Prompt]) -> List[Cached]:
         prompt_tokens = []
         prompt_length = []
-        for prompt in prompts:
+        outputs = []
+        for i, prompt in enumerate(prompts):
             message = self.formatter.encode_message(prompt['message'])
             prompt_tokens.extend(message)
             prompt_length.append(len(message))
+            outputs.append({
+                'id': id,
+                'parent_ids': prompt['parent_ids'],
+                'tokens': message,
+                'length': len(message)
+            })
 
         prompt_tokens = torch.tensor(prompt_tokens, device=self.device)
         prompt_length = torch.tensor(prompt_length, device=self.device)
@@ -62,7 +75,7 @@ class Workflow:
             torch.sum(prompt_mask == 0, dim=1),
             prompt_length
         )
-        
+
         if self.cur_id == 0:
             self.model.forward(
                 tokens=torch.cat([self.context, prompt_tokens]).unsqueeze(0),
@@ -83,17 +96,14 @@ class Workflow:
         self.context = torch.cat([self.context, prompt_tokens])
         self.cur_id += len(prompts)
 
-        return list(range(self.cur_id - len(prompts), self.cur_id))
+        return outputs
 
     def _dependency_mask(self, nodes: Sequence[Node]) -> torch.Tensor:
         mask = torch.full((len(nodes), len(self.context)), float("-inf"), device=self.device)
         for i, node in enumerate(nodes):
-            meets_requirement = torch.isin(
-                self.id_map,
-                torch.tensor(node['requirements'], dtype=torch.long, device=self.device)
-            )
+            is_parent = torch.isin(self.id_map, torch.tensor(node['parent_ids'], dtype=torch.long, device=self.device))
             is_identity = (self.id_map == (self.cur_id + i))
-            mask[i, meets_requirement | is_identity] = 0
+            mask[i, is_parent | is_identity] = 0
         mask[:, 0] = 0 # bos
         return mask
 
@@ -108,7 +118,7 @@ class Workflow:
         log_probs: bool = True,
         prefill: bool = True,
         seed: int = 42
-    ) -> Tuple[List[List[int]], List[int], Optional[List[List[float]]]]:
+    ) -> Tuple[List[List[int]], List[Cached]]:
         generator = torch.Generator(device=self.device).manual_seed(seed) if seed else None
 
         # TODO -- runtime validations for remaining output buffer size
@@ -117,6 +127,7 @@ class Workflow:
 
         # TODO -- this doesn't need to be a separate buffer
         tokens = torch.full((1, bsz * max_gen_len), pad_id, device=self.device)
+        prefix_tokens: List[List[int]] = [[] for _ in tasks]
 
         """
         TODO -- if we compact and produce a multi-task alignment, then the
@@ -146,11 +157,11 @@ class Workflow:
             to_pos = torch.empty(len(from_pos), dtype=torch.long, device=self.device)
             to_pos[0] = 0 # bos
             offset = 1
-            for req in tasks[0]['requirements']:
-                req_length = torch.sum(from_ids == req)
-                req_position_ids = torch.where(from_ids == req)[0]
-                to_pos[req_position_ids] = torch.arange(offset, offset + req_length)
-                offset += req_length
+            for par in tasks[0]['parent_ids']:
+                par_length = torch.sum(from_ids == par)
+                par_position_ids = torch.where(from_ids == par)[0]
+                to_pos[par_position_ids] = torch.arange(offset, offset + par_length)
+                offset += par_length
             self.model.reposition_cache(where, from_pos, to_pos)
             self.position_map[where] = to_pos
         position_ids = torch.sum(mask == 0, dim=1) # (bsz,)
@@ -170,11 +181,12 @@ class Workflow:
         if prefill:
             prefill_tokens = []
             prefill_length = []
-            for task in tasks:
+            for i, task in enumerate(tasks):
                 role = f"{task['expects'][0]}:{task['expects'][1]}" if task['expects'][1] else task['expects'][0]
                 header = self.formatter.encode_header({"role": role}) # type: ignore
                 prefill_tokens.extend(header)
                 prefill_length.append(len(header))
+                prefix_tokens[i] = header
 
             prefill_tokens = torch.tensor(prefill_tokens, device=self.device)
             prefill_length = torch.tensor(prefill_length, device=self.device)
@@ -183,11 +195,14 @@ class Workflow:
                 torch.arange(self.cur_id, self.cur_id + bsz, device=self.device),
                 prefill_length
             )
-
-            requirements = torch.repeat_interleave(mask, prefill_length, dim=0)
-            grouped = grouped_causal_mask(new_ids)
-            full_mask = torch.hstack([requirements, grouped])
-            prefill_position_ids = incremental_sequence_with_offset(position_ids, prefill_length)
+            full_mask = torch.hstack([
+                torch.repeat_interleave(mask, prefill_length, dim=0),
+                grouped_causal_mask(new_ids)
+            ])
+            prefill_position_ids = incremental_sequence_with_offset(
+                position_ids,
+                prefill_length
+            )
 
             prefill_logits = self.model.forward(
                 tokens=prefill_tokens.unsqueeze(0),
@@ -257,19 +272,24 @@ class Workflow:
 
         tokens = tokens.view(-1, bsz).t()
         out_tokens = []
-        out_ids = []
-        for i, toks in enumerate(tokens.tolist()):
+        out_nodes = []
+        for i, (task, toks, prefix) in enumerate(zip(tasks, tokens.tolist(), prefix_tokens)):
             for stop_token in self.tokenizer.stop_tokens:
                 try:
                     eos_idx = toks.index(stop_token)
-                    toks = toks[:eos_idx]
+                    toks = toks[:eos_idx+1]
                 except ValueError:
                     pass
-            out_tokens.append(toks)
-            out_ids.append(self.cur_id)
+            out_tokens.append(toks[:-1])
+            out_nodes.append({
+                'id': self.cur_id,
+                'parent_ids': task['parent_ids'],
+                'tokens': prefix + toks,
+                'length': len(prefix) + len(toks)
+            })
             self.cur_id += 1
 
-        return out_tokens, out_ids, None
+        return out_tokens, out_nodes
 
 def sample_top_p_parallel(probs, p, generator=None):
     next_token = sample_top_p(probs.view(-1, probs.shape[-1]), p, generator)
