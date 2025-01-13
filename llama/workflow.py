@@ -33,16 +33,14 @@ class Workflow:
         self.formatter = ChatFormat(tokenizer)
         self.max_seq_len = self.model.params.max_seq_len
         self.device = "cuda"
-        self.cur_id = 0
-        self.id_map = torch.tensor([-1], dtype=torch.long, device=self.device)
-        self.position_map = torch.tensor([0], dtype=torch.long, device=self.device)
-        self.context = torch.tensor([self.tokenizer.bos_id], dtype=torch.long, device=self.device)
+        self.reset()
 
     def reset(self, *args, **kwargs):
         self.cur_id = 0
-        self.id_map = torch.tensor([-1], dtype=torch.long, device=self.device)
-        self.position_map = torch.tensor([0], dtype=torch.long, device=self.device)
-        self.context = torch.tensor([self.tokenizer.bos_id], dtype=torch.long, device=self.device)
+        self.context_len = 1
+        self.id_map = torch.full((self.max_seq_len,), -1, dtype=torch.long, device=self.device)
+        self.position_map = torch.zeros((self.max_seq_len,), dtype=torch.long, device=self.device)
+        self.context = torch.full((self.max_seq_len,), self.tokenizer.bos_id, dtype=torch.long, device=self.device)
 
     # TODO -- we can make this lazy for better parallelism
     def insert(self, prompts: Sequence[Prompt]) -> List[Cached]:
@@ -78,15 +76,10 @@ class Workflow:
         generator = torch.Generator(device=self.device).manual_seed(seed) if seed else None
 
         bsz = len(tasks)
-        if len(self.context) + (bsz * max_gen_len) > self.max_seq_len:
+        if self.context_len + (bsz * max_gen_len) > self.max_seq_len:
             raise Exception(f"Output buffers do not have capacity for {bsz * max_gen_len} tokens.")
-
-        # TODO -- this doesn't necessarily need to be a separate buffer
-        pad_id = self.tokenizer.pad_id
-        tokens = torch.full((1, bsz * max_gen_len), pad_id, device=self.device)
         eos_reached = torch.tensor([False] * bsz, device=self.device)
         stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens), device=self.device)
-        prefix_tokens: List[List[int]] = [[] for _ in tasks]
 
         """
         TODO -- if we compact and produce a multi-task alignment, then the
@@ -109,7 +102,7 @@ class Workflow:
         mask = self._dependency_mask(tasks)
         if compact:
             if len(tasks) > 1:
-                print('Not fully implemented, compact with precaution!')
+                print('Not fully implemented, compact with caution!')
             where = torch.where(mask[0] == 0)[0]
             from_pos = self.position_map[where]
             from_ids = self.id_map[where]
@@ -123,7 +116,7 @@ class Workflow:
                 offset += par_length
             self.model.reposition_cache(where, from_pos, to_pos)
             self.position_map[where] = to_pos
-        position_ids = torch.sum(mask == 0, dim=1) # (bsz,)
+        position_ids = torch.sum(mask == 0, dim=1)
 
         """
         We might want to prefill the start of each message with the expected role
@@ -137,25 +130,30 @@ class Workflow:
             1. only have causal attention over other tokens in the prefill sequence
             2. and only attend over required tokens in the context.
         """
+        prefix_tokens: List[List[int]] = [[] for _ in tasks]
         if prefill:
-            prefill_tokens = []
-            prefill_length = []
+            tokens = []
+            length = []
             for i, task in enumerate(tasks):
                 role = f"{task['expects'][0]}:{task['expects'][1]}" if task['expects'][1] else task['expects'][0]
                 header = self.formatter.encode_header({"role": role}) # type: ignore
-                prefill_tokens.extend(header)
-                prefill_length.append(len(header))
+                tokens.extend(header)
+                length.append(len(header))
                 prefix_tokens[i] = header
             self._extend_context(
-                prefill_tokens,
-                prefill_length,
+                tokens,
+                length,
                 tasks,
                 msg_dep_mask=mask,
                 msg_pos_ids=position_ids
             )
             mask = self._dependency_mask(tasks)
-            position_ids += prefill_length
+            position_ids = torch.sum(mask == 0, dim=1) # should be fine to just recompute
 
+        interleaved_mask = torch.full((bsz, bsz), float("-inf"))
+        interleaved_mask.fill_diagonal_(0)
+        mask = torch.hstack([mask, interleaved_mask.repeat(1, max_gen_len)])
+        start_pos = self.context_len
         for cur_pos in range(0, bsz * max_gen_len, bsz):
             """
             In each step, (cache_len + i) should only be able to attend over
@@ -173,9 +171,9 @@ class Workflow:
                 logits = prefill_logits[:, torch.cumsum(prefill_length, dim=0) - 1]
             else:
                 logits = self.model.forward(
-                    tokens=tokens[:, cur_pos - bsz : cur_pos],
-                    start_pos=len(self.context) - bsz,
-                    mask=mask,
+                    tokens=self.context[self.context_len - bsz : self.context_len].unsqueeze(0),
+                    start_pos=self.context_len - bsz,
+                    mask=mask[:, : self.context_len],
                     position_ids=position_ids
                 )
 
@@ -185,28 +183,27 @@ class Workflow:
             else:
                 next_token = torch.argmax(logits[:, -bsz:], dim=-1).squeeze(0)
 
-            tokens[:, cur_pos : cur_pos + bsz][:, ~eos_reached] = next_token[~eos_reached]
-
-            self.id_map = torch.cat([self.id_map, torch.where(
-                eos_reached,
-                torch.full((bsz,), pad_id, device=self.device),
-                torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)
-            )])
-            self.position_map = torch.cat([self.position_map, position_ids])
-            self.context = torch.cat([self.context, tokens[:, cur_pos : cur_pos + bsz].squeeze(0)])
+            self.id_map[self.context_len : self.context_len + bsz][~eos_reached] = torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)[~eos_reached]
+            self.position_map[self.context_len : self.context_len + bsz] = position_ids
+            self.context[self.context_len : self.context_len + bsz][~eos_reached] = next_token[~eos_reached]
+            self.context_len += bsz
 
             eos_reached |= torch.isin(next_token, stop_tokens)
-            interleaved_mask = torch.full((bsz, bsz), float("-inf")).type_as(mask)
-            interleaved_mask.fill_diagonal_(0)
-            mask = torch.hstack([mask, interleaved_mask])
             position_ids += 1
-
             if all(eos_reached):
                 break
 
-        tokens = tokens.view(-1, bsz).t()
+        # one more forward pass to top off the kv cache
+        logits = self.model.forward(
+            tokens=self.context[self.context_len - bsz : self.context_len].unsqueeze(0),
+            start_pos=self.context_len - bsz,
+            mask=mask,
+            position_ids=position_ids
+        )
+
         out_tokens = []
         out_nodes = []
+        tokens = self.context[start_pos : self.context_len].view(-1, bsz).t()
         for i, (task, toks, prefix) in enumerate(zip(tasks, tokens.tolist(), prefix_tokens)):
             for stop_token in self.tokenizer.stop_tokens:
                 try:
@@ -260,19 +257,21 @@ class Workflow:
         else:
             logits = self.model.forward(
                 tokens=tokens.unsqueeze(0),
-                start_pos=len(self.context),
+                start_pos=self.context_len,
                 mask=full_mask,
                 position_ids=position_ids
             )
 
-        self.id_map = torch.cat([self.id_map, new_ids])
-        self.position_map = torch.cat([self.position_map, position_ids])
-        self.context = torch.cat([self.context, tokens])
+        N = len(tokens)
+        self.id_map[self.context_len : self.context_len + N] = new_ids
+        self.position_map[self.context_len : self.context_len + N] = position_ids
+        self.context[self.context_len : self.context_len + N] = tokens
+        self.context_len += N
 
         return logits
 
     def _dependency_mask(self, nodes: Sequence[Node]) -> torch.Tensor:
-        mask = torch.full((len(nodes), len(self.context)), float("-inf"), device=self.device)
+        mask = torch.full((len(nodes), self.context_len), float("-inf"), device=self.device)
         for i, node in enumerate(nodes):
             is_parent = torch.isin(self.id_map, torch.tensor(node['parent_ids'], dtype=torch.long, device=self.device))
             is_identity = (self.id_map == (self.cur_id + i))
@@ -299,3 +298,8 @@ def incremental_sequence_with_offset(offsets: torch.Tensor, lengths: torch.Tenso
         position_ids[start : start + n] += torch.arange(n, device=position_ids.device)
         start += n
     return position_ids
+
+# TODO -- CPU offloading
+class CacheManager:
+    def __init__(self):
+        pass
