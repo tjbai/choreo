@@ -139,7 +139,7 @@ class Workflow:
         mask = self._dependency_mask(tasks)
         if compact:
             if len(tasks) > 1:
-                raise NotImplementedError()
+                print('Not fully implemented, compact with precaution!')
             where = torch.where(mask[0] == 0)[0]
             from_pos = self.position_map[where]
             from_ids = self.id_map[where]
