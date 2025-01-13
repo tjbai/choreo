@@ -123,12 +123,12 @@ class Workflow:
         postion ids might not left-compacted.
 
         For example, say the context is A B C and we want to generate both
-        A B -> D as well as B C -> E n parallel. Rather than position both
+        A B -> D as well as B C -> E in parallel. Rather than position both
         A B and B C at position 0, thus losing parallelism, we can just line
         them up as A B C sequentially. Then, we can generate D from offset
         len(A) + len(B) and E from offset len(A) + len(B) + len(C):
 
-            pos 0
+          pos 0
             v
             <message A><message B><message C>
                                     <message D><message E> <- in parallel!
@@ -140,10 +140,19 @@ class Workflow:
         if compact:
             if len(tasks) > 1:
                 raise NotImplementedError()
-            where = mask[0] == 0
-            from_pos = self.position_map[where] # (len(context),)
-            to_pos = torch.arange(len(from_pos), device=self.device)
+            where = torch.where(mask[0] == 0)[0]
+            from_pos = self.position_map[where]
+            from_ids = self.id_map[where]
+            to_pos = torch.empty(len(from_pos), dtype=torch.long, device=self.device)
+            to_pos[0] = 0 # bos
+            offset = 1
+            for req in tasks[0]['requirements']:
+                req_length = torch.sum(from_ids == req)
+                req_position_ids = torch.where(from_ids == req)[0]
+                to_pos[req_position_ids] = torch.arange(offset, offset + req_length)
+                offset += req_length
             self.model.reposition_cache(where, from_pos, to_pos)
+            self.position_map[where] = to_pos
         position_ids = torch.sum(mask == 0, dim=1) # (bsz,)
 
         """
