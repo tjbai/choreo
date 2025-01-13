@@ -55,14 +55,14 @@ class Workflow:
             prompt_length
         )
         full_mask = torch.hstack([
+            torch.repeat_interleave(prompt_mask, prompt_length, dim=0),
             grouped_causal_mask(new_ids),
-            torch.repeat_interleave(prompt_mask, prompt_length, dim=0)
         ])
         position_ids = incremental_sequence_with_offset(
             torch.sum(prompt_mask == 0, dim=1),
             prompt_length
         )
-
+        
         if self.cur_id == 0:
             self.model.forward(
                 tokens=torch.cat([self.context, prompt_tokens]).unsqueeze(0),
@@ -184,8 +184,8 @@ class Workflow:
                 prefill_length
             )
 
-            grouped = grouped_causal_mask(new_ids)
             requirements = torch.repeat_interleave(mask, prefill_length, dim=0)
+            grouped = grouped_causal_mask(new_ids)
             full_mask = torch.hstack([requirements, grouped])
             prefill_position_ids = incremental_sequence_with_offset(position_ids, prefill_length)
 
@@ -220,7 +220,6 @@ class Workflow:
             mask + 0 1 0 + 0 1 0
                    0 0 1   0 0 1
             """
-
             if cur_pos == 0 and prefill:
                 logits = prefill_logits[:, torch.cumsum(prefill_length, dim=0) - 1]
             else:
