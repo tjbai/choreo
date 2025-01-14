@@ -194,10 +194,10 @@ class Workflow:
                 break
 
         # one more forward pass to top off the kv cache
-        logits = self.model.forward(
+        self.model.forward(
             tokens=self.context[self.context_len - bsz : self.context_len].unsqueeze(0),
             start_pos=self.context_len - bsz,
-            mask=mask,
+            mask=mask[:, : self.context_len],
             position_ids=position_ids
         )
 
