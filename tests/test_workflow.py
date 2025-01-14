@@ -5,11 +5,6 @@ from llama.workflow import Workflow, grouped_causal_mask, incremental_sequence_w
 class TestWorkflow(TestCase):
     def setUp(self):
         self.workflow = Workflow.__new__(Workflow)
-        self.workflow.cur_id = 0
-        self.workflow.id_map = torch.tensor([-1], dtype=torch.long)
-        self.workflow.position_map = torch.tensor([0], dtype=torch.long)
-        self.workflow.context = torch.tensor([128000])
-        self.workflow.device = "cpu"
 
         class MockModel:
             def forward(self, *args, **kwargs):
@@ -25,10 +20,18 @@ class TestWorkflow(TestCase):
                     tokens.extend([128006, 1, 128009])
                 return tokens
 
+        class Tokenizer:
+            bos_id = 128000
+
         self.workflow.model = MockModel()
         self.workflow.formatter = MockFormatter()
+        self.workflow.tokenizer = Tokenizer()
+        self.workflow.max_seq_len = 128
+        self.workflow.device = "cpu"
+        self.workflow.reset()
 
     def test_dependency_mask(self):
+        self.workflow.context_len = 4
         self.workflow.context = torch.tensor([1, 2, 3, 4])
         self.workflow.id_map = torch.tensor([-1, 0, 0, 1])
 
@@ -71,9 +74,9 @@ class TestWorkflow(TestCase):
 
         self.assertEqual(system['id'], 0)
         self.assertEqual(self.workflow.cur_id, 1)
-        self.assertTrue(torch.all(self.workflow.id_map == torch.tensor([-1, 0, 0, 0])))
-        self.assertTrue(torch.all(self.workflow.position_map == torch.tensor([0, 1, 2, 3])))
-        self.assertTrue(torch.all(self.workflow.context == torch.tensor([128000, 128006, 1, 128009])))
+        self.assertTrue(torch.all(self.workflow.id_map[:4] == torch.tensor([-1, 0, 0, 0])))
+        self.assertTrue(torch.all(self.workflow.position_map[:4] == torch.tensor([0, 1, 2, 3])))
+        self.assertTrue(torch.all(self.workflow.context[:4] == torch.tensor([128000, 128006, 1, 128009])))
 
         user_1, user_2 = self.workflow.insert([
             {
@@ -88,8 +91,8 @@ class TestWorkflow(TestCase):
 
         self.assertEqual([user_1['id'], user_2['id']], [1, 2])
         self.assertEqual(self.workflow.cur_id, 3)
-        self.assertTrue(torch.all(self.workflow.id_map == torch.tensor([-1, 0, 0, 0, 1, 1, 1, 2, 2, 2])))
-        self.assertTrue(torch.all(self.workflow.position_map == torch.tensor([0, 1, 2, 3, 4, 5, 6, 4, 5, 6])))
+        self.assertTrue(torch.all(self.workflow.id_map[:10] == torch.tensor([-1, 0, 0, 0, 1, 1, 1, 2, 2, 2])))
+        self.assertTrue(torch.all(self.workflow.position_map[:10] == torch.tensor([0, 1, 2, 3, 4, 5, 6, 4, 5, 6])))
 
         _ = self.workflow.insert([
             {
@@ -103,4 +106,4 @@ class TestWorkflow(TestCase):
         ])
 
         # this case is a bit tricky to define, expected behavior here might change
-        self.assertTrue(torch.all(self.workflow.position_map[-6:] == torch.tensor([7, 8, 9, 10, 11, 12])))
+        self.assertTrue(torch.all(self.workflow.position_map[10:16] == torch.tensor([7, 8, 9, 10, 11, 12])))
