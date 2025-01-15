@@ -30,6 +30,7 @@ class ModelArgs:
     max_batch_size: int = 32
     max_seq_len: int = 2048
     use_scaled_rope: bool = True
+    use_spda: bool = True
 
 
 class RMSNorm(torch.nn.Module):
@@ -117,6 +118,7 @@ class Attention(nn.Module):
         self.head_dim = args.dim // args.n_heads
         self.n_local_heads = args.n_heads // model_parallel_size
         self.n_rep = self.n_local_heads // self.n_local_kv_heads
+        self.use_sdpa = args.use_spda
 
         self.wq = ColumnParallelLinear(
             args.dim,
@@ -175,7 +177,7 @@ class Attention(nn.Module):
 
         self.cache_k[:bsz, start_pos : start_pos + seqlen] = xk
         self.cache_v[:bsz, start_pos : start_pos + seqlen] = xv
-        
+
         keys = self.cache_k[:bsz, : start_pos + seqlen]
         values = self.cache_v[:bsz, : start_pos + seqlen]
 
@@ -186,11 +188,22 @@ class Attention(nn.Module):
         xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
         keys = keys.transpose(1, 2)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
         values = values.transpose(1, 2)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
-        scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
-        if mask is not None:
-            scores = scores + mask  # (bs, n_local_heads, seqlen, cache_len + seqlen)
-        scores = F.softmax(scores.float(), dim=-1).type_as(xq)
-        output = torch.matmul(scores, values)  # (bs, n_local_heads, seqlen, head_dim)
+
+        if self.use_sdpa:
+            output = F.scaled_dot_product_attention(
+                xq,
+                keys,
+                values,
+                attn_mask=mask,
+                is_causal=mask is None
+            )
+        else:
+            scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
+            if mask is not None:
+                scores = scores + mask  # (bs, n_local_heads, seqlen, cache_len + seqlen)
+            scores = F.softmax(scores.float(), dim=-1).type_as(xq)
+            output = torch.matmul(scores, values)  # (bs, n_local_heads, seqlen, head_dim)
+
         output = output.transpose(1, 2).contiguous().view(bsz, seqlen, -1)
         return self.wo(output)
 
