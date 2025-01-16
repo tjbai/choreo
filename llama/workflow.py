@@ -13,7 +13,7 @@ class Task(Node):
     expects: Tuple[Role, Optional[str]]
 
 class Prompt(Node):
-    message: Message
+    messages: List[Message]
 
 class Cached(Node):
     id: int
@@ -62,15 +62,15 @@ class Workflow:
         prompt_length = []
         outputs = []
         for i, prompt in enumerate(prompts):
-            message = self.formatter.encode_message(prompt['message'])
+            tokens = self.formatter.encode_dialog_prompt(prompt['messages'], prefill=False)
             outputs.append({
                 'id': self.cur_id + i,
                 'parent_ids': prompt['parent_ids'],
-                'tokens': message,
-                'length': len(message)
+                'tokens': tokens,
+                'length': len(tokens)
             })
-            prompt_length.append(len(message))
-            prompt_tokens.extend(message)
+            prompt_length.append(len(tokens))
+            prompt_tokens.extend(tokens)
         self.prefill(prompt_tokens, prompt_length)
         self.cur_id += len(prompts)
         return outputs
@@ -94,11 +94,8 @@ class Workflow:
         B = len(tasks)
         if self.cache_len + (B * max_gen_len) > self.max_seq_len:
             raise Exception(f"Output buffers do not have capacity for {B * max_gen_len} tokens.")
-        eos_reached = torch.tensor([False] * B, device=self.device)
 
         # """
-        # TODO -- if we compact and produce a multi-task alignment, then the
-        # postion ids might not be left-compacted.
         # TODO -- there's a few too many indirections and allocations here for
         # this to be really clean and fast, but the way it is now is flexible.
         # """
@@ -119,23 +116,24 @@ class Workflow:
         #     self.model.reposition_cache(where, from_pos, to_pos)
         #     self.position_map[where] = to_pos
 
+        # TODO -- if we compact and produce a multi-task alignment, then the
+        # postion ids might not be left-compacted.
         headers = []
         header_length = []
         for i, task in enumerate(tasks):
             role = f"{task['expects'][0]}:{task['expects'][1]}" if task['expects'][1] else task['expects'][0]
-            header = self.formatter.encode_header({"role": role}) # type: ignore
+            header = self.formatter.encode_header({"role": role})
             headers.append(header)
             header_length.append(len(header))
-        prefill_logits = self.prefill(sum(headers, []), header_length)
 
-        # recompute parent mask and positions after prefilling
+        # recompute mask and position_ids after prefilling
+        prefill_logits = self.prefill(sum(headers, []), header_length)
         mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + B])
         position_ids = torch.sum(mask == 0, dim=1)
-        
+
         if debug:
-            for submask in (mask == 0):
-                print(self.tokenizer.decode(self.context[:self.cache_len][submask].tolist()))
-                print('#' * 20)
+            print('Before decoding...')
+            self.debug_mask(mask)
 
         # preallocate mask for decoding
         interleaved_mask = torch.full((B, B), float("-inf"))
@@ -143,9 +141,11 @@ class Workflow:
         mask = torch.hstack([mask, interleaved_mask.repeat(1, max_gen_len)])
 
         start_pos = self.cache_len
+        eos_reached = torch.tensor([False] * B, device=self.device)
         for cur_pos in range(0, B * max_gen_len, B):
             if cur_pos == 0:
-                logits = prefill_logits[:, torch.cumsum(torch.tensor(header_length, device=self.device), dim=0) - 1]
+                header_ends = torch.cumsum(torch.tensor(header_length, device=self.device), dim=0) - 1
+                logits = prefill_logits[:, header_ends]
             else:
                 logits = self.model.forward(
                     tokens=self.context[self.cache_len - B : self.cache_len].unsqueeze(0),
@@ -163,20 +163,17 @@ class Workflow:
             self.node_map[self.cache_len : self.cache_len + B][~eos_reached] = \
                 torch.arange(self.cur_id, self.cur_id + B, device=self.device)[~eos_reached]
             self.context[self.cache_len : self.cache_len + B][~eos_reached] = next_token[~eos_reached]
-            eos_reached |= torch.isin(next_token, self.stop_tokens)
-
             self.position_map[self.cache_len : self.cache_len + B] = position_ids
-            position_ids += 1
 
-            self.cache_len +=B
+            position_ids += 1
+            self.cache_len += B
+            eos_reached |= torch.isin(next_token, self.stop_tokens)
             if all(eos_reached):
                 break
-                
+
         if debug:
-            print('After decoding...\n\n')
-            for submask in (mask[:, :self.cache_len] == 0):
-                print(self.tokenizer.decode(self.context[:self.cache_len][submask].tolist()))
-                print('#' * 20)
+            print('After decoding...')
+            self.debug_mask(mask[:, : self.cache_len])
 
         # one more forward pass to top off the kv cache
         self.model.forward(
@@ -219,7 +216,7 @@ class Workflow:
         # important invariant: self.cur_id is only mutated AFTER prefilling
         node_par_mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + B])
         node_pos_ids = torch.sum(node_par_mask == 0, dim=1)
-        
+
         node_ids = torch.repeat_interleave(
             torch.arange(self.cur_id, self.cur_id + B, device=self.device),
             length
@@ -258,7 +255,14 @@ class Workflow:
             torch.zeros(B, self.cache_len, device=self.device),
             torch.full((B, self.cache_len), float("-inf"), device=self.device)
         )
-    
+
+    def debug_mask(self, mask: torch.Tensor):
+        for i, thread in enumerate((mask == 0)):
+            print('Output thread {i}:')
+            print('#' * 20)
+            print(self.tokenizer.decode(self.context[:self.cache_len][thread].tolist()))
+            print('#' * 20)
+
 def sample_top_p_parallel(probs, p, generator=None):
     next_token = sample_top_p(probs.view(-1, probs.shape[-1]), p, generator)
     return next_token.view(probs.shape[0], probs.shape[1])
