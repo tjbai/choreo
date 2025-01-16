@@ -219,13 +219,15 @@ class ChatFormat:
         tokens.append(self.tokenizer.special_tokens["<|eot_id|>"])
         return tokens
 
-    def encode_dialog_prompt(self, dialog: Dialog, prefill=True) -> List[int]:
+    def encode_dialog(self, dialog: Dialog) -> List[int]:
         tokens = []
-        tokens.append(self.tokenizer.special_tokens["<|begin_of_text|>"])
         for message in dialog:
             tokens.extend(self.encode_message(message))
+        return tokens
 
+    def encode_dialog_prompt(self, dialog: Dialog, prefill=True) -> List[int]:
+        tokens = [self.tokenizer.special_tokens["<|begin_of_text|>"]]
+        tokens.extend(self.encode_dialog(dialog))
         if prefill:
-            tokens.extend(self.encode_header({"role": "assistant", "content": ""}))
-
+            tokens.extend(self.encode_header({"role": "assistant"}))
         return tokens

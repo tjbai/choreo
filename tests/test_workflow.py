@@ -10,18 +10,22 @@ class TestWorkflow(TestCase):
             def forward(self, *args, **kwargs):
                 pass
 
+            def reposition_cache(self, *args, **kwargs):
+                pass
+
         class MockFormatter:
             def encode_message(self, message):
                 return [128006, 1, 128009]
 
-            def encode_dialog_prompt(self, dialog, prefill):
-                tokens = [128000]
-                for _ in dialog:
-                    tokens.extend([128006, 1, 128009])
+            def encode_dialog(self, dialog):
+                tokens = []
+                for message in dialog:
+                    tokens.extend(self.encode_message(message))
                 return tokens
 
         class MockTokenizer:
             bos_id = 128000
+            stop_tokens = [128001, 128009]
 
         self.workflow.model = MockModel()
         self.workflow.formatter = MockFormatter()
@@ -64,6 +68,61 @@ class TestWorkflow(TestCase):
             ])
         ))
 
+    def test_preallocate_interleaved_mask(self):
+        bsz = 2
+        max_gen_len = 3
+        base_mask = torch.tensor([[0.0, float("-inf")], [float("-inf"), 0.0]])
+
+        mask = self.workflow.preallocate_interleaved_mask(base_mask, bsz, max_gen_len)
+
+        self.assertEqual(mask.shape, (bsz, base_mask.shape[1] + bsz * max_gen_len))
+        self.assertTrue(torch.all(mask[:, :base_mask.shape[1]] == base_mask))
+
+        interleaved = mask[:, base_mask.shape[1]:]
+        for i in range(max_gen_len):
+            block = interleaved[:, i*bsz:(i+1)*bsz]
+            expected = torch.full((bsz, bsz), float("-inf"))
+            expected.fill_diagonal_(0)
+            self.assertTrue(torch.all(block == expected))
+
+    def test_compact(self):
+        self.workflow.cache_len = 6
+        self.workflow.context = torch.tensor([1, 2, 3, 4, 5, 6])
+        self.workflow.node_map = torch.tensor([0, 1, 1, 2, 2, 2, 3, 3, 3])
+        self.workflow.position_map = torch.tensor([0, 1, 2, 3, 4, 5, 6, 7, 8])
+        self.workflow.compact(order=[2, 1], mask=torch.tensor([0, 0, 0, 0, 0, 0, float("-inf"), float("-inf"), float("-inf")]))
+        self.assertTrue(torch.all(self.workflow.position_map == torch.tensor([0, 4, 5, 1, 2, 3, 6, 7, 8])))
+        self.workflow.compact(order=[3, 2, 1], mask=torch.zeros(9))
+        self.assertTrue(torch.all(self.workflow.position_map == torch.tensor([0, 7, 8, 4, 5, 6, 1, 2, 3])))
+        self.workflow.compact(order=[3, 1, 2], mask=torch.zeros(9))
+        self.assertTrue(torch.all(self.workflow.position_map == torch.tensor([0, 4, 5, 6, 7, 8, 1, 2, 3])))
+
+    def test_compact_identity(self):
+        self.workflow.cache_len = 6
+        self.workflow.context = torch.tensor([1, 2, 3, 4, 5, 6])
+        self.workflow.node_map = torch.tensor([0, 1, 1, 2, 2, 2, 3, 3, 3])
+        self.workflow.position_map = torch.tensor([0, 1, 2, 3, 4, 5, 6, 7, 8])
+        self.workflow.compact(order=[1, 2], mask=torch.tensor([0, 0, 0, 0, 0, 0, float("-inf"), float("-inf"), float("-inf")]))
+        self.assertTrue(torch.all(self.workflow.position_map == torch.tensor([0, 1, 2, 3, 4, 5, 6, 7, 8])))
+        self.workflow.compact(order=[1, 2, 3], mask=torch.zeros(9))
+        self.assertTrue(torch.all(self.workflow.position_map == torch.tensor([0, 1, 2, 3, 4, 5, 6, 7, 8])))
+
+    def test_wrap_outputs(self):
+        headers = [[10, 11], [12, 13]]
+        tokens = torch.tensor([1, 2, 3, 128009, 5, 6])
+        tasks = [
+            {'parent_ids': [1], 'expects': ('assistant', None)},
+            {'parent_ids': [2], 'expects': ('user', 'math')}
+        ]
+        out_tokens, out_nodes = self.workflow.wrap_outputs(tokens.view(-1, 2).t(), tasks, headers) # type: ignore
+        self.assertEqual(out_tokens[0], [1, 3, 5])
+        self.assertEqual(out_tokens[1], [2])
+        self.assertEqual(len(out_nodes), len(tasks))
+        self.assertEqual(out_nodes[0]['tokens'], [10, 11, 1, 3, 5])
+        self.assertEqual(out_nodes[1]['tokens'], [12, 13, 2, 128009])
+        self.assertEqual(out_nodes[0]['parent_ids'], tasks[0]['parent_ids'])
+        self.assertEqual(out_nodes[1]['parent_ids'], tasks[1]['parent_ids'])
+
     def test_grouped_causal_mask(self):
         message_ids = torch.tensor([0, 0, 0, 0, 1, 1, 2, 2, 2])
         mask = grouped_causal_mask(message_ids)
@@ -80,7 +139,7 @@ class TestWorkflow(TestCase):
     def test_insert(self):
         [system] = self.workflow.insert([
             {
-                'message': {'role': 'system', 'content': ''},
+                'messages': [{'role': 'system', 'content': ''}],
                 'parent_ids': []
             }
         ])
@@ -94,11 +153,11 @@ class TestWorkflow(TestCase):
 
         user_1, user_2 = self.workflow.insert([
             {
-                'message': {'role': 'user', 'content': ''},
+                'messages': [{'role': 'user', 'content': ''}],
                 'parent_ids': [system['id']]
             },
             {
-                'message': {'role': 'user', 'content': ''},
+                'messages': [{'role': 'user', 'content': ''}],
                 'parent_ids': [system['id']]
             }
         ])
@@ -111,11 +170,11 @@ class TestWorkflow(TestCase):
 
         _ = self.workflow.insert([
             {
-                'message': {'role': 'user', 'content': ''},
+                'messages': [{'role': 'user', 'content': ''}],
                 'parent_ids': [system['id'], user_1['id']]
             },
             {
-                'message': {'role': 'user', 'content': ''},
+                'messages': [{'role': 'user', 'content': ''}],
                 'parent_ids': [system['id'], user_1['id'], user_2['id']]
             }
         ])
@@ -123,3 +182,18 @@ class TestWorkflow(TestCase):
         # this case is a bit tricky to define, expected behavior here might change
         self.assertTrue(torch.all(self.workflow.position_map[10:16] == torch.tensor([7, 8, 9, 10, 11, 12])))
         self.assertTrue(torch.all(self.workflow.parent_map[4:6, :5] == torch.tensor([[4, 1, 2, 0, 0], [5, 1, 2, 3, 0]])))
+
+    def test_insert_multiple(self):
+        [prompt] = self.workflow.insert([
+            {
+                'messages': [
+                    {'role': 'system', 'content': ''},
+                    {'role': 'user', 'content': ''},
+                ],
+                'parent_ids': []
+            }
+        ])
+
+        self.assertEqual(prompt['id'], 1)
+        self.assertEqual(self.workflow.cur_id, 2)
+        self.assertTrue(torch.all(self.workflow.node_map[:7] == torch.tensor([0, 1, 1, 1, 1, 1, 1])))
