@@ -27,8 +27,8 @@ logger = getLogger(__name__)
 Role = Literal["system", "user", "assistant"]
 
 
-class Message(TypedDict):
-    role: Role
+class Message(TypedDict, total=False):
+    role: str
     content: str
 
 
