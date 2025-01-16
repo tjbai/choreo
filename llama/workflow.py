@@ -37,11 +37,11 @@ class Workflow:
         self.model = model
         self.tokenizer = tokenizer
         self.formatter = ChatFormat(tokenizer)
+        self.device = device
         self.stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens), device=self.device)
         self.max_seq_len = self.model.params.max_seq_len
         self.max_nodes = max_nodes
         self.max_parents = max_parents
-        self.device = device
         self.model.forward(torch.tensor([self.tokenizer.bos_id], device=self.device).unsqueeze(0), 0) # set the cache for bos just once
         self.reset()
 
@@ -53,7 +53,7 @@ class Workflow:
         self.position_map = torch.zeros((self.max_seq_len,), dtype=torch.long, device=self.device)
         self.context = torch.full((self.max_seq_len,), self.tokenizer.bos_id, dtype=torch.long, device=self.device)
         self.parent_map = torch.zeros(self.max_nodes, self.max_parents, dtype=torch.long, device=self.device) # implicitly bos is always a parent
-        self.parent_map[:, 0] = torch.arange(self.max_parents, dtype=torch.long, device=self.device) # every node is its own parent as well
+        self.parent_map[:, 0] = torch.arange(self.max_nodes, dtype=torch.long, device=self.device) # every node is its own parent as well
 
     # TODO -- we should make this lazy
     def insert(self, prompts: Sequence[Prompt]) -> List[Cached]:
