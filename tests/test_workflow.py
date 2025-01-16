@@ -20,28 +20,41 @@ class TestWorkflow(TestCase):
                     tokens.extend([128006, 1, 128009])
                 return tokens
 
-        class Tokenizer:
+        class MockTokenizer:
             bos_id = 128000
 
         self.workflow.model = MockModel()
         self.workflow.formatter = MockFormatter()
-        self.workflow.tokenizer = Tokenizer()
+        self.workflow.tokenizer = MockTokenizer()
         self.workflow.max_seq_len = 128
         self.workflow.device = "cpu"
+        self.workflow.max_nodes = 20
+        self.workflow.max_parents = 20
         self.workflow.reset()
 
-    def test_dependency_mask(self):
-        self.workflow.context_len = 4
+    def test_parent_mask(self):
+        self.workflow.cache_len = 4
         self.workflow.context = torch.tensor([1, 2, 3, 4])
-        self.workflow.id_map = torch.tensor([-1, 0, 0, 1])
+        self.workflow.node_map = torch.tensor([0, 1, 1, 2])
+        self.workflow.cur_id = 3
 
         tasks = [
-            {'parent_ids': [0], 'expects': ('assistant', None)},
             {'parent_ids': [1], 'expects': ('assistant', None)},
-            {'parent_ids': [0, 1], 'expects': ('assistant', None)}
+            {'parent_ids': [2], 'expects': ('assistant', None)},
+            {'parent_ids': [1, 2], 'expects': ('assistant', None)}
         ]
 
-        mask = self.workflow._dependency_mask(tasks)
+        self.workflow.register_nodes(tasks)
+        self.assertTrue(torch.all(
+            self.workflow.parent_map[3:6, :5] ==
+            torch.tensor([
+                [3, 1, 0, 0, 0],
+                [4, 2, 0, 0, 0],
+                [5, 1, 2, 0, 0]
+            ])
+        ))
+
+        mask = self.workflow._parent_mask(self.workflow.parent_map[3:6])
         self.assertEqual(mask.shape, (3, 4))
         self.assertTrue(torch.all(
             mask == torch.tensor([
@@ -72,11 +85,12 @@ class TestWorkflow(TestCase):
             }
         ])
 
-        self.assertEqual(system['id'], 0)
-        self.assertEqual(self.workflow.cur_id, 1)
-        self.assertTrue(torch.all(self.workflow.id_map[:4] == torch.tensor([-1, 0, 0, 0])))
+        self.assertEqual(system['id'], 1)
+        self.assertEqual(self.workflow.cur_id, 2)
+        self.assertTrue(torch.all(self.workflow.node_map[:4] == torch.tensor([0, 1, 1, 1])))
         self.assertTrue(torch.all(self.workflow.position_map[:4] == torch.tensor([0, 1, 2, 3])))
         self.assertTrue(torch.all(self.workflow.context[:4] == torch.tensor([128000, 128006, 1, 128009])))
+        self.assertTrue(torch.all(self.workflow.parent_map[1, :5] == torch.tensor([1, 0, 0, 0, 0])))
 
         user_1, user_2 = self.workflow.insert([
             {
@@ -89,10 +103,11 @@ class TestWorkflow(TestCase):
             }
         ])
 
-        self.assertEqual([user_1['id'], user_2['id']], [1, 2])
-        self.assertEqual(self.workflow.cur_id, 3)
-        self.assertTrue(torch.all(self.workflow.id_map[:10] == torch.tensor([-1, 0, 0, 0, 1, 1, 1, 2, 2, 2])))
+        self.assertEqual([user_1['id'], user_2['id']], [2, 3])
+        self.assertEqual(self.workflow.cur_id, 4)
+        self.assertTrue(torch.all(self.workflow.node_map[:10] == torch.tensor([0, 1, 1, 1, 2, 2, 2, 3, 3, 3])))
         self.assertTrue(torch.all(self.workflow.position_map[:10] == torch.tensor([0, 1, 2, 3, 4, 5, 6, 4, 5, 6])))
+        self.assertTrue(torch.all(self.workflow.parent_map[2:4, :3] == torch.tensor([[2, 1, 0], [3, 1, 0]])))
 
         _ = self.workflow.insert([
             {
@@ -107,3 +122,4 @@ class TestWorkflow(TestCase):
 
         # this case is a bit tricky to define, expected behavior here might change
         self.assertTrue(torch.all(self.workflow.position_map[10:16] == torch.tensor([7, 8, 9, 10, 11, 12])))
+        self.assertTrue(torch.all(self.workflow.parent_map[4:6, :5] == torch.tensor([[4, 1, 2, 0, 0], [5, 1, 2, 3, 0]])))
