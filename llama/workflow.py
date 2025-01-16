@@ -258,7 +258,7 @@ class Workflow:
             torch.zeros(B, self.cache_len, device=self.device),
             torch.full((B, self.cache_len), float("-inf"), device=self.device)
         )
-
+    
 def sample_top_p_parallel(probs, p, generator=None):
     next_token = sample_top_p(probs.view(-1, probs.shape[-1]), p, generator)
     return next_token.view(probs.shape[0], probs.shape[1])
