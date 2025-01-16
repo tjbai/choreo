@@ -1,3 +1,4 @@
+import warnings
 from typing import Sequence, List, TypedDict, Tuple, Optional
 
 import torch
@@ -42,18 +43,33 @@ class Workflow:
         self.max_seq_len = self.model.params.max_seq_len
         self.max_nodes = max_nodes
         self.max_parents = max_parents
-        self.model.forward(torch.tensor([self.tokenizer.bos_id], device=self.device).unsqueeze(0), 0) # set the cache for bos just once
+        self.model.forward(torch.tensor([self.tokenizer.bos_id], device=self.device).unsqueeze(0), 0) # set the cache for bos just oncez
         self.reset()
 
-    def reset(self, *args, **kwargs):
+    def reset(
+        self,
+        new_max_seq_len: Optional[int] = None,
+        new_max_nodes: Optional[int] = None,
+        new_max_parents: Optional[int] = None
+    ):
+        if new_max_nodes is not None:
+            self.max_nodes = new_max_nodes
+        if new_max_parents is not None:
+            self.max_parents = new_max_parents
+        if new_max_seq_len is not None:
+            self.max_seq_len = new_max_seq_len
         self.cur_id = 1
         self.cache_len = 1
         self.node_map = torch.full((self.max_seq_len,), -1, dtype=torch.long, device=self.device)
         self.node_map[0] = 0 # bos
         self.position_map = torch.zeros((self.max_seq_len,), dtype=torch.long, device=self.device)
         self.context = torch.full((self.max_seq_len,), self.tokenizer.bos_id, dtype=torch.long, device=self.device)
-        self.parent_map = torch.zeros(self.max_nodes, self.max_parents, dtype=torch.long, device=self.device) # implicitly bos is always a parent
-        self.parent_map[:, 0] = torch.arange(self.max_nodes, dtype=torch.long, device=self.device) # every node is its own parent as well
+        self.parent_map = torch.zeros(
+            self.max_nodes, self.max_parents, dtype=torch.long, device=self.device
+        ) # implicitly bos is always a parent
+        self.parent_map[:, 0] = torch.arange(
+            self.max_nodes, dtype=torch.long, device=self.device
+        ) # every node is its own parent too
 
     # TODO -- we should make this lazy
     def insert(self, prompts: Sequence[Prompt]) -> List[Cached]:
@@ -62,7 +78,7 @@ class Workflow:
         prompt_length = []
         outputs = []
         for i, prompt in enumerate(prompts):
-            tokens = self.formatter.encode_dialog_prompt(prompt['messages'], prefill=False)
+            tokens = self.formatter.encode_dialog(prompt['messages'])
             outputs.append({
                 'id': self.cur_id + i,
                 'parent_ids': prompt['parent_ids'],
@@ -88,36 +104,22 @@ class Workflow:
         seed: int = 42,
         debug: bool = False,
     ) -> Tuple[List[List[int]], List[Cached]]:
-        generator = torch.Generator(device=self.device).manual_seed(seed) if seed else None
+        bsz = len(tasks)
+        if self.cache_len + (bsz * max_gen_len) > self.max_seq_len:
+            raise Exception(f"Insufficient capacity for {bsz * max_gen_len} tokens.")
+        if self.cur_id + bsz > self.max_nodes:
+            raise Exception(f"Insufficient capacity for {bsz * max_gen_len} nodes.")
+
         self.add_nodes(tasks)
+        mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + bsz])
+        generator = torch.Generator(device=self.device).manual_seed(seed) if seed else None
 
-        B = len(tasks)
-        if self.cache_len + (B * max_gen_len) > self.max_seq_len:
-            raise Exception(f"Output buffers do not have capacity for {B * max_gen_len} tokens.")
+        if compact:
+            if len(tasks) > 0:
+                warnings.warn("Multi-node compaction not fully implemented. Use caution.")
+            self.compact(tasks[0]['parent_ids'], mask[0]) # use just the first task for now
 
-        # """
-        # TODO -- there's a few too many indirections and allocations here for
-        # this to be really clean and fast, but the way it is now is flexible.
-        # """
-        # if compact:
-        #     if len(tasks) > 1:
-        #         print('Not fully implemented, compact with caution!')
-        #     where = torch.where(mask[0] == 0)[0]
-        #     from_pos = self.position_map[where]
-        #     from_ids = self.node_map[where]
-        #     to_pos = torch.empty(len(from_pos), dtype=torch.long, device=self.device)
-        #     to_pos[0] = 0 # bos
-        #     offset = 1
-        #     for par in tasks[0]['parent_ids']:
-        #         par_length = torch.sum(from_ids == par)
-        #         par_position_ids = torch.where(from_ids == par)[0]
-        #         to_pos[par_position_ids] = torch.arange(offset, offset + par_length)
-        #         offset += par_length
-        #     self.model.reposition_cache(where, from_pos, to_pos)
-        #     self.position_map[where] = to_pos
-
-        # TODO -- if we compact and produce a multi-task alignment, then the
-        # postion ids might not be left-compacted.
+        # tokenize headers
         headers = []
         header_length = []
         for i, task in enumerate(tasks):
@@ -127,49 +129,53 @@ class Workflow:
             header_length.append(len(header))
 
         # recompute mask and position_ids after prefilling
-        prefill_logits = self.prefill(sum(headers, []), header_length)
-        mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + B])
+        prefill_logits = self.prefill(sum(headers, []), header_length, cached_mask=mask)
+        mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + bsz])
         position_ids = torch.sum(mask == 0, dim=1)
 
         if debug:
             print('Before decoding...')
             self.debug_mask(mask)
 
-        # preallocate mask for decoding
-        interleaved_mask = torch.full((B, B), float("-inf"))
-        interleaved_mask.fill_diagonal_(0)
-        mask = torch.hstack([mask, interleaved_mask.repeat(1, max_gen_len)])
-
         start_pos = self.cache_len
-        eos_reached = torch.tensor([False] * B, device=self.device)
-        for cur_pos in range(0, B * max_gen_len, B):
+        eos_reached = torch.tensor([False] * bsz, device=self.device)
+        mask = self.preallocate_interleaved_mask(mask, bsz, max_gen_len)
+
+        for cur_pos in range(0, bsz * max_gen_len - bsz, bsz): # do N - 1 iterations
             if cur_pos == 0:
                 header_ends = torch.cumsum(torch.tensor(header_length, device=self.device), dim=0) - 1
                 logits = prefill_logits[:, header_ends]
             else:
                 logits = self.model.forward(
-                    tokens=self.context[self.cache_len - B : self.cache_len].unsqueeze(0),
-                    start_pos=self.cache_len - B,
+                    tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
+                    start_pos=self.cache_len - bsz,
                     mask=mask[:, : self.cache_len],
                     position_ids=position_ids
                 )
 
             if temperature > 0:
-                probs = torch.softmax(logits[:, -B:] / temperature, dim=-1)
+                probs = torch.softmax(logits[:, -bsz:] / temperature, dim=-1)
                 next_token = sample_top_p_parallel(probs, top_p, generator=generator).squeeze(0)
             else:
-                next_token = torch.argmax(logits[:, -B:], dim=-1).squeeze(0)
+                next_token = torch.argmax(logits[:, -bsz:], dim=-1).squeeze(0)
 
-            self.node_map[self.cache_len : self.cache_len + B][~eos_reached] = \
-                torch.arange(self.cur_id, self.cur_id + B, device=self.device)[~eos_reached]
-            self.context[self.cache_len : self.cache_len + B][~eos_reached] = next_token[~eos_reached]
-            self.position_map[self.cache_len : self.cache_len + B] = position_ids
+            self.node_map[self.cache_len : self.cache_len + bsz][~eos_reached] = \
+                torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)[~eos_reached]
+            self.context[self.cache_len : self.cache_len + bsz][~eos_reached] = next_token[~eos_reached]
+            self.position_map[self.cache_len : self.cache_len + bsz] = position_ids
 
             position_ids += 1
-            self.cache_len += B
+            self.cache_len += bsz
             eos_reached |= torch.isin(next_token, self.stop_tokens)
             if all(eos_reached):
                 break
+
+        # TODO -- force decode eot_id for everything that didn't naturally terminate
+        # self.node_map[self.cache_len : self.cache_len + bsz][~eos_reached] = \
+        #     torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)[~eos_reached]
+        # self.context[self.cache_len : self.cache_len + bsz][~eos_reached] = 128009 # eot_id
+        # self.position_map[self.cache_len : self.cache_len + bsz] = position_ids
+        # self.cache_len += bsz
 
         if debug:
             print('After decoding...')
@@ -177,44 +183,74 @@ class Workflow:
 
         # one more forward pass to top off the kv cache
         self.model.forward(
-            tokens=self.context[self.cache_len - B : self.cache_len].unsqueeze(0),
-            start_pos=self.cache_len - B,
+            tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
+            start_pos=self.cache_len - bsz,
             mask=mask[:, : self.cache_len],
             position_ids=position_ids
         )
 
+        self.cache_len = start_pos if stateless else self.cache_len
+        self.cur_id += 0 if stateless else bsz
+
+        return self.wrap_outputs(
+            self.context[start_pos : self.cache_len].view(-1, bsz).t(),
+            tasks,
+            headers
+        )
+
+    def wrap_outputs(
+        self,
+        tokens: torch.Tensor,
+        tasks: List[Task],
+        headers: List[List[int]]
+    ) -> Tuple[List[List[int]], List[Cached]]:
         out_tokens = []
         out_nodes = []
-        tokens = self.context[start_pos : self.cache_len].view(-1, B).t()
         for i, (task, toks, header) in enumerate(zip(tasks, tokens.tolist(), headers)):
+            found_stop = False
             for stop_token in self.tokenizer.stop_tokens:
                 try:
                     eos_idx = toks.index(stop_token)
                     toks = toks[:eos_idx+1] # include the stop token
+                    out_tokens.append(toks[:-1])
+                    out_nodes.append({
+                        'id': self.cur_id + i,
+                        'parent_ids': task['parent_ids'],
+                        'tokens': header + toks,
+                        'length': len(header) + len(toks)
+                    })
+                    found_stop = True
                 except ValueError:
                     pass
-            out_tokens.append(toks[:-1])
-            out_nodes.append({
-                'id': self.cur_id + i,
-                'parent_ids': task['parent_ids'],
-                'tokens': header + toks,
-                'length': len(header) + len(toks)
-            })
-
-        if stateless:
-            self.cache_len = start_pos
-        else:
-            self.cur_id += B
-
+            if not found_stop:
+                out_tokens.append(toks)
+                out_nodes.append({
+                    'id': self.cur_id + i,
+                    'parent_ids': task['parent_ids'],
+                    'tokens': header + toks,
+                    'length': len(header) + len(toks)
+                })
         return out_tokens, out_nodes
 
-    def prefill(self, _tokens: List[int], _length: List[int]) -> torch.Tensor:
+    def add_nodes(self, nodes: Sequence[Node]) -> torch.Tensor:
+        for i, node in enumerate(nodes):
+            self.parent_map[self.cur_id + i, 1 : 1 + len(node['parent_ids'])] = \
+                torch.tensor(node['parent_ids'], device=self.device)
+        return self.parent_map[self.cur_id : self.cur_id + len(nodes)]
+
+    def prefill(
+        self,
+        _tokens: List[int],
+        _length: List[int],
+        cached_mask: Optional[torch.Tensor] = None
+    ) -> torch.Tensor:
         B = len(_length)
         tokens = torch.tensor(_tokens, device=self.device)
         length = torch.tensor(_length, device=self.device)
 
         # important invariant: self.cur_id is only mutated AFTER prefilling
-        node_par_mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + B])
+        node_par_mask = cached_mask if cached_mask is not None else \
+            self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + B])
         node_pos_ids = torch.sum(node_par_mask == 0, dim=1)
 
         node_ids = torch.repeat_interleave(
@@ -242,11 +278,27 @@ class Workflow:
 
         return logits
 
-    def add_nodes(self, nodes: Sequence[Node]) -> torch.Tensor:
-        for i, node in enumerate(nodes):
-            self.parent_map[self.cur_id + i, 1 : 1 + len(node['parent_ids'])] = \
-                torch.tensor(node['parent_ids'], device=self.device)
-        return self.parent_map[self.cur_id : self.cur_id + len(nodes)]
+    def compact(self, order: List[int], mask: torch.Tensor):
+        # (num_parent_tokens,)
+        where = torch.where(mask.squeeze() == 0)[0]
+        from_pos = self.position_map[where]
+        from_nodes = self.node_map[where]
+        to_pos = torch.zeros(len(from_pos), dtype=torch.long, device=self.device)
+
+        offset = 1
+        for par in order:
+            par_mask = (from_nodes == par)
+            par_length = torch.sum(par_mask)
+            to_pos[par_mask] = torch.arange(offset, offset + par_length) # type: ignore
+            offset += par_length
+
+        self.model.reposition_cache(where, from_pos, to_pos)
+        self.position_map[where] = to_pos
+
+    def preallocate_interleaved_mask(self, base_mask: torch.Tensor, bsz: int, max_gen_len: int):
+        interleaved_mask = torch.full((bsz, bsz), float("-inf"))
+        interleaved_mask.fill_diagonal_(0)
+        return torch.hstack([base_mask, interleaved_mask.repeat(1, max_gen_len)])
 
     def dynamic_mask(self, node_parents: torch.Tensor) -> torch.Tensor:
         B, _ = node_parents.shape
