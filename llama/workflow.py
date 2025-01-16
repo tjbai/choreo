@@ -57,7 +57,7 @@ class Workflow:
 
     # TODO -- we should make this lazy
     def insert(self, prompts: Sequence[Prompt]) -> List[Cached]:
-        self.register_nodes(prompts)
+        self.add_nodes(prompts)
         prompt_tokens = []
         prompt_length = []
         outputs = []
@@ -88,7 +88,7 @@ class Workflow:
         seed: int = 42
     ) -> Tuple[List[List[int]], List[Cached]]:
         generator = torch.Generator(device=self.device).manual_seed(seed) if seed else None
-        self.register_nodes(tasks)
+        self.add_nodes(tasks)
 
         B = len(tasks)
         if self.cache_len + (B * max_gen_len) > self.max_seq_len:
@@ -97,7 +97,7 @@ class Workflow:
 
         # """
         # TODO -- if we compact and produce a multi-task alignment, then the
-        # postion ids might not left-compacted.
+        # postion ids might not be left-compacted.
         # TODO -- there's a few too many indirections and allocations here for
         # this to be really clean and fast, but the way it is now is flexible.
         # """
@@ -128,7 +128,7 @@ class Workflow:
         prefill_logits = self.prefill(sum(headers, []), header_length)
 
         # recompute parent mask and positions after prefilling
-        mask = self._parent_mask(self.parent_map[self.cur_id : self.cur_id + B])
+        mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + B])
         position_ids = torch.sum(mask == 0, dim=1)
 
         # preallocate mask for decoding
@@ -205,7 +205,7 @@ class Workflow:
         length = torch.tensor(_length, device=self.device)
 
         # important invariant: self.cur_id is only mutated AFTER prefilling
-        node_par_mask = self._parent_mask(self.parent_map[self.cur_id : self.cur_id + B])
+        node_par_mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + B])
         node_pos_ids = torch.sum(node_par_mask == 0, dim=1)
 
         node_ids = torch.repeat_interleave(
@@ -233,16 +233,16 @@ class Workflow:
 
         return logits
 
-    def register_nodes(self, nodes: Sequence[Node]) -> torch.Tensor:
+    def add_nodes(self, nodes: Sequence[Node]) -> torch.Tensor:
         for i, node in enumerate(nodes):
             self.parent_map[self.cur_id + i, 1 : 1 + len(node['parent_ids'])] = \
                 torch.tensor(node['parent_ids'], device=self.device)
         return self.parent_map[self.cur_id : self.cur_id + len(nodes)]
 
-    def _parent_mask(self, parents: torch.Tensor) -> torch.Tensor:
-        B, _ = parents.shape
+    def dynamic_mask(self, node_parents: torch.Tensor) -> torch.Tensor:
+        B, _ = node_parents.shape
         return torch.where(
-            (self.node_map[:self.cache_len].unsqueeze(0).unsqueeze(2) == parents.unsqueeze(1)).any(dim=2),
+            (self.node_map[:self.cache_len].unsqueeze(0).unsqueeze(2) == node_parents.unsqueeze(1)).any(dim=2),
             torch.zeros(B, self.cache_len, device=self.device),
             torch.full((B, self.cache_len), float("-inf"), device=self.device)
         )

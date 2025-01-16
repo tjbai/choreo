@@ -44,7 +44,7 @@ class TestWorkflow(TestCase):
             {'parent_ids': [1, 2], 'expects': ('assistant', None)}
         ]
 
-        self.workflow.register_nodes(tasks)
+        self.workflow.add_nodes(tasks)
         self.assertTrue(torch.all(
             self.workflow.parent_map[3:6, :5] ==
             torch.tensor([
@@ -54,7 +54,7 @@ class TestWorkflow(TestCase):
             ])
         ))
 
-        mask = self.workflow._parent_mask(self.workflow.parent_map[3:6])
+        mask = self.workflow.dynamic_mask(self.workflow.parent_map[3:6])
         self.assertEqual(mask.shape, (3, 4))
         self.assertTrue(torch.all(
             mask == torch.tensor([
