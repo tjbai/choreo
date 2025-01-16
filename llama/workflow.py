@@ -85,7 +85,8 @@ class Workflow:
         temperature: float = 0.6,
         top_p: float = 0.9,
         log_probs: bool = True,
-        seed: int = 42
+        seed: int = 42,
+        debug: bool = False,
     ) -> Tuple[List[List[int]], List[Cached]]:
         generator = torch.Generator(device=self.device).manual_seed(seed) if seed else None
         self.add_nodes(tasks)
@@ -130,6 +131,11 @@ class Workflow:
         # recompute parent mask and positions after prefilling
         mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + B])
         position_ids = torch.sum(mask == 0, dim=1)
+        
+        if debug:
+            for submask in (mask == 0):
+                print(self.tokenizer.decode(self.context[:self.cache_len][submask].tolist()))
+                print('#' * 20)
 
         # preallocate mask for decoding
         interleaved_mask = torch.full((B, B), float("-inf"))
@@ -165,6 +171,12 @@ class Workflow:
             self.cache_len +=B
             if all(eos_reached):
                 break
+                
+        if debug:
+            print('After decoding...\n\n')
+            for submask in (mask[:, :self.cache_len] == 0):
+                print(self.tokenizer.decode(self.context[:self.cache_len][submask].tolist()))
+                print('#' * 20)
 
         # one more forward pass to top off the kv cache
         self.model.forward(
@@ -186,7 +198,7 @@ class Workflow:
                     pass
             out_tokens.append(toks[:-1])
             out_nodes.append({
-                'id': self.cur_id,
+                'id': self.cur_id + i,
                 'parent_ids': task['parent_ids'],
                 'tokens': header + toks,
                 'length': len(header) + len(toks)
@@ -207,7 +219,7 @@ class Workflow:
         # important invariant: self.cur_id is only mutated AFTER prefilling
         node_par_mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + B])
         node_pos_ids = torch.sum(node_par_mask == 0, dim=1)
-
+        
         node_ids = torch.repeat_interleave(
             torch.arange(self.cur_id, self.cur_id + B, device=self.device),
             length
