@@ -136,3 +136,21 @@ class TestWorkflowIntegration(TestCase):
             3 * [7, 8, 9, 10, 11, 12]
         )
         self.assertEqual(self.workflow.cache_len, 31)
+
+    def test_insert_and_step(self):
+        prompts = [
+            {
+                'messages': [{'role': 'system', 'content': ''}],
+                'parent_ids': []
+            }
+        ]
+        [prompt] = self.workflow.insert(prompts) # type: ignore
+        self.assertEqual(len(self.model.call_history), 2)
+
+        tasks = [{
+            'header': ('assistant', None),
+            'parent_ids': [prompt['id']],
+            'prefill': None
+        }]
+        tokens, cached = self.workflow.step(tasks, max_gen_len=10) # type: ignore
+        self.assertEqual(len(self.model.call_history), 12) # 1 for bos, 1 for prefill, 9 decoding, 1 for top-off

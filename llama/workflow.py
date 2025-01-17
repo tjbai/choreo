@@ -144,7 +144,7 @@ class Workflow:
         eos_reached = torch.tensor([False] * bsz, device=self.device)
         mask = self.preallocate_interleaved_mask(mask, bsz, max_gen_len)
 
-        for cur_pos in range(0, bsz * max_gen_len - bsz, bsz): # do N - 1 iterations
+        for cur_pos in range(0, bsz * (max_gen_len - 1), bsz): # do N - 1 iterations
             if cur_pos == 0:
                 header_ends = torch.cumsum(torch.tensor(header_length, device=self.device), dim=0) - 1
                 logits = prefill_logits[:, header_ends]
@@ -173,24 +173,24 @@ class Workflow:
             if all(eos_reached):
                 break
 
-        # TODO -- force decode eot_id for everything that didn't naturally terminate
-        # self.node_map[self.cache_len : self.cache_len + bsz][~eos_reached] = \
-        #     torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)[~eos_reached]
-        # self.context[self.cache_len : self.cache_len + bsz][~eos_reached] = 128009 # eot_id
-        # self.position_map[self.cache_len : self.cache_len + bsz] = position_ids
-        # self.cache_len += bsz
-
-        if debug:
-            print('After decoding...')
-            self.debug_mask(mask[:, : self.cache_len])
+        # force decode eot_id for everything that didn't naturally terminate
+        self.node_map[self.cache_len : self.cache_len + bsz][~eos_reached] = \
+            torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)[~eos_reached]
+        self.context[self.cache_len : self.cache_len + bsz][~eos_reached] = 128009 # eot_id
+        self.position_map[self.cache_len : self.cache_len + bsz] = position_ids
+        self.cache_len += bsz
 
         # one more forward pass to top off the kv cache
+        # this includes the last round of decoded tokens and the forced EOT
         self.model.forward(
-            tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
-            start_pos=self.cache_len - bsz,
+            tokens=self.context[self.cache_len - (2 * bsz) : self.cache_len].unsqueeze(0),
+            start_pos=self.cache_len - (2 * bsz),
             mask=mask[:, : self.cache_len],
             position_ids=position_ids
         )
+
+        if debug:
+            self.debug_mask(mask[:, : self.cache_len])
 
         self.cache_len = start_pos if stateless else self.cache_len
         outputs = self.wrap_outputs(
