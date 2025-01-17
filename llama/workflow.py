@@ -11,7 +11,8 @@ class Node(TypedDict):
     parent_ids: List[int]
 
 class Task(Node):
-    expects: Tuple[Role, Optional[str]]
+    header: Tuple[Role, Optional[str]]
+    prefill: Optional[str]
 
 class Prompt(Node):
     messages: List[Message]
@@ -72,6 +73,7 @@ class Workflow:
         ) # every node is its own parent too
 
     # TODO -- we should make this lazy
+    @torch.inference_mode()
     def insert(self, prompts: Sequence[Prompt]) -> List[Cached]:
         self.add_nodes(prompts)
         prompt_tokens = []
@@ -117,21 +119,23 @@ class Workflow:
         if compact:
             if len(tasks) > 0:
                 warnings.warn("Multi-node compaction not fully implemented. Use caution.")
-            self.compact(tasks[0]['parent_ids'], mask[0]) # use just the first task for now
+            self.compact(tasks[0]['parent_ids'], mask[0]) # use the ordering from just the first task, for now
 
-        # tokenize headers
         headers = []
         header_length = []
         for i, task in enumerate(tasks):
-            role = f"{task['expects'][0]}:{task['expects'][1]}" if task['expects'][1] else task['expects'][0]
+            role = task['header'][0] + (tag if (tag := task['header'][1]) else '')
             header = self.formatter.encode_header({"role": role})
+            if (prefill := task.get('prefill')):
+                header.extend(self.tokenizer.encode(prefill, bos=False, eos=False))
             headers.append(header)
             header_length.append(len(header))
+        prefill_logits = self.prefill(sum(headers, []), header_length, cached_mask=mask)
 
         # recompute mask and position_ids after prefilling
-        prefill_logits = self.prefill(sum(headers, []), header_length, cached_mask=mask)
         mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + bsz])
-        position_ids = torch.sum(mask == 0, dim=1)
+        # position_ids = torch.sum(mask == 0, dim=1)
+        position_ids = self.leftmost_position_ids(mask)
 
         if debug:
             print('Before decoding...')
@@ -251,7 +255,7 @@ class Workflow:
         # important invariant: self.cur_id is only mutated AFTER prefilling
         node_par_mask = cached_mask if cached_mask is not None else \
             self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + B])
-        node_pos_ids = torch.sum(node_par_mask == 0, dim=1)
+        node_pos_ids = self.leftmost_position_ids(node_par_mask == 0)
 
         node_ids = torch.repeat_interleave(
             torch.arange(self.cur_id, self.cur_id + B, device=self.device),
@@ -307,6 +311,9 @@ class Workflow:
             torch.zeros(B, self.cache_len, device=self.device),
             torch.full((B, self.cache_len), float("-inf"), device=self.device)
         )
+
+    def leftmost_position_ids(self, mask: torch.Tensor) -> torch.Tensor:
+        return 1 + torch.max(self.position_map[:self.cache_len].expand_as(mask).masked_fill(~mask, 0), dim=1).values
 
     def debug_mask(self, mask: torch.Tensor):
         for i, thread in enumerate((mask == 0)):
