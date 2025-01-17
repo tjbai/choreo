@@ -115,6 +115,7 @@ class Workflow:
         self.add_nodes(tasks)
         mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + bsz])
         generator = torch.Generator(device=self.device).manual_seed(seed) if seed else None
+        header_start = self.cache_len
 
         if compact:
             if len(tasks) > 0:
@@ -130,7 +131,9 @@ class Workflow:
                 header.extend(self.tokenizer.encode(prefill, bos=False, eos=False))
             headers.append(header)
             header_length.append(len(header))
+            
         prefill_logits = self.prefill(sum(headers, []), header_length, cached_mask=mask)
+        header_end = self.cache_len
 
         # recompute mask and position_ids after prefilling
         mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + bsz])
@@ -140,7 +143,6 @@ class Workflow:
             print('Before decoding...')
             self.debug_mask(mask)
 
-        start_pos = self.cache_len
         eos_reached = torch.tensor([False] * bsz, device=self.device)
         mask = self.preallocate_interleaved_mask(mask, bsz, max_gen_len)
 
@@ -170,37 +172,41 @@ class Workflow:
             position_ids += 1
             self.cache_len += bsz
             eos_reached |= torch.isin(next_token, self.stop_tokens)
-            if all(eos_reached):
+            
+            # if early break or on the last iteration...
+            if all(eos_reached) or cur_pos == bsz * (max_gen_len - 2):
+                # one more forward pass to top off the kv cache
+                self.model.forward(
+                    tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
+                    start_pos=self.cache_len - bsz,
+                    mask=mask[:, : self.cache_len],
+                    position_ids=position_ids
+                )
                 break
 
-        dirty = bsz
+        # force decode eot_id for everything that didn't naturally terminate
         if torch.any(~eos_reached):
-            # force decode eot_id for everything that didn't naturally terminate
             self.node_map[self.cache_len : self.cache_len + bsz][~eos_reached] = \
                 torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)[~eos_reached]
-            self.context[self.cache_len : self.cache_len + bsz][~eos_reached] = 128009 # eot_id
+            self.context[self.cache_len : self.cache_len + bsz][~eos_reached] = 128009
             self.position_map[self.cache_len : self.cache_len + bsz] = position_ids
             self.cache_len += bsz
-            dirty += bsz
-
-        # one more forward pass to top off the kv cache
-        # this includes the last round of decoded tokens and the forced EOT
-        self.model.forward(
-            tokens=self.context[self.cache_len - dirty : self.cache_len].unsqueeze(0),
-            start_pos=self.cache_len - dirty,
-            mask=mask[:, : self.cache_len],
-            position_ids=position_ids
-        )
+            self.model.forward(
+                tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
+                start_pos=self.cache_len - bsz,
+                mask=mask[:, : self.cache_len],
+                position_ids=position_ids + 1
+            )
 
         if debug:
             self.debug_mask(mask[:, : self.cache_len])
 
-        self.cache_len = start_pos if stateless else self.cache_len
         outputs = self.wrap_outputs(
-            self.context[start_pos : self.cache_len].view(-1, bsz).t(),
+            self.context[header_end : self.cache_len].view(-1, bsz).t(),
             tasks,
             headers
-        ) # order matters here (which isn't great design)
+        )
+        self.cache_len = header_start if stateless else self.cache_len
         self.cur_id += 0 if stateless else bsz
         return outputs
 
