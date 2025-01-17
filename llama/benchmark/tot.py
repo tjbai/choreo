@@ -52,7 +52,12 @@ def parse_choice(text):
         return int(match.group(1))
     return None
 
-def solve_workflow(workflow, problem, branching_factor, voters):
+def tot_cached_workflow(
+    workflow: Workflow,
+    problem: str,
+    branching_factor: int,
+    voters: int
+):
     workflow.reset()
 
     with record_function("prompt_insert"):
@@ -75,8 +80,9 @@ def solve_workflow(workflow, problem, branching_factor, voters):
         proposal_tokens, proposal_nodes = workflow.step(
             [
                 {
-                    'expects': ('assistant', f'solution number {i+1}'),
-                    'parent_ids': [cot['id']]
+                    'header': ('assistant', f'solution number {i+1}'),
+                    'prefill': None,
+                    'parent_ids': [cot['id']],
                 }
                 for i in range(branching_factor)
             ],
@@ -92,8 +98,9 @@ def solve_workflow(workflow, problem, branching_factor, voters):
         vote_tokens, vote_nodes = workflow.step(
             [
                 {
-                    'expects': ('assistant', None),
-                    'parent_ids': [vote['id']] + list([p['id'] for p in proposal_nodes])
+                    'header': ('assistant', None),
+                    'prefill': None,
+                    'parent_ids': [vote['id']] + list([p['id'] for p in proposal_nodes]),
                 }
                 for _ in range(voters)
             ],
@@ -117,7 +124,113 @@ def solve_workflow(workflow, problem, branching_factor, voters):
             [res], _ = workflow.step(
                 [
                     {
-                        'expects': ('assistant', None),
+                        'header': ('assistant', None),
+                        'prefill': None,
+                        'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]
+                    }
+                ],
+                compact=False,
+                max_gen_len=256,
+                temperature=0.7,
+                top_p=0.9,
+                seed=42,
+                debug=False
+            )
+
+    return {
+        'proposal_tokens': proposal_tokens,
+        'vote_tokens': vote_tokens,
+        'res': res,
+        'votes': votes
+    }
+
+def tot_workflow(
+    workflow: Workflow,
+    problem: str,
+    branching_factor: int,
+    voters: int
+):
+    workflow.reset()
+
+    with record_function("prompt_insert"):
+        cot, vote, finish = workflow.insert([
+            {
+                'messages': [{'role': 'system', 'content': cot_prompt}, {'role': 'user', 'content': format_problem(problem)}],
+                'parent_ids': []
+            },
+            {
+                'messages': [{'role': 'system', 'content': format_vote_prompt(branching_factor)}, {'role': 'user', 'content': format_problem(problem)}],
+                'parent_ids': []
+            },
+            {
+                'messages': [{'role': 'system', 'content': finish_prompt}, {'role': 'user', 'content': format_problem(problem)}],
+                'parent_ids': []
+            },
+        ])
+
+    with record_function("cot_step"):
+        proposal_tokens, proposal_nodes = workflow.step(
+            [
+                {
+                    'header': ('assistant', f'solution number {i+1}'),
+                    'prefill': None,
+                    'parent_ids': [cot['id']]
+                }
+                for i in range(branching_factor)
+            ],
+            compact=False,
+            max_gen_len=512,
+            temperature=0.7,
+            top_p=0.9,
+            seed=42,
+            debug=False,
+        )
+
+    with record_function('vote_prompt_detokenize'):
+        proposal_content = 'Here are the proposals:\n\n'
+        for i, proposal in enumerate(proposal_tokens):
+            proposal_content += f'Proposal #{i+1}:\n{workflow.tokenizer.decode(proposal)}\n\n'
+
+    with record_function('vote_prompt_insert'):
+        [vote_proposals] = workflow.insert([
+            {
+                'messages': [{'role': 'user', 'content': proposal_content}],
+                'parent_ids': [vote['id']]
+            }
+        ])
+
+    with record_function("vote_step"):
+        vote_tokens, vote_nodes = workflow.step(
+            [
+                {
+                    'header': ('assistant', None),
+                    'prefill': None,
+                    'parent_ids': [vote['id'], vote_proposals['id']]
+                }
+                for _ in range(voters)
+            ],
+            compact=False,
+            max_gen_len=256,
+            temperature=0.7,
+            top_p=0.9,
+            seed=42,
+            debug=False
+        )
+
+    res = None
+    votes = [
+        choice for resp in vote_tokens if
+        (choice := parse_choice(workflow.tokenizer.decode(resp))) is not None
+    ]
+
+    if len(votes) > 0:
+        best = Counter(votes).most_common(1)[0][0]
+        with record_function("final_step"):
+            [res], _ = workflow.step(
+                [
+                    {
+                        'header': ('assistant', None),
+                        'prefill': None,
                         'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]
                     }
                 ],
