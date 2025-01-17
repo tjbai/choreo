@@ -179,8 +179,7 @@ class TestWorkflow(TestCase):
             }
         ])
 
-        # this case is a bit tricky to define, expected behavior here might change
-        self.assertTrue(torch.all(self.workflow.position_map[10:16] == torch.tensor([7, 8, 9, 10, 11, 12])))
+        self.assertTrue(torch.all(self.workflow.position_map[10:16] == torch.tensor([7, 8, 9, 7, 8, 9])))
         self.assertTrue(torch.all(self.workflow.parent_map[4:6, :5] == torch.tensor([[4, 1, 2, 0, 0], [5, 1, 2, 3, 0]])))
 
     def test_insert_multiple(self):
@@ -197,3 +196,27 @@ class TestWorkflow(TestCase):
         self.assertEqual(prompt['id'], 1)
         self.assertEqual(self.workflow.cur_id, 2)
         self.assertTrue(torch.all(self.workflow.node_map[:7] == torch.tensor([0, 1, 1, 1, 1, 1, 1])))
+
+    def test_leftmost_position_ids(self):
+        self.workflow.cache_len = 7
+        self.workflow.position_map = torch.tensor([0, 1, 2, 3, 5, 6, 7])
+
+        mask = torch.tensor([
+            [0., 0., float("-inf"), float("-inf"), float("-inf"), float("-inf"), float("-inf")],
+            [0., 0., 0., float("-inf"), float("-inf"), float("-inf"), float("-inf")],
+        ])
+
+        pos_ids = self.workflow.leftmost_position_ids(mask == 0)
+        self.assertTrue(torch.equal(pos_ids, torch.tensor([2, 3])))
+
+        mask = torch.tensor([
+            [0., float("-inf"), float("-inf"), 0., float("-inf"), float("-inf"), float("-inf")],
+            [0., float("-inf"), 0., float("-inf"), 0., float("-inf"), float("-inf")],
+        ])
+
+        pos_ids = self.workflow.leftmost_position_ids(mask == 0)
+        self.assertTrue(torch.equal(pos_ids, torch.tensor([4, 6])))
+
+        mask = torch.full((2, 7), float("-inf"))
+        pos_ids = self.workflow.leftmost_position_ids(mask == 0)
+        self.assertTrue(torch.equal(pos_ids, torch.tensor([1, 1])))
