@@ -34,7 +34,7 @@ class Workflow:
         tokenizer: Tokenizer,
         max_nodes: int,
         max_parents: int,
-        device: str = "cuda"
+        device: str = "cuda" if torch.cuda.is_available() else "cpu"
     ):
         self.model = model
         self.tokenizer = tokenizer
@@ -134,8 +134,7 @@ class Workflow:
 
         # recompute mask and position_ids after prefilling
         mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + bsz])
-        # position_ids = torch.sum(mask == 0, dim=1)
-        position_ids = self.leftmost_position_ids(mask)
+        position_ids = self.leftmost_position_ids(mask == 0)
 
         if debug:
             print('Before decoding...')
