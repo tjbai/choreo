@@ -34,6 +34,7 @@ def benchmark_workflow(
         outputs = []
         with default_profiler(1, 1, n_trials-2, 1) as prof:
             for trial in range(n_trials):
+                print(f'Trial {trial+1}')
                 with record_function("full_workflow"):
                     start = time.perf_counter()
                     output = workflow_fn(**case)
@@ -46,12 +47,12 @@ def benchmark_workflow(
         print(prof.key_averages().table(sort_by="cuda_time_total", row_limit=10))
         prof.export_chrome_trace(f"{output_dir}/trace_{i+1}.json")
 
-        results[case['id']] = {
+        results.append({
             'mean': np.mean(times),
             'std': np.std(times),
             'times': times,
             'profile': prof,
             'outputs': outputs
-        }
+        })
 
     return results
