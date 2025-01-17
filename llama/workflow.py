@@ -173,18 +173,21 @@ class Workflow:
             if all(eos_reached):
                 break
 
-        # force decode eot_id for everything that didn't naturally terminate
-        self.node_map[self.cache_len : self.cache_len + bsz][~eos_reached] = \
-            torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)[~eos_reached]
-        self.context[self.cache_len : self.cache_len + bsz][~eos_reached] = 128009 # eot_id
-        self.position_map[self.cache_len : self.cache_len + bsz] = position_ids
-        self.cache_len += bsz
+        dirty = bsz
+        if torch.any(~eos_reached):
+            # force decode eot_id for everything that didn't naturally terminate
+            self.node_map[self.cache_len : self.cache_len + bsz][~eos_reached] = \
+                torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)[~eos_reached]
+            self.context[self.cache_len : self.cache_len + bsz][~eos_reached] = 128009 # eot_id
+            self.position_map[self.cache_len : self.cache_len + bsz] = position_ids
+            self.cache_len += bsz
+            dirty += bsz
 
         # one more forward pass to top off the kv cache
         # this includes the last round of decoded tokens and the forced EOT
         self.model.forward(
-            tokens=self.context[self.cache_len - (2 * bsz) : self.cache_len].unsqueeze(0),
-            start_pos=self.cache_len - (2 * bsz),
+            tokens=self.context[self.cache_len - dirty : self.cache_len].unsqueeze(0),
+            start_pos=self.cache_len - dirty,
             mask=mask[:, : self.cache_len],
             position_ids=position_ids
         )
