@@ -190,13 +190,13 @@ class Workflow:
         )
 
         self.cache_len = start_pos if stateless else self.cache_len
-        self.cur_id += 0 if stateless else bsz
-
-        return self.wrap_outputs(
+        outputs = self.wrap_outputs(
             self.context[start_pos : self.cache_len].view(-1, bsz).t(),
             tasks,
             headers
-        )
+        ) # order matters here (which isn't great design)
+        self.cur_id += 0 if stateless else bsz
+        return outputs
 
     def wrap_outputs(
         self,
@@ -310,7 +310,7 @@ class Workflow:
 
     def debug_mask(self, mask: torch.Tensor):
         for i, thread in enumerate((mask == 0)):
-            print('Output thread {i}:')
+            print(f'Output thread {i}:')
             print('#' * 20)
             print(self.tokenizer.decode(self.context[:self.cache_len][thread].tolist()))
             print('#' * 20)
