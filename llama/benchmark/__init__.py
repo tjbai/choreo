@@ -1,2 +1,2 @@
-from .benchmark import benchmark_workflow
-from .tot import solve_workflow
+from .benchmark import benchmark
+from .tot import tot_cached

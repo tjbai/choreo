@@ -26,15 +26,15 @@ def default_profiler(wait, warmup, active, repeat):
         with_stack=True
     )
 
-def benchmark_workflow(
-    workflow_fn: Callable,
-    test_cases: List[Dict],
+def benchmark(
+    fn: Callable,
+    args: List[Dict],
     n_trials: int = 5,
     output_dir: str = "profile"
 ) -> Dict:
     os.makedirs(Path(output_dir), exist_ok=True)
     results = []
-    for i, case in enumerate(test_cases):
+    for i, case in enumerate(args):
         times = []
         outputs = []
         with default_profiler(1, 1, n_trials-2, 1) as prof:
@@ -42,7 +42,7 @@ def benchmark_workflow(
                 print(f"Trial {trial+1}")
                 with record_function("full_workflow"):
                     start = time.perf_counter()
-                    output = workflow_fn(**case)
+                    output = fn(**case)
                     torch.cuda.synchronize()
                     times.append(time.perf_counter() - start)
                 print(f"Finished in {times[-1]}")
