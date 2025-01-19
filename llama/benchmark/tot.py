@@ -1,8 +1,12 @@
-from torch.autograd.profiler import record_function
-from llama.workflow import Workflow
-
 import re
 from collections import Counter
+from typing import Dict
+
+from torch.autograd.profiler import record_function
+
+from llama.workflow import Workflow
+from llama.generation import Llama
+
 
 cot_prompt = '''
 You are a creative problem solver with deep expertise in competition mathematics.
@@ -30,7 +34,7 @@ You must format your response as:
 ANSWER: (2-3 sentence summary of solution and final answer)
 '''
 
-def format_vote_prompt(n):
+def format_vote_system_prompt(n):
     return f'''
     You are a rigorous mathematical evaluator with deep expertise in competition mathematics.
     You will be shown several different solution strategies for a math problem.
@@ -57,60 +61,57 @@ def tot_cached(
     problem: str,
     branching_factor: int,
     voters: int
-):
+) -> Dict:
     workflow.reset()
 
-    with record_function("prompt_insert"):
-        cot, vote, finish = workflow.insert([
-            {
-                'messages': [{'role': 'system', 'content': cot_prompt}, {'role': 'user', 'content': format_problem(problem)}],
-                'parent_ids': []
-            },
-            {
-                'messages': [{'role': 'system', 'content': format_vote_prompt(branching_factor)}, {'role': 'user', 'content': format_problem(problem)}],
-                'parent_ids': []
-            },
-            {
-                'messages': [{'role': 'system', 'content': finish_prompt}, {'role': 'user', 'content': format_problem(problem)}],
-                'parent_ids': []
-            },
-        ])
+    cot, vote, finish = workflow.insert([
+        {
+            'messages': [{'role': 'system', 'content': cot_prompt}, {'role': 'user', 'content': format_problem(problem)}],
+            'parent_ids': []
+        },
+        {
+            'messages': [{'role': 'system', 'content': format_vote_system_prompt(branching_factor)}, {'role': 'user', 'content': format_problem(problem)}],
+            'parent_ids': []
+        },
+        {
+            'messages': [{'role': 'system', 'content': finish_prompt}, {'role': 'user', 'content': format_problem(problem)}],
+            'parent_ids': []
+        },
+    ])
 
-    with record_function("cot_step"):
-        proposal_tokens, proposal_nodes = workflow.step(
-            [
-                {
-                    'header': ('assistant', f'solution number {i+1}'),
-                    'prefill': None,
-                    'parent_ids': [cot['id']],
-                }
-                for i in range(branching_factor)
-            ],
-            compact=False,
-            max_gen_len=512,
-            temperature=0.7,
-            top_p=0.9,
-            seed=42,
-            debug=False,
-        )
+    proposal_tokens, proposal_nodes = workflow.step(
+        [
+            {
+                'header': ('assistant', f'solution number {i+1}'),
+                'prefill': None,
+                'parent_ids': [cot['id']],
+            }
+            for i in range(branching_factor)
+        ],
+        compact=False,
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=0.9,
+        seed=42,
+        debug=False,
+    )
 
-    with record_function("vote_step"):
-        vote_tokens, vote_nodes = workflow.step(
-            [
-                {
-                    'header': ('assistant', None),
-                    'prefill': None,
-                    'parent_ids': [vote['id']] + list([p['id'] for p in proposal_nodes]),
-                }
-                for _ in range(voters)
-            ],
-            compact=False,
-            max_gen_len=256,
-            temperature=0.7,
-            top_p=0.9,
-            seed=42,
-            debug=False
-        )
+    vote_tokens, vote_nodes = workflow.step(
+        [
+            {
+                'header': ('assistant', None),
+                'prefill': None,
+                'parent_ids': [vote['id']] + list([p['id'] for p in proposal_nodes]),
+            }
+            for _ in range(voters)
+        ],
+        compact=False,
+        max_gen_len=256,
+        temperature=0.7,
+        top_p=0.9,
+        seed=42,
+        debug=False
+    )
 
     res = None
     votes = [
@@ -120,22 +121,21 @@ def tot_cached(
 
     if len(votes) > 0:
         best = Counter(votes).most_common(1)[0][0]
-        with record_function("final_step"):
-            [res], _ = workflow.step(
-                [
-                    {
-                        'header': ('assistant', None),
-                        'prefill': None,
-                        'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]
-                    }
-                ],
-                compact=False,
-                max_gen_len=256,
-                temperature=0.7,
-                top_p=0.9,
-                seed=42,
-                debug=False
-            )
+        [res], _ = workflow.step(
+            [
+                {
+                    'header': ('assistant', None),
+                    'prefill': None,
+                    'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]
+                }
+            ],
+            compact=False,
+            max_gen_len=256,
+            temperature=0.7,
+            top_p=0.9,
+            seed=42,
+            debug=False
+        )
 
     return {
         'proposal_tokens': proposal_tokens,
@@ -144,11 +144,68 @@ def tot_cached(
         'votes': votes
     }
 
-# TODO -- with baseline llama
 def tot_baseline(
-    workflow: Workflow,
+    llama: Llama,
     problem: str,
     branching_factor: int,
-    voters: int
-):
-    pass
+    voters: int,
+) -> Dict:
+    proposal_dialogs = [
+        [
+            {"role": "system", "content": cot_prompt},
+            {"role": "user", "content": format_problem(problem)},
+        ]
+        for _ in range(branching_factor)
+    ]
+    proposal_results = llama.chat_completion(
+        dialogs=proposal_dialogs,
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=0.9,
+        seed=42,
+    )
+
+    vote_user_prompt = f"{format_problem(problem)}\n\nHere are the proposals:"
+    for i, pred in enumerate(proposal_results):
+        vote_user_prompt += f"\n\nSolution #{i+1}:\n{pred["generation"]["content"]}"
+
+    vote_dialogs = [
+        [
+            {"role": "system", "content": format_vote_system_prompt(branching_factor)},
+            {"role": "system", "content": vote_user_prompt}
+        ]
+        for _ in range(voters)
+    ]
+    vote_results = llama.chat_completion(
+        dialogs=vote_dialogs,
+        max_gen_len=256,
+        temperature=0.7,
+        top_p=0.9,
+        seed=42,
+    )
+    votes = [
+        choice for resp in vote_results if
+        (choice := parse_choice(resp)) is not None
+    ]
+
+    final_result = None
+    if votes:
+        best = Counter(votes).most_common(1)[0][0]
+        best_proposal = proposal_results[best - 1]["generation"]["content"]
+        final_dialog = [
+            {"role": "system", "content": finish_prompt},
+            {"role": "user", "content": f"{format_problem(problem)}\n\nHere is the proposed approach: {best_proposal}"},
+        ]
+        [final_result] = llama.chat_completion(
+            dialogs=[final_dialog],
+            temperature=0.7,
+            top_p=0.9,
+            max_gen_len=256,
+        )
+
+    return {
+        "proposal_results": proposal_results,
+        "vote_results": vote_results,
+        "final_result": final_result,
+        "votes": votes,
+    }
