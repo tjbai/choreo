@@ -131,7 +131,7 @@ class Workflow:
                 header.extend(self.tokenizer.encode(prefill, bos=False, eos=False))
             headers.append(header)
             header_length.append(len(header))
-            
+
         prefill_logits = self.prefill(sum(headers, []), header_length, cached_mask=mask)
         header_end = self.cache_len
 
@@ -172,7 +172,7 @@ class Workflow:
             position_ids += 1
             self.cache_len += bsz
             eos_reached |= torch.isin(next_token, self.stop_tokens)
-            
+
             # if early break or on the last iteration...
             if all(eos_reached) or cur_pos == bsz * (max_gen_len - 2):
                 # one more forward pass to top off the kv cache
@@ -219,29 +219,25 @@ class Workflow:
         out_tokens = []
         out_nodes = []
         for i, (task, toks, header) in enumerate(zip(tasks, tokens.tolist(), headers)):
-            found_stop = False
+            stops = []
             for stop_token in self.tokenizer.stop_tokens:
                 try:
-                    eos_idx = toks.index(stop_token)
-                    toks = toks[:eos_idx+1] # include the stop token
-                    out_tokens.append(toks[:-1])
-                    out_nodes.append({
-                        'id': self.cur_id + i,
-                        'parent_ids': task['parent_ids'],
-                        'tokens': header + toks,
-                        'length': len(header) + len(toks)
-                    })
-                    found_stop = True
+                    idx = toks.index(stop_token)
+                    stops.append(idx)
                 except ValueError:
                     pass
-            if not found_stop:
+            if stops:
+                eos_idx = min(stops)
+                toks = toks[:eos_idx+1]
+                out_tokens.append(toks[:-1])
+            else:
                 out_tokens.append(toks)
-                out_nodes.append({
-                    'id': self.cur_id + i,
-                    'parent_ids': task['parent_ids'],
-                    'tokens': header + toks,
-                    'length': len(header) + len(toks)
-                })
+            out_nodes.append({
+                'id': self.cur_id + i,
+                'parent_ids': task['parent_ids'],
+                'tokens': header + toks,
+                'length': len(header) + len(toks)
+            })
         return out_tokens, out_nodes
 
     def add_nodes(self, nodes: Sequence[Node]) -> torch.Tensor:
