@@ -347,6 +347,9 @@ class Transformer(nn.Module):
             self.params.max_seq_len,
             *self.cache_k.shape[3:]
         )
+        for i, layer in enumerate(self.layers):
+            layer.attention.cache_k = self.cache_k[i]
+            layer.attention.cache_v = self.cache_v[i]
 
     @torch.inference_mode()
     def forward(
