@@ -66,6 +66,7 @@ def benchmark(
                 output = fn(**case)
                 torch.cuda.synchronize()
                 times.append(time.perf_counter() - start)
+                outputs.append(output)
 
         results.append({
             'mean': np.mean(times),

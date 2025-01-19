@@ -185,7 +185,7 @@ def tot_baseline(
     )
     votes = [
         choice for resp in vote_results if
-        (choice := parse_choice(resp)) is not None
+        (choice := parse_choice(resp["generation"]["content"])) is not None
     ]
 
     final_result = None
