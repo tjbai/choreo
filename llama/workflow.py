@@ -72,6 +72,10 @@ class Workflow:
             self.max_nodes, dtype=torch.long, device=self.device
         ) # every node is its own parent too
 
+    @property
+    def working_context(self):
+        return self.context[:self.cache_len]
+
     # TODO -- we should make this lazy
     @torch.inference_mode()
     def insert(self, prompts: Sequence[Prompt]) -> List[Cached]:
