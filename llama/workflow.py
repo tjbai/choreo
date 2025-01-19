@@ -75,6 +75,8 @@ class Workflow:
     # TODO -- we should make this lazy
     @torch.inference_mode()
     def insert(self, prompts: Sequence[Prompt]) -> List[Cached]:
+        if self.cur_id + len(prompts) > self.max_nodes:
+            raise Exception(f"Insufficient capacity for {len(prompts)} more nodes.")
         self.add_nodes(prompts)
         prompt_tokens = []
         prompt_length = []
@@ -89,6 +91,8 @@ class Workflow:
             })
             prompt_length.append(len(tokens))
             prompt_tokens.extend(tokens)
+        if self.cache_len + (new_tokens := sum(prompt_length)) > self.max_seq_len:
+            raise Exception(f"Insufficient capacity for {new_tokens} tokens.")
         self.prefill(prompt_tokens, prompt_length)
         self.cur_id += len(prompts)
         return outputs
@@ -110,7 +114,7 @@ class Workflow:
         if self.cache_len + (bsz * max_gen_len) > self.max_seq_len:
             raise Exception(f"Insufficient capacity for {bsz * max_gen_len} tokens.")
         if self.cur_id + bsz > self.max_nodes:
-            raise Exception(f"Insufficient capacity for {bsz * max_gen_len} nodes.")
+            raise Exception(f"Insufficient capacity for {bsz} nodes.")
 
         self.add_nodes(tasks)
         mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + bsz])
