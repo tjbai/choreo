@@ -8,24 +8,24 @@ class TestWorkflowIntegration(TestCase):
         class MockTransformer:
             def __init__(self):
                 self.kv_cache = {}
-                self.params = type('Params', (), {'max_seq_len': 2048})
+                self.params = type("Params", (), {"max_seq_len": 2048})
                 self.call_history = []
 
             def forward(self, tokens, start_pos, mask=None, position_ids=None):
                 self.call_history.append({
-                    'tokens': tokens.clone(),
-                    'start_pos': start_pos,
-                    'mask': mask.clone() if mask is not None else None,
-                    'position_ids': position_ids.clone() if position_ids is not None else None
+                    "tokens": tokens.clone(),
+                    "start_pos": start_pos,
+                    "mask": mask.clone() if mask is not None else None,
+                    "position_ids": position_ids.clone() if position_ids is not None else None
                 })
-                return torch.full((1, tokens.shape[1], 5000), 0.1)
+                return torch.full((1, tokens.shape[1], 5), 0.1)
 
             def reposition_cache(self, where, from_pos, to_pos):
                 self.call_history.append({
-                    'operation': 'reposition',
-                    'where': where.clone(),
-                    'from_pos': from_pos.clone(),
-                    'to_pos': to_pos.clone()
+                    "operation": "reposition",
+                    "where": where.clone(),
+                    "from_pos": from_pos.clone(),
+                    "to_pos": to_pos.clone()
                 })
 
         class MockFormatter:
@@ -58,16 +58,16 @@ class TestWorkflowIntegration(TestCase):
     def test_insert(self):
         prompts = [
             {
-                'messages': [
-                    {'role': 'system', 'content': 'You are a helpful assistant'},
-                    {'role': 'user', 'content': 'Hello'}
+                "messages": [
+                    {"role": "system", "content": "You are a helpful assistant"},
+                    {"role": "user", "content": "Hello"}
                 ],
-                'parent_ids': []
+                "parent_ids": []
             }
         ]
 
         self.workflow.insert(prompts) # type: ignore
-        self.assertEqual(self.model.call_history[-1]['start_pos'], 1)
+        self.assertEqual(self.model.call_history[-1]["start_pos"], 1)
         self.assertEqual(len(self.model.call_history), 2)
 
         N = self.workflow.cache_len
@@ -92,45 +92,45 @@ class TestWorkflowIntegration(TestCase):
     def test_parallel_insert(self):
         system_prompts = [
             {
-                'messages': [{'role': 'system', 'content': ''},],
-                'parent_ids': []
+                "messages": [{"role": "system", "content": ""}],
+                "parent_ids": []
             },
             {
-                'messages': [{'role': 'system', 'content': ''},],
-                'parent_ids': []
+                "messages": [{"role": "system", "content": ""}],
+                "parent_ids": []
             }
         ]
 
         [sys1, sys2] = self.workflow.insert(system_prompts) # type: ignore
-        self.assertEqual(self.model.call_history[-1]['start_pos'], 1)
+        self.assertEqual(self.model.call_history[-1]["start_pos"], 1)
         self.assertEqual(
-            self.model.call_history[-1]['position_ids'].tolist(),
+            self.model.call_history[-1]["position_ids"].tolist(),
             2 * [1, 2, 3, 4, 5, 6]
         )
 
         user_prompts = [
             {
-                'messages': [{'role': 'user', 'content': ''}],
-                'parent_ids': [sys1['id']]
+                "messages": [{"role": "user", "content": ""}],
+                "parent_ids": [sys1["id"]]
             },
             {
-                'messages': [{'role': 'user', 'content': ''}],
-                'parent_ids': [sys2['id']]
+                "messages": [{"role": "user", "content": ""}],
+                "parent_ids": [sys2["id"]]
             },
             {
-                'messages': [{'role': 'user', 'content': ''}],
-                'parent_ids': [sys1['id'], sys2['id']]
+                "messages": [{"role": "user", "content": ""}],
+                "parent_ids": [sys1["id"], sys2["id"]]
             }
         ]
 
         [user1, user2, user3] = self.workflow.insert(user_prompts) # type: ignore
 
-        self.assertEqual(self.model.call_history[-1]['start_pos'], 13)
+        self.assertEqual(self.model.call_history[-1]["start_pos"], 13)
         self.assertEqual(
-            self.model.call_history[-1]['position_ids'].tolist(),
+            self.model.call_history[-1]["position_ids"].tolist(),
             3 * [7, 8, 9, 10, 11, 12]
         )
-        self.assertEqual(self.model.call_history[-1]['mask'].shape, (18, 18 + 13))
+        self.assertEqual(self.model.call_history[-1]["mask"].shape, (18, 18 + 13))
         self.assertEqual(
             self.workflow.position_map[13:31].tolist(),
             3 * [7, 8, 9, 10, 11, 12]
@@ -140,17 +140,139 @@ class TestWorkflowIntegration(TestCase):
     def test_insert_and_step(self):
         prompts = [
             {
-                'messages': [{'role': 'system', 'content': ''}],
-                'parent_ids': []
+                "messages": [{"role": "system", "content": ""}],
+                "parent_ids": []
             }
         ]
         [prompt] = self.workflow.insert(prompts) # type: ignore
         self.assertEqual(len(self.model.call_history), 2)
 
         tasks = [{
-            'header': ('assistant', None),
-            'parent_ids': [prompt['id']],
-            'prefill': None
+            "header": ("assistant", None),
+            "parent_ids": [prompt["id"]],
+            "prefill": None
         }]
         tokens, cached = self.workflow.step(tasks, max_gen_len=10) # type: ignore
-        self.assertEqual(len(self.model.call_history), 12) # 1 for bos, 1 for prefill, 9 decoding, 1 for top-off
+
+        # 1 for bos, 1 for step, 1 for prefill, 8 decoding, 1 for final decoding step, 1 top-off
+        self.assertEqual(len(self.model.call_history), 13)
+
+    def test_tot_e2e(self):
+        from llama.benchmark.tot import tot_cached
+
+        def mock_decode(_self, tokens):
+            return "BEST CHOICE: 1"
+        self.tokenizer.decode = mock_decode.__get__(self.tokenizer, self.tokenizer.__class__)
+
+        data = tot_cached(
+            workflow=self.workflow,
+            problem="What is 2 + 2?",
+            branching_factor=2,
+            voters=2
+        )
+
+        self.assertIn("proposal_tokens", data)
+        self.assertIn("vote_tokens", data)
+        self.assertIn("res", data)
+        self.assertIn("votes", data)
+
+        self.assertEqual(len(data["proposal_tokens"]), 2)
+        self.assertEqual(len(data["vote_tokens"]), 2)
+        self.assertEqual(data["votes"], [1, 1])
+        self.assertIsNotNone(data["res"])
+
+    def assert_parents_unmasked(self, call, tasks):
+        """
+        Helper to verify that each row in `call["mask"]` un-masks the tokens
+        belonging to the node IDs in tasks[i]["parent_ids"].
+        """
+        mask = call["mask"]
+        bsz = len(tasks)
+        self.assertEqual(mask.shape[0], bsz)
+
+        for i, task in enumerate(tasks):
+            parent_ids = task["parent_ids"]
+            all_parent_positions = []
+            for pid in parent_ids:
+                pos = (self.workflow.node_map[:self.workflow.cache_len] == pid).nonzero().flatten()
+                all_parent_positions.append(pos)
+            if not all_parent_positions:
+                continue
+            combined_positions = torch.cat(all_parent_positions)
+            for p in combined_positions:
+                val = float(mask[i, p].item())
+                self.assertEqual(val, 0)
+
+    def test_tot(self):
+        # 1) Insert initial prompts
+        [cot, vote, finish] = self.workflow.insert([
+            {"messages": [{"role": "system", "content": ""}], "parent_ids": []},
+            {"messages": [{"role": "system", "content": ""}], "parent_ids": []},
+            {"messages": [{"role": "system", "content": ""}], "parent_ids": []},
+        ])
+        self.assertEqual((cot["id"], vote["id"], finish["id"]), (1, 2, 3))
+        self.assertEqual(len(self.model.call_history), 2)
+        self.assertEqual(self.model.call_history[-1]["tokens"].shape[1], sum(c["length"] for c in [cot, vote, finish]))
+        self.assertEqual(self.model.call_history[-1]["mask"].shape, (18, 19))
+        triu = torch.full((6, 6), float("-inf"))
+        triu = torch.triu(triu, diagonal=1)
+        self.assertTrue(torch.all(self.model.call_history[-1]["mask"][:6, 1:7] == triu))
+        self.assertTrue(torch.all(self.model.call_history[-1]["mask"][6:12, 7:13] == triu))
+        self.assertTrue(torch.all(self.model.call_history[-1]["mask"][12:, 13:] == triu))
+
+        # 2) Decode parallel CoT branches
+        BRANCHES = 2
+        proposal_tasks = [
+            {
+                "header": ("assistant", f"proposal {i+1}"),
+                "prefill": None,
+                "parent_ids": [cot["id"]],
+            }
+            for i in range(BRANCHES)
+        ]
+        proposal_tokens, proposal_nodes = self.workflow.step(proposal_tasks, max_gen_len=3) # type: ignore
+        self.assertEqual([node["id"] for node in proposal_nodes], [4, 5])
+        self.assertEqual(self.model.call_history[-1]["tokens"].shape[1], BRANCHES)
+        self.assertEqual(self.model.call_history[-1]["mask"].shape[0], BRANCHES)
+        self.assertTrue(torch.all(self.model.call_history[-1]["tokens"] == torch.tensor([128009, 128009]))) # force decode top-off
+        self.assert_parents_unmasked(self.model.call_history[-1], proposal_tasks)
+
+        # 3) Voters get to see prompt AND all branches
+        VOTERS = 2
+        voter_tasks = [
+            {
+                "header": ("assistant", None),
+                "prefill": None,
+                "parent_ids": [vote["id"]] + [p["id"] for p in proposal_nodes],
+            }
+            for _ in range(VOTERS)
+        ]
+        vote_tokens, vote_nodes = self.workflow.step(voter_tasks, max_gen_len=3) # type: ignore
+        self.assertEqual([vote["id"] for vote in vote_nodes], [6, 7])
+        self.assertEqual(self.model.call_history[-1]["mask"].shape[0], VOTERS)
+        self.assert_parents_unmasked(self.model.call_history[-1], voter_tasks)
+
+        # 4) Final step sees prompt and best (last) proposal
+        best_proposal_id = proposal_nodes[-1]["id"]
+        final_task = [{
+            "header": ("assistant", None),
+            "prefill": None,
+            "parent_ids": [finish["id"], best_proposal_id]
+        }]
+        final_tokens, final_nodes = self.workflow.step(final_task, max_gen_len=3) # type: ignore
+        self.assert_parents_unmasked(self.model.call_history[-1], final_task)
+
+        self.assertTrue(torch.all(
+            self.workflow.parent_map[:self.workflow.cur_id] ==
+            torch.tensor([
+                [0, 0, 0, 0, 0], # bos has no parents
+                [1, 0, 0, 0, 0], # first three prompts have no parents
+                [2, 0, 0, 0, 0],
+                [3, 0, 0, 0, 0],
+                [4, 1, 0, 0, 0], # next 2 branches have just cot prompt
+                [5, 1, 0, 0, 0],
+                [6, 2, 4, 5, 0], # next 2 voters have all branches and voter prompt
+                [7, 2, 4, 5, 0],
+                [8, 3, 5, 0, 0], # final generation has just the best (last) branch
+            ])
+        ))
