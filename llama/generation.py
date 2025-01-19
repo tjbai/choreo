@@ -128,6 +128,7 @@ class Llama:
         top_p: float = 0.9,
         logprobs: bool = False,
         echo: bool = False,
+        seed: Optional[int] = 42
     ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
         """
         Generate text sequences based on provided prompts using the language generation model.
@@ -178,11 +179,12 @@ class Llama:
 
         stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens))
 
+        generator = torch.Generator(device="cuda").manual_seed(seed) if seed else None
         for cur_pos in range(min_prompt_len, total_len):
             logits = self.model.forward(tokens[:, prev_pos:cur_pos], prev_pos)
             if temperature > 0:
                 probs = torch.softmax(logits[:, -1] / temperature, dim=-1)
-                next_token = sample_top_p(probs, top_p)
+                next_token = sample_top_p(probs, top_p, generator=generator)
             else:
                 next_token = torch.argmax(logits[:, -1], dim=-1)
 
@@ -286,6 +288,7 @@ class Llama:
         top_p: float = 0.9,
         max_gen_len: Optional[int] = None,
         logprobs: bool = False,
+        seed: Optional[int] = 42
     ) -> List[ChatPrediction]:
         """
         Generate assistant responses for a list of conversational dialogs using the language generation model.
@@ -319,6 +322,7 @@ class Llama:
             temperature=temperature,
             top_p=top_p,
             logprobs=logprobs,
+            seed=seed
         )
         if logprobs:
             return [
