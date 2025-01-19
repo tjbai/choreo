@@ -152,10 +152,6 @@ class Attention(nn.Module):
         self.cache_k = cache_k
         self.cache_v = cache_v
 
-    def clear_cache(self):
-        self.cache_k.zero_()
-        self.cache_v.zero_()
-
     def forward(
         self,
         x: torch.Tensor,
@@ -325,12 +321,31 @@ class Transformer(nn.Module):
 
     # TODO -- for training this would ideally happen in-place without breaking autograd
     def reposition_cache(self, where: torch.Tensor, from_pos: torch.Tensor, to_pos: torch.Tensor):
-        assert where.shape == from_pos.shape == to_pos.shape
         self.cache_k[:, :, where, :, :] = reposition_rotary_emb(
             self.cache_k[:, :, where, :, :],
             from_pos,
             to_pos,
             self.freqs_cis
+        )
+
+    def reshape_cache(self, new_batch_size: Optional[int] = None):
+        tot = self.params.max_batch_size * self.params.max_seq_len
+        if new_batch_size is not None:
+            if tot % new_batch_size != 0:
+                raise Exception("Invalid shape")
+            self.params.max_batch_size = new_batch_size
+            self.params.max_seq_len = tot // new_batch_size
+        self.cache_k = self.cache_k.view(
+            self.cache_k.shape[0],
+            self.params.max_batch_size,
+            self.params.max_seq_len,
+            *self.cache_k.shape[3:]
+        )
+        self.cache_v = self.cache_v.view(
+            self.cache_k.shape[0],
+            self.params.max_batch_size,
+            self.params.max_seq_len,
+            *self.cache_k.shape[3:]
         )
 
     @torch.inference_mode()
