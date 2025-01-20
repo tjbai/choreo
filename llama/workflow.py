@@ -173,31 +173,33 @@ class Workflow:
             eos_reached |= torch.isin(next_token, self.stop_tokens)
 
             # if early break or on the last iteration...
-            if all(eos_reached) or cur_pos == bsz * (max_gen_len - 2):
+            if (eos_reached.all() or cur_pos == bsz * (max_gen_len - 2)) and not stateless:
                 # one more forward pass to top off the kv cache
-                if not stateless:
-                    self.model.forward(
-                        tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
-                        start_pos=self.cache_len - bsz,
-                        mask=mask[:, : self.cache_len],
-                        position_ids=position_ids
-                    )
+                self.model.forward(
+                    tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
+                    start_pos=self.cache_len - bsz,
+                    mask=mask[:, : self.cache_len],
+                    position_ids=position_ids
+                )
+
+            if eos_reached.all():
                 break
 
         # force decode eot_id for everything that didn't naturally terminate
-        if torch.any(~eos_reached):
+        if (~eos_reached).any():
             self.node_map[self.cache_len : self.cache_len + bsz][~eos_reached] = \
                 torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)[~eos_reached]
             self.context[self.cache_len : self.cache_len + bsz][~eos_reached] = 128009
             self.position_map[self.cache_len : self.cache_len + bsz] = position_ids
             self.cache_len += bsz
-            if not stateless:
-                self.model.forward(
-                    tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
-                    start_pos=self.cache_len - bsz,
-                    mask=mask[:, : self.cache_len],
-                    position_ids=position_ids + 1
-                )
+
+        if (~eos_reached).any() and not stateless:
+            self.model.forward(
+                tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
+                start_pos=self.cache_len - bsz,
+                mask=mask[:, : self.cache_len],
+                position_ids=position_ids + 1
+            )
 
         if debug:
             self.debug_mask(mask[:, : self.cache_len])
