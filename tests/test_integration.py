@@ -1,6 +1,5 @@
-from unittest import TestCase
 import torch
-
+from unittest import TestCase
 from llama.workflow import Workflow
 
 class TestWorkflowIntegration(TestCase):

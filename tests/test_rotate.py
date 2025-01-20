@@ -1,10 +1,15 @@
 import torch
-from unittest import TestCase
 import fairscale.nn.model_parallel.initialize as fs_init
-from llama.model import precompute_freqs_cis, apply_rotary_emb, reposition_rotary_emb, Transformer, ModelArgs
+from unittest import TestCase
+from llama.model import (
+    precompute_freqs_cis,
+    apply_rotary_emb,
+    reposition_rotary_emb,
+    Transformer,
+    ModelArgs,
+)
 
 class TestRotate(TestCase):
-
     def setUp(self):
         if not torch.distributed.is_initialized():
             torch.distributed.init_process_group(
