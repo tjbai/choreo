@@ -51,7 +51,6 @@ class TestWorkflowIntegration(TestCase):
             self.model,
             self.tokenizer,
             max_nodes=10,
-            max_parents=5
         )
         self.workflow.formatter = MockFormatter()
 
@@ -85,8 +84,8 @@ class TestWorkflowIntegration(TestCase):
             [0] + [1 for _ in range(12)]
         )
         self.assertEqual(
-            self.workflow.parent_map[1].tolist(),
-            [1] + [0 for _ in range(4)]
+            self.workflow.adj[1, :5].tolist(),
+            [True, True] + [False for _ in range(3)]
         )
 
     def test_parallel_insert(self):
@@ -261,18 +260,17 @@ class TestWorkflowIntegration(TestCase):
         }]
         final_tokens, final_nodes = self.workflow.step(final_task, max_gen_len=3) # type: ignore
         self.assert_parents_unmasked(self.model.call_history[-1], final_task)
-
         self.assertTrue(torch.all(
-            self.workflow.parent_map[:self.workflow.cur_id] ==
+            self.workflow.adj[:9, :9] ==
             torch.tensor([
-                [0, 0, 0, 0, 0], # bos has no parents
-                [1, 0, 0, 0, 0], # first three prompts have no parents
-                [2, 0, 0, 0, 0],
-                [3, 0, 0, 0, 0],
-                [4, 1, 0, 0, 0], # next 2 branches have just cot prompt
-                [5, 1, 0, 0, 0],
-                [6, 2, 4, 5, 0], # next 2 voters have all branches and voter prompt
-                [7, 2, 4, 5, 0],
-                [8, 3, 5, 0, 0], # final generation has just the best (last) branch
-            ])
+                [1, 0, 0, 0, 0, 0, 0, 0, 0], # bos
+                [1, 1, 0, 0, 0, 0, 0, 0, 0], # insert prompt
+                [1, 0, 1, 0, 0, 0, 0, 0, 0], # vote prompt
+                [1, 0, 0, 1, 0, 0, 0, 0, 0], # finish prmopt
+                [1, 1, 0, 0, 1, 0, 0, 0, 0], # branch 1
+                [1, 1, 0, 0, 0, 1, 0, 0, 0], # branch 2
+                [1, 0, 1, 0, 1, 1, 1, 0, 0], # voter 1
+                [1, 0, 1, 0, 1, 1, 0, 1, 0], # voter 2
+                [1, 0, 0, 1, 0, 1, 0, 0, 1], # finish
+            ], dtype=torch.bool)
         ))
