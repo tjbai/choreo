@@ -24,16 +24,15 @@ class Cached(Node):
 
 class Workflow:
     @staticmethod
-    def build(*args, max_nodes: int = 25, max_parents: int = 25, **kwargs) -> "Workflow":
+    def build(*args, max_nodes: int = 25, **kwargs) -> "Workflow":
         llama = Llama.build(*args, **kwargs)
-        return Workflow(llama.model, llama.tokenizer, max_nodes, max_parents)
+        return Workflow(llama.model, llama.tokenizer, max_nodes)
 
     def __init__(
         self,
         model: Transformer,
         tokenizer: Tokenizer,
         max_nodes: int,
-        max_parents: int,
         device: str = "cuda" if torch.cuda.is_available() else "cpu"
     ):
         self.model = model
@@ -43,20 +42,16 @@ class Workflow:
         self.stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens), device=self.device)
         self.max_seq_len = self.model.params.max_seq_len
         self.max_nodes = max_nodes
-        self.max_parents = max_parents
         self.model.forward(torch.tensor([self.tokenizer.bos_id], device=self.device).unsqueeze(0), 0) # set the cache for bos just oncez
         self.reset()
 
     def reset(
         self,
         new_max_seq_len: Optional[int] = None,
-        new_max_nodes: Optional[int] = None,
-        new_max_parents: Optional[int] = None
+        new_max_nodes: Optional[int] = None
     ):
         if new_max_nodes is not None:
             self.max_nodes = new_max_nodes
-        if new_max_parents is not None:
-            self.max_parents = new_max_parents
         if new_max_seq_len is not None:
             self.max_seq_len = new_max_seq_len
         self.cur_id = 1
@@ -65,12 +60,8 @@ class Workflow:
         self.node_map[0] = 0 # bos
         self.position_map = torch.zeros((self.max_seq_len,), dtype=torch.long, device=self.device)
         self.context = torch.full((self.max_seq_len,), self.tokenizer.bos_id, dtype=torch.long, device=self.device)
-        self.parent_map = torch.zeros(
-            self.max_nodes, self.max_parents, dtype=torch.long, device=self.device
-        ) # implicitly bos is always a parent
-        self.parent_map[:, 0] = torch.arange(
-            self.max_nodes, dtype=torch.long, device=self.device
-        ) # every node is its own parent too
+        self.adj = torch.eye(self.max_nodes, dtype=torch.bool)
+        self.adj[:, 0] = True # bos is always a parent
 
     @property
     def working_context(self):
@@ -121,7 +112,7 @@ class Workflow:
             raise Exception(f"Insufficient capacity for {bsz} nodes.")
 
         self.add_nodes(tasks)
-        mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + bsz])
+        mask = self.dynamic_mask(self.cur_id, self.cur_id + bsz)
         generator = torch.Generator(device=self.device).manual_seed(seed) if seed else None
         header_start = self.cache_len
 
@@ -144,7 +135,7 @@ class Workflow:
         header_end = self.cache_len
 
         # recompute mask and position_ids after prefilling
-        mask = self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + bsz])
+        mask = self.dynamic_mask(self.cur_id, self.cur_id + bsz)
         position_ids = self.leftmost_position_ids(mask == 0)
 
         if debug:
@@ -248,11 +239,10 @@ class Workflow:
             })
         return out_tokens, out_nodes
 
-    def add_nodes(self, nodes: Sequence[Node]) -> torch.Tensor:
+    def add_nodes(self, nodes: Sequence[Node]):
         for i, node in enumerate(nodes):
-            self.parent_map[self.cur_id + i, 1 : 1 + len(node['parent_ids'])] = \
-                torch.tensor(node['parent_ids'], device=self.device)
-        return self.parent_map[self.cur_id : self.cur_id + len(nodes)]
+            for p in node['parent_ids']:
+                self.adj[self.cur_id + i, p] = True
 
     def prefill(
         self,
@@ -266,7 +256,7 @@ class Workflow:
 
         # important invariant: self.cur_id is only mutated AFTER prefilling
         node_par_mask = cached_mask if cached_mask is not None else \
-            self.dynamic_mask(self.parent_map[self.cur_id : self.cur_id + B])
+            self.dynamic_mask(self.cur_id, self.cur_id + B)
         node_pos_ids = self.leftmost_position_ids(node_par_mask == 0)
 
         node_ids = torch.repeat_interleave(
@@ -316,13 +306,8 @@ class Workflow:
         interleaved_mask.fill_diagonal_(0)
         return torch.hstack([base_mask, interleaved_mask.repeat(1, max_gen_len)])
 
-    def dynamic_mask(self, node_parents: torch.Tensor) -> torch.Tensor:
-        B, _ = node_parents.shape
-        return torch.where(
-            (self.node_map[:self.cache_len].unsqueeze(0).unsqueeze(2) == node_parents.unsqueeze(1)).any(dim=2),
-            torch.zeros(B, self.cache_len, device=self.device),
-            torch.full((B, self.cache_len), float("-inf"), device=self.device)
-        )
+    def dynamic_mask(self, start_id: int, end_id: int) -> torch.Tensor:
+        return torch.where(self.adj[start_id:end_id, self.node_map[:self.cache_len]], 0., float("-inf"))
 
     def leftmost_position_ids(self, mask: torch.Tensor) -> torch.Tensor:
         return 1 + torch.max(self.position_map[:self.cache_len].expand_as(mask).masked_fill(~mask, 0), dim=1).values
@@ -354,8 +339,3 @@ def incremental_sequence_with_offset(offsets: torch.Tensor, lengths: torch.Tenso
         position_ids[start : start + n] += torch.arange(n, device=position_ids.device)
         start += n
     return position_ids
-
-# TODO -- CPU offloading
-class CacheManager:
-    def __init__(self):
-        pass

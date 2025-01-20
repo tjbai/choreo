@@ -32,8 +32,7 @@ class TestWorkflow(TestCase):
         self.workflow.tokenizer = MockTokenizer()
         self.workflow.max_seq_len = 128
         self.workflow.device = "cpu"
-        self.workflow.max_nodes = 20
-        self.workflow.max_parents = 20
+        self.workflow.max_nodes = 10
         self.workflow.reset()
 
     def test_parent_mask(self):
@@ -42,23 +41,21 @@ class TestWorkflow(TestCase):
         self.workflow.node_map = torch.tensor([0, 1, 1, 2])
         self.workflow.cur_id = 3
 
-        tasks = [
+        self.workflow.add_nodes([
             {'parent_ids': [1], 'expects': ('assistant', None)},
             {'parent_ids': [2], 'expects': ('assistant', None)},
             {'parent_ids': [1, 2], 'expects': ('assistant', None)}
-        ]
-
-        self.workflow.add_nodes(tasks)
+        ]) # type: ignore
         self.assertTrue(torch.all(
-            self.workflow.parent_map[3:6, :5] ==
+            self.workflow.adj[3:6] ==
             torch.tensor([
-                [3, 1, 0, 0, 0],
-                [4, 2, 0, 0, 0],
-                [5, 1, 2, 0, 0]
-            ])
+                [1, 1, 0, 1, 0, 0, 0, 0, 0, 0],
+                [1, 0, 1, 0, 1, 0, 0, 0, 0, 0],
+                [1, 1, 1, 0, 0, 1, 0, 0, 0, 0]
+            ], dtype=torch.bool)
         ))
 
-        mask = self.workflow.dynamic_mask(self.workflow.parent_map[3:6])
+        mask = self.workflow.dynamic_mask(3, 6)
         self.assertEqual(mask.shape, (3, 4))
         self.assertTrue(torch.all(
             mask == torch.tensor([
@@ -72,9 +69,7 @@ class TestWorkflow(TestCase):
         bsz = 2
         max_gen_len = 3
         base_mask = torch.tensor([[0.0, float("-inf")], [float("-inf"), 0.0]])
-
         mask = self.workflow.preallocate_interleaved_mask(base_mask, bsz, max_gen_len)
-
         self.assertEqual(mask.shape, (bsz, base_mask.shape[1] + bsz * max_gen_len))
         self.assertTrue(torch.all(mask[:, :base_mask.shape[1]] == base_mask))
 
@@ -149,7 +144,7 @@ class TestWorkflow(TestCase):
         self.assertTrue(torch.all(self.workflow.node_map[:4] == torch.tensor([0, 1, 1, 1])))
         self.assertTrue(torch.all(self.workflow.position_map[:4] == torch.tensor([0, 1, 2, 3])))
         self.assertTrue(torch.all(self.workflow.context[:4] == torch.tensor([128000, 128006, 1, 128009])))
-        self.assertTrue(torch.all(self.workflow.parent_map[1, :5] == torch.tensor([1, 0, 0, 0, 0])))
+        self.assertTrue(torch.all(self.workflow.adj[1, :5] == torch.tensor([1, 1, 0, 0, 0], dtype=torch.bool)))
 
         user_1, user_2 = self.workflow.insert([
             {
@@ -166,7 +161,13 @@ class TestWorkflow(TestCase):
         self.assertEqual(self.workflow.cur_id, 4)
         self.assertTrue(torch.all(self.workflow.node_map[:10] == torch.tensor([0, 1, 1, 1, 2, 2, 2, 3, 3, 3])))
         self.assertTrue(torch.all(self.workflow.position_map[:10] == torch.tensor([0, 1, 2, 3, 4, 5, 6, 4, 5, 6])))
-        self.assertTrue(torch.all(self.workflow.parent_map[2:4, :3] == torch.tensor([[2, 1, 0], [3, 1, 0]])))
+        self.assertTrue(torch.all(
+            self.workflow.adj[2:4, :5] ==
+            torch.tensor([
+                [1, 1, 1, 0, 0],
+                [1, 1, 0, 1, 0]
+            ], dtype=torch.bool)
+        ))
 
         _ = self.workflow.insert([
             {
@@ -180,7 +181,13 @@ class TestWorkflow(TestCase):
         ])
 
         self.assertTrue(torch.all(self.workflow.position_map[10:16] == torch.tensor([7, 8, 9, 7, 8, 9])))
-        self.assertTrue(torch.all(self.workflow.parent_map[4:6, :5] == torch.tensor([[4, 1, 2, 0, 0], [5, 1, 2, 3, 0]])))
+        self.assertTrue(torch.all(
+            self.workflow.adj[4:6, :6] ==
+            torch.tensor([
+                [1, 1, 1, 0, 1, 0],
+                [1, 1, 1, 1, 0, 1]
+            ], dtype=torch.bool)
+        ))
 
     def test_insert_multiple(self):
         [prompt] = self.workflow.insert([
