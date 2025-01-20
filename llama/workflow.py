@@ -104,6 +104,7 @@ class Workflow:
         log_probs: bool = True,
         seed: int = 42,
         debug: bool = False,
+        teacher_force: Optional[torch.Tensor] = None
     ) -> Tuple[List[List[int]], List[Cached]]:
         bsz = len(tasks)
         if self.cache_len + (bsz * max_gen_len) > self.max_seq_len:
@@ -114,36 +115,21 @@ class Workflow:
         self.add_nodes(tasks)
         mask = self.dynamic_mask(self.cur_id, self.cur_id + bsz)
         generator = torch.Generator(device=self.device).manual_seed(seed) if seed else None
-        header_start = self.cache_len
 
         if compact:
             if len(tasks) > 0:
                 warnings.warn("Multi-node compaction not fully implemented. Use caution.")
             self.compact(tasks[0]['parent_ids'], mask[0]) # use the ordering from just the first task, for now
 
-        headers = []
-        header_length = []
-        for i, task in enumerate(tasks):
-            role = task['header'][0] + (tag if (tag := task['header'][1]) else '')
-            header = self.formatter.encode_header({"role": role})
-            if (prefill := task.get('prefill')):
-                header.extend(self.tokenizer.encode(prefill, bos=False, eos=False))
-            headers.append(header)
-            header_length.append(len(header))
-
+        header_start = self.cache_len
+        headers, header_length = self.build_headers(tasks)
         prefill_logits = self.prefill(sum(headers, []), header_length, cached_mask=mask)
         header_end = self.cache_len
 
-        # recompute mask and position_ids after prefilling
         mask = self.dynamic_mask(self.cur_id, self.cur_id + bsz)
         position_ids = self.leftmost_position_ids(mask == 0)
-
-        if debug:
-            print('Before decoding...')
-            self.debug_mask(mask)
-
-        eos_reached = torch.tensor([False] * bsz, device=self.device)
         mask = self.preallocate_interleaved_mask(mask, bsz, max_gen_len)
+        eos_reached = torch.tensor([False] * bsz, device=self.device)
 
         for cur_pos in range(0, bsz * (max_gen_len - 1), bsz): # do N - 1 iterations
             if cur_pos == 0:
@@ -163,6 +149,9 @@ class Workflow:
             else:
                 next_token = torch.argmax(logits[:, -bsz:], dim=-1).squeeze(0)
 
+            if teacher_force is not None:
+                next_token = teacher_force[:, cur_pos // bsz]
+
             self.node_map[self.cache_len : self.cache_len + bsz][~eos_reached] = \
                 torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)[~eos_reached]
             self.context[self.cache_len : self.cache_len + bsz][~eos_reached] = next_token[~eos_reached]
@@ -178,7 +167,7 @@ class Workflow:
                 self.model.forward(
                     tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
                     start_pos=self.cache_len - bsz,
-                    mask=mask[:, : self.cache_len],
+                    mask=mask[:, :self.cache_len],
                     position_ids=position_ids
                 )
 
@@ -247,6 +236,18 @@ class Workflow:
         for i, node in enumerate(nodes):
             for p in node['parent_ids']:
                 self.adj[self.cur_id + i, p] = True
+
+    def build_headers(self, tasks: List[Task]) -> Tuple[List[List[int]], List[int]]:
+        headers = []
+        header_length = []
+        for i, task in enumerate(tasks):
+            role = task['header'][0] + (tag if (tag := task['header'][1]) else '')
+            header = self.formatter.encode_header({"role": role})
+            if (prefill := task.get('prefill')):
+                header.extend(self.tokenizer.encode(prefill, bos=False, eos=False))
+            headers.append(header)
+            header_length.append(len(header))
+        return headers, header_length
 
     def prefill(
         self,

@@ -273,3 +273,24 @@ class TestWorkflowIntegration(TestCase):
                 [1, 0, 0, 1, 0, 1, 0, 0, 1], # finish
             ], dtype=torch.bool)
         ))
+
+    def test_teacher_force(self):
+        prompts = [{"messages": [{"role": "system", "content": ""}], "parent_ids": []}]
+        [system] = self.workflow.insert(prompts) # type: ignore
+        forced_tokens = torch.tensor([[101, 102, 103]]).long()
+        tasks = [{"header": ("assistant", None), "parent_ids": [system["id"]]}]
+        out_tokens, out_nodes = self.workflow.step(tasks, max_gen_len=4, teacher_force=forced_tokens) # type: ignore
+        self.assertEqual(out_tokens, forced_tokens.tolist())
+
+    def test_teacher_force_parallel(self):
+        prompts = [{"messages": [{"role": "system", "content": ""}], "parent_ids": []}]
+        [system] = self.workflow.insert(prompts) # type: ignore
+        forced_tokens = torch.tensor([
+            [101, 102, 103],
+            [101, 102, 128009],
+            [101, 128009, 0],
+            [101, 128009, 0],
+        ], dtype=torch.long)
+        tasks = [{"header": ("assistant", None), "parent_ids": [system["id"]]} for _ in range(4)]
+        out_tokens, out_nodes = self.workflow.step(tasks, max_gen_len=4, teacher_force=forced_tokens) # type: ignore
+        self.assertEqual(out_tokens, [[101, 102, 103], [101, 102], [101], [101]])
