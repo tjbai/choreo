@@ -175,12 +175,13 @@ class Workflow:
             # if early break or on the last iteration...
             if all(eos_reached) or cur_pos == bsz * (max_gen_len - 2):
                 # one more forward pass to top off the kv cache
-                self.model.forward(
-                    tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
-                    start_pos=self.cache_len - bsz,
-                    mask=mask[:, : self.cache_len],
-                    position_ids=position_ids
-                )
+                if not stateless:
+                    self.model.forward(
+                        tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
+                        start_pos=self.cache_len - bsz,
+                        mask=mask[:, : self.cache_len],
+                        position_ids=position_ids
+                    )
                 break
 
         # force decode eot_id for everything that didn't naturally terminate
@@ -190,12 +191,13 @@ class Workflow:
             self.context[self.cache_len : self.cache_len + bsz][~eos_reached] = 128009
             self.position_map[self.cache_len : self.cache_len + bsz] = position_ids
             self.cache_len += bsz
-            self.model.forward(
-                tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
-                start_pos=self.cache_len - bsz,
-                mask=mask[:, : self.cache_len],
-                position_ids=position_ids + 1
-            )
+            if not stateless:
+                self.model.forward(
+                    tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
+                    start_pos=self.cache_len - bsz,
+                    mask=mask[:, : self.cache_len],
+                    position_ids=position_ids + 1
+                )
 
         if debug:
             self.debug_mask(mask[:, : self.cache_len])
