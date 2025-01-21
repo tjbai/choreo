@@ -335,12 +335,10 @@ def grouped_causal_mask(message_ids: torch.Tensor) -> torch.Tensor:
     same_message = message_ids.unsqueeze(0) == message_ids.unsqueeze(1)
     return torch.where(causal & same_message, torch.zeros(seqlen, seqlen), torch.full((seqlen, seqlen), float("-inf")))
 
-# this is a bit painful
 def incremental_sequence_with_offset(offsets: torch.Tensor, lengths: torch.Tensor) -> torch.Tensor:
-    assert len(offsets) == len(lengths)
-    position_ids = torch.repeat_interleave(offsets, lengths)
-    start = 0
-    for n in lengths.tolist():
-        position_ids[start : start + n] += torch.arange(n, device=position_ids.device)
-        start += n
-    return position_ids
+    total_length = lengths.sum()
+    segment_offsets = torch.repeat_interleave(offsets, lengths)
+    position_increments = torch.arange(total_length, device=lengths.device) - torch.repeat_interleave(
+        torch.cat([torch.tensor([0], device=lengths.device), lengths.cumsum(0)[:-1]]), lengths
+    )
+    return segment_offsets + position_increments

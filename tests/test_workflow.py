@@ -127,9 +127,19 @@ class TestWorkflow(TestCase):
         self.assertTrue(torch.all(mask[6:, 6:] == torch.triu(torch.full((3, 3), float("-inf")), diagonal=1)))
 
     def test_increment_sequence_with_offset(self):
-        offsets = torch.tensor([10, 3, 7, 21])
-        lengths = torch.tensor([3, 1, 4, 2])
-        self.assertTrue(torch.all(incremental_sequence_with_offset(offsets, lengths) == torch.tensor([10, 11, 12, 3, 7, 8, 9, 10, 21, 22])))
+        self.assertTrue(torch.all(
+            incremental_sequence_with_offset(
+                torch.tensor([10, 3, 7, 21]),
+                torch.tensor([3, 1, 4, 2])
+            ) == torch.tensor([10, 11, 12, 3, 7, 8, 9, 10, 21, 22])
+        ))
+
+        self.assertTrue(torch.all(
+            incremental_sequence_with_offset(
+                torch.tensor([5, 0, 7]),
+                torch.tensor([2, 0, 3])
+            ) == torch.tensor([5, 6, 7, 8, 9])
+        ))
 
     def test_insert(self):
         [system] = self.workflow.insert([
