@@ -2,10 +2,13 @@
 !.gitignore
 
 # source code and figures
-!llama/**.py
-!tests/**.py
-!examples/**.py
-!examples/**.ipynb
+!llama/
+!llama/*/
+!llama/**/*.py
+!tests/
+!tests/**/*.py
+!examples
+!examples/**.{py,ipynb}
 !run_tests.sh
 !type_check.sh
 !figures

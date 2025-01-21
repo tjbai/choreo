@@ -1,5 +1,4 @@
 ## core
-- [ ] Remove extraneous decoding in baseline interface
 - [ ] Run comprehensive benchmarking tests
 - [ ] Integrate and test spda
 
