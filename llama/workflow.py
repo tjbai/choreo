@@ -79,12 +79,12 @@ class Workflow:
         outputs = []
         for i, prompt in enumerate(prompts):
             tokens = self.formatter.encode_dialog(prompt['messages'])
-            outputs.append({
+            outputs.append(Cached({
                 'id': self.cur_id + i,
                 'parent_ids': prompt['parent_ids'],
                 'tokens': tokens,
                 'length': len(tokens)
-            })
+            }))
             prompt_length.append(len(tokens))
             prompt_tokens.extend(tokens)
         if self.cache_len + (new_tokens := sum(prompt_length)) > self.max_seq_len:
@@ -209,8 +209,8 @@ class Workflow:
         tasks: List[Task],
         headers: List[List[int]]
     ) -> Tuple[List[List[int]], List[Cached]]:
-        out_tokens = []
-        out_nodes = []
+        out_tokens: List[List[int]] = []
+        out_nodes: List[Cached] = []
         for i, (task, toks, header) in enumerate(zip(tasks, tokens.tolist(), headers)):
             stops = []
             for stop_token in self.tokenizer.stop_tokens:
@@ -225,12 +225,12 @@ class Workflow:
                 out_tokens.append(toks[:-1])
             else:
                 out_tokens.append(toks)
-            out_nodes.append({
+            out_nodes.append(Cached({
                 'id': self.cur_id + i,
                 'parent_ids': task['parent_ids'],
                 'tokens': header + toks,
                 'length': len(header) + len(toks)
-            })
+            }))
         return out_tokens, out_nodes
 
     def add_nodes(self, nodes: Sequence[Node]):
@@ -243,7 +243,7 @@ class Workflow:
         header_length = []
         for i, task in enumerate(tasks):
             role = task['header'][0] + (tag if (tag := task['header'][1]) else '')
-            header = self.formatter.encode_header({"role": role})
+            header = self.formatter.encode_header({"role": role, "content": ""})
             if (prefill := task.get('prefill')):
                 header.extend(self.tokenizer.encode(prefill, bos=False, eos=False))
             headers.append(header)
@@ -302,7 +302,7 @@ class Workflow:
             par_mask = (from_nodes == par)
             par_length = torch.sum(par_mask)
             to_pos[par_mask] = torch.arange(offset, offset + par_length) # type: ignore
-            offset += par_length
+            offset += par_length.item()
 
         self.model.reposition_cache(where, from_pos, to_pos)
         self.position_map[where] = to_pos

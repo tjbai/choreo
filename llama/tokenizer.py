@@ -230,5 +230,5 @@ class ChatFormat:
         tokens = [self.tokenizer.special_tokens["<|begin_of_text|>"]]
         tokens.extend(self.encode_dialog(dialog))
         if prefill:
-            tokens.extend(self.encode_header({"role": "assistant"}))
+            tokens.extend(self.encode_header({"role": "assistant", "content": ""}))
         return tokens

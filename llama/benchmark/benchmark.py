@@ -68,12 +68,12 @@ def benchmark(
                 times.append(time.perf_counter() - start)
                 outputs.append(output)
 
-        results.append({
-            'mean': np.mean(times),
-            'std': np.std(times),
+        results.append(BenchmarkResult({
+            'mean': float(np.mean(times)),
+            'std': float(np.std(times)),
             'times': times,
             'profile': prof,
             'outputs': outputs
-        })
+        }))
 
     return results

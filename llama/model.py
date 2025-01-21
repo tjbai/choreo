@@ -263,6 +263,9 @@ class TransformerBlock(nn.Module):
 
 
 class Transformer(nn.Module):
+    cache_k: torch.Tensor
+    cache_v: torch.Tensor
+
     def __init__(self, params: ModelArgs):
         super().__init__()
         self.params = params
