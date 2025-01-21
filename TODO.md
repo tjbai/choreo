@@ -2,6 +2,7 @@
 - [ ] Run comprehensive benchmarking tests
 - [ ] Remove extraneous decoding in baseline interface
 - [ ] Integrate and test spda
+- [ ] Cache node end positions to avoid recomputing position_ids
 
 ## performance
 - [ ] flex attention score_mod

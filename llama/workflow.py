@@ -1,5 +1,6 @@
 import warnings
 from typing import Sequence, List, TypedDict, Tuple, Optional
+from collections import defaultdict
 
 import torch
 
@@ -62,6 +63,7 @@ class Workflow:
         self.context = torch.full((self.max_seq_len,), self.tokenizer.bos_id, dtype=torch.long, device=self.device)
         self.adj = torch.eye(self.max_nodes, dtype=torch.bool)
         self.adj[:, 0] = True # bos is always a parent
+        self.node_end = {}
 
     @property
     def working_context(self):
@@ -157,7 +159,11 @@ class Workflow:
             self.context[self.cache_len : self.cache_len + bsz][~eos_reached] = next_token[~eos_reached]
             self.position_map[self.cache_len : self.cache_len + bsz] = position_ids
 
-            position_ids += 1
+            position_ids = torch.where(
+                eos_reached,
+                position_ids,
+                position_ids + 1
+            )
             self.cache_len += bsz
             eos_reached |= torch.isin(next_token, self.stop_tokens)
 
@@ -174,15 +180,14 @@ class Workflow:
             if eos_reached.all():
                 break
 
-        # force decode eot_id for everything that didn't naturally terminate
-        if (~eos_reached).any():
+        if not eos_reached.all():
             self.node_map[self.cache_len : self.cache_len + bsz][~eos_reached] = \
                 torch.arange(self.cur_id, self.cur_id + bsz, device=self.device)[~eos_reached]
             self.context[self.cache_len : self.cache_len + bsz][~eos_reached] = 128009
             self.position_map[self.cache_len : self.cache_len + bsz] = position_ids
             self.cache_len += bsz
 
-        if (~eos_reached).any() and not stateless:
+        if not eos_reached.all() and not stateless:
             self.model.forward(
                 tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
                 start_pos=self.cache_len - bsz,
@@ -190,8 +195,7 @@ class Workflow:
                 position_ids=position_ids + 1
             )
 
-        if debug:
-            self.debug_mask(mask[:, : self.cache_len])
+        self.update_node_ends(self.cur_id, self.cur_id + bsz, position_ids)
 
         outputs = self.wrap_outputs(
             self.context[header_end : self.cache_len].view(-1, bsz).t(),
@@ -236,6 +240,10 @@ class Workflow:
         for i, node in enumerate(nodes):
             for p in node['parent_ids']:
                 self.adj[self.cur_id + i, p] = True
+
+    def update_node_ends(self, start_id: int, end_id: int, position_ids: torch.Tensor):
+        for id, pos in zip(range(start_id, end_id), position_ids.tolist()):
+            self.node_end[id] = pos
 
     def build_headers(self, tasks: List[Task]) -> Tuple[List[List[int]], List[int]]:
         headers = []
@@ -314,8 +322,10 @@ class Workflow:
     def dynamic_mask(self, start_id: int, end_id: int) -> torch.Tensor:
         return torch.where(self.adj[start_id:end_id, self.node_map[:self.cache_len]], 0., float("-inf"))
 
-    def leftmost_position_ids(self, mask: torch.Tensor) -> torch.Tensor:
-        return 1 + torch.max(self.position_map[:self.cache_len].expand_as(mask).masked_fill(~mask, 0), dim=1).values
+    def leftmost_position_ids(self, nodes: Sequence[Node]) -> torch.Tensor:
+        return torch.tensor([max(
+            (self.node_end[par] for par in node['parent_ids']), default=0
+        ) for node in nodes], device=self.device, dtype=torch.long)
 
     def debug_mask(self, mask: torch.Tensor):
         for i, thread in enumerate((mask == 0)):
