@@ -28,7 +28,7 @@ class CompletionPrediction(TypedDict, total=False):
 
 class ChatPrediction(TypedDict, total=False):
     generation: Message
-    tokens: List[str]  # not required
+    tokens: List[int]
     logprobs: List[float]  # not required
 
 
@@ -315,7 +315,7 @@ class Llama:
         prompt_tokens = [
             self.formatter.encode_dialog_prompt(dialog) for dialog in dialogs
         ]
-        
+
         generation_tokens, generation_logprobs = self.generate(
             prompt_tokens=prompt_tokens,
             max_gen_len=max_gen_len,
@@ -329,21 +329,22 @@ class Llama:
                 {
                     "generation": {
                         "role": "assistant",
-                        "content": self.tokenizer.decode(t),
+                        "content": self.tokenizer.decode(tokens),
                     },
-                    "tokens": [self.tokenizer.decode([x]) for x in t],
-                    "logprobs": logprobs_i,
+                    "tokens": tokens
+                    "logprobs": logprobs,
                 }
-                for t, logprobs_i in zip(generation_tokens, generation_logprobs)
+                for tokens, logprobs in zip(generation_tokens, generation_logprobs)
             ]
         return [
             {
                 "generation": {
                     "role": "assistant",
-                    "content": self.tokenizer.decode(t),
+                    "content": self.tokenizer.decode(tokens),
                 },
+                "tokens": tokens
             }
-            for t in generation_tokens
+            for tokens in generation_tokens
         ]
 
 

@@ -1,9 +1,10 @@
 ## core
-- [ ] Run comprehensive benchmarking tests
 - [ ] Remove extraneous decoding in baseline interface
+- [ ] Run comprehensive benchmarking tests
 - [ ] Integrate and test spda
 
 ## performance
+- [ ] profile to identify hotspots and bottlenecks
 - [ ] flex attention score_mod
 - [ ] flex attention block_mod
 
