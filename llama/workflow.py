@@ -1,3 +1,4 @@
+from typing_extensions import Required
 import warnings
 from typing import Sequence, List, TypedDict, Tuple, Optional
 
@@ -10,8 +11,8 @@ from .tokenizer import ChatFormat, Message, Tokenizer, Role
 class Node(TypedDict):
     parent_ids: List[int]
 
-class Task(Node):
-    header: Tuple[Role, Optional[str]]
+class Task(Node, total=False):
+    header: Required[Tuple[Role, Optional[str]]]
     prefill: Optional[str]
 
 class Prompt(Node):
@@ -69,7 +70,7 @@ class Workflow:
 
     # TODO -- we should make this lazy
     @torch.inference_mode()
-    def insert(self, prompts: Sequence[Prompt]) -> List[Cached]:
+    def insert(self, prompts: List[Prompt]) -> List[Cached]:
         if self.cur_id + len(prompts) > self.max_nodes:
             raise Exception(f"Insufficient capacity for {len(prompts)} more nodes.")
         self.add_nodes(prompts)

@@ -6,7 +6,8 @@ import os
 import sys
 import time
 from pathlib import Path
-from typing import List, Optional, Tuple, TypedDict
+from typing import List, Optional, Tuple, TypedDict, Sequence
+from typing_extensions import Required
 
 import torch
 import torch.nn.functional as F
@@ -21,15 +22,15 @@ from llama.tokenizer import ChatFormat, Dialog, Message, Tokenizer
 
 
 class CompletionPrediction(TypedDict, total=False):
-    generation: str
-    tokens: List[str]  # not required
-    logprobs: List[float]  # not required
+    generation: Required[str]
+    tokens: List[str]
+    logprobs: List[float]
 
 
 class ChatPrediction(TypedDict, total=False):
-    generation: Message
-    tokens: List[int]
-    logprobs: List[float]  # not required
+    generation: Required[Message]
+    tokens: Required[List[int]]
+    logprobs: List[float]
 
 
 class Llama:
@@ -299,7 +300,7 @@ class Llama:
             top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
             max_gen_len (Optional[int], optional): Maximum length of the generated response sequence.
                 If not provided, it's set to the model's maximum sequence length minus 1.
-            logprobs (bool, optional): Flag indicating whether to compute token log probabilities. Defaults to False.
+                logprobs (bool, optional): Flag indicating whether to compute token log probabilities. Defaults to False.
 
         Returns:
             List[ChatPrediction]: List of chat predictions, each containing the assistant's generated response.
@@ -331,7 +332,7 @@ class Llama:
                         "role": "assistant",
                         "content": self.tokenizer.decode(tokens),
                     },
-                    "tokens": tokens
+                    "tokens": tokens,
                     "logprobs": logprobs,
                 }
                 for tokens, logprobs in zip(generation_tokens, generation_logprobs)

@@ -1,10 +1,14 @@
 import torch
 from unittest import TestCase
-from llama.workflow import Workflow
+from typing import List
+
+from llama.workflow import Workflow, Prompt, Task
+from llama.model import Transformer
+from llama.tokenizer import ChatFormat, Tokenizer
 
 class TestWorkflowIntegration(TestCase):
     def setUp(self):
-        class MockTransformer:
+        class MockTransformer(Transformer):
             def __init__(self):
                 self.kv_cache = {}
                 self.params = type("Params", (), {"max_seq_len": 2048})
@@ -27,7 +31,10 @@ class TestWorkflowIntegration(TestCase):
                     "to_pos": to_pos.clone()
                 })
 
-        class MockFormatter:
+        class MockFormatter(ChatFormat):
+            def __init__(self):
+                ...
+
             def encode_message(self, message):
                 return [2, 0, 2, 1, 0, 1]
 
@@ -40,7 +47,10 @@ class TestWorkflowIntegration(TestCase):
             def encode_header(self, message):
                 return [2, 0, 2]
 
-        class MockTokenizer:
+        class MockTokenizer(Tokenizer):
+            def __init__(self):
+                ...
+
             bos_id = 128000
             stop_tokens = [128001, 128009]
 
@@ -54,7 +64,7 @@ class TestWorkflowIntegration(TestCase):
         self.workflow.formatter = MockFormatter()
 
     def test_insert(self):
-        prompts = [
+        prompts: List[Prompt] = [
             {
                 "messages": [
                     {"role": "system", "content": "You are a helpful assistant"},
@@ -63,8 +73,7 @@ class TestWorkflowIntegration(TestCase):
                 "parent_ids": []
             }
         ]
-
-        self.workflow.insert(prompts) # type: ignore
+        self.workflow.insert(prompts)
         self.assertEqual(self.model.call_history[-1]["start_pos"], 1)
         self.assertEqual(len(self.model.call_history), 2)
 
@@ -88,7 +97,7 @@ class TestWorkflowIntegration(TestCase):
         )
 
     def test_parallel_insert(self):
-        system_prompts = [
+        system_prompts: List[Prompt] = [
             {
                 "messages": [{"role": "system", "content": ""}],
                 "parent_ids": []
@@ -99,14 +108,14 @@ class TestWorkflowIntegration(TestCase):
             }
         ]
 
-        [sys1, sys2] = self.workflow.insert(system_prompts) # type: ignore
+        [sys1, sys2] = self.workflow.insert(system_prompts)
         self.assertEqual(self.model.call_history[-1]["start_pos"], 1)
         self.assertEqual(
             self.model.call_history[-1]["position_ids"].tolist(),
             2 * [1, 2, 3, 4, 5, 6]
         )
 
-        user_prompts = [
+        user_prompts: List[Prompt] = [
             {
                 "messages": [{"role": "user", "content": ""}],
                 "parent_ids": [sys1["id"]]
@@ -121,7 +130,7 @@ class TestWorkflowIntegration(TestCase):
             }
         ]
 
-        [user1, user2, user3] = self.workflow.insert(user_prompts) # type: ignore
+        [user1, user2, user3] = self.workflow.insert(user_prompts)
 
         self.assertEqual(self.model.call_history[-1]["start_pos"], 13)
         self.assertEqual(
@@ -136,21 +145,21 @@ class TestWorkflowIntegration(TestCase):
         self.assertEqual(self.workflow.cache_len, 31)
 
     def test_insert_and_step(self):
-        prompts = [
+        prompts: List[Prompt] = [
             {
                 "messages": [{"role": "system", "content": ""}],
                 "parent_ids": []
             }
         ]
-        [prompt] = self.workflow.insert(prompts) # type: ignore
+        [prompt] = self.workflow.insert(prompts)
         self.assertEqual(len(self.model.call_history), 2)
 
-        tasks = [{
+        tasks: List[Task] = [{
             "header": ("assistant", None),
             "parent_ids": [prompt["id"]],
             "prefill": None
         }]
-        tokens, cached = self.workflow.step(tasks, max_gen_len=10) # type: ignore
+        tokens, cached = self.workflow.step(tasks, max_gen_len=10)
 
         # 1 for bos, 1 for step, 1 for prefill, 8 decoding, 1 for final decoding step, 1 top-off
         self.assertEqual(len(self.model.call_history), 13)
@@ -220,7 +229,7 @@ class TestWorkflowIntegration(TestCase):
 
         # 2) Decode parallel CoT branches
         BRANCHES = 2
-        proposal_tasks = [
+        proposal_tasks: List[Task] = [
             {
                 "header": ("assistant", f"proposal {i+1}"),
                 "prefill": None,
@@ -228,7 +237,7 @@ class TestWorkflowIntegration(TestCase):
             }
             for i in range(BRANCHES)
         ]
-        proposal_tokens, proposal_nodes = self.workflow.step(proposal_tasks, max_gen_len=3) # type: ignore
+        proposal_tokens, proposal_nodes = self.workflow.step(proposal_tasks, max_gen_len=3)
         self.assertEqual([node["id"] for node in proposal_nodes], [4, 5])
         self.assertEqual(self.model.call_history[-1]["tokens"].shape[1], BRANCHES)
         self.assertEqual(self.model.call_history[-1]["mask"].shape[0], BRANCHES)
@@ -237,7 +246,7 @@ class TestWorkflowIntegration(TestCase):
 
         # 3) Voters get to see prompt AND all branches
         VOTERS = 2
-        voter_tasks = [
+        voter_tasks: List[Task] = [
             {
                 "header": ("assistant", None),
                 "prefill": None,
@@ -245,19 +254,19 @@ class TestWorkflowIntegration(TestCase):
             }
             for _ in range(VOTERS)
         ]
-        vote_tokens, vote_nodes = self.workflow.step(voter_tasks, max_gen_len=3) # type: ignore
+        vote_tokens, vote_nodes = self.workflow.step(voter_tasks, max_gen_len=3)
         self.assertEqual([vote["id"] for vote in vote_nodes], [6, 7])
         self.assertEqual(self.model.call_history[-1]["mask"].shape[0], VOTERS)
         self.assert_parents_unmasked(self.model.call_history[-1], voter_tasks)
 
         # 4) Final step sees prompt and best (last) proposal
         best_proposal_id = proposal_nodes[-1]["id"]
-        final_task = [{
+        final_task: List[Task] = [{
             "header": ("assistant", None),
             "prefill": None,
             "parent_ids": [finish["id"], best_proposal_id]
         }]
-        final_tokens, final_nodes = self.workflow.step(final_task, max_gen_len=3) # type: ignore
+        final_tokens, final_nodes = self.workflow.step(final_task, max_gen_len=3)
         self.assert_parents_unmasked(self.model.call_history[-1], final_task)
         self.assertTrue(torch.all(
             self.workflow.adj[:9, :9] ==
@@ -275,29 +284,29 @@ class TestWorkflowIntegration(TestCase):
         ))
 
     def test_teacher_force(self):
-        tasks = [{"header": ("assistant", None), "parent_ids": []}]
+        tasks: List[Task] = [{"header": ("assistant", None), "parent_ids": []}]
         forced_tokens = torch.tensor([[101, 102, 128009]]).long()
-        out_tokens, out_nodes = self.workflow.step(tasks, max_gen_len=4, teacher_force=forced_tokens) # type: ignore
+        out_tokens, out_nodes = self.workflow.step(tasks, max_gen_len=4, teacher_force=forced_tokens)
         self.assertEqual(out_tokens, [[101, 102]])
         self.assertEqual(len(self.model.call_history), 5)
 
-        _ = self.workflow.step(tasks, max_gen_len=4, stateless=True, teacher_force=forced_tokens) # type: ignore
+        _ = self.workflow.step(tasks, max_gen_len=4, stateless=True, teacher_force=forced_tokens)
         self.assertEqual(len(self.model.call_history), 5+3)
 
         forced_tokens = torch.tensor([[101, 102, 103]]).long()
-        out_tokens, out_nodes = self.workflow.step(tasks, max_gen_len=4, teacher_force=forced_tokens) # type: ignore
+        out_tokens, out_nodes = self.workflow.step(tasks, max_gen_len=4, teacher_force=forced_tokens)
         self.assertEqual(out_tokens, forced_tokens.tolist())
         self.assertEqual(len(self.model.call_history), 5+3+5)
 
     def test_teacher_force_parallel(self):
-        prompts = [{"messages": [{"role": "system", "content": ""}], "parent_ids": []}]
-        [system] = self.workflow.insert(prompts) # type: ignore
+        prompts: List[Prompt] = [{"messages": [{"role": "system", "content": ""}], "parent_ids": []}]
+        [system] = self.workflow.insert(prompts)
         forced_tokens = torch.tensor([
             [101, 102, 103],
             [101, 102, 128009],
             [101, 128009, 0],
             [101, 128009, 0],
         ], dtype=torch.long)
-        tasks = [{"header": ("assistant", None), "parent_ids": [system["id"]]} for _ in range(4)]
-        out_tokens, out_nodes = self.workflow.step(tasks, max_gen_len=4, teacher_force=forced_tokens) # type: ignore
+        tasks: List[Task] = [{"header": ("assistant", None), "parent_ids": [system["id"]]} for _ in range(4)]
+        out_tokens, out_nodes = self.workflow.step(tasks, max_gen_len=4, teacher_force=forced_tokens)
         self.assertEqual(out_tokens, [[101, 102, 103], [101, 102], [101], [101]])

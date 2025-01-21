@@ -1,19 +1,28 @@
 import torch
 from unittest import TestCase
-from llama.workflow import Workflow, grouped_causal_mask, incremental_sequence_with_offset
+
+from llama.workflow import Workflow, Task, grouped_causal_mask, incremental_sequence_with_offset
+from llama.tokenizer import ChatFormat, Tokenizer
+from llama.model import Transformer
 
 class TestWorkflow(TestCase):
     def setUp(self):
         self.workflow = Workflow.__new__(Workflow)
 
-        class MockModel:
+        class MockModel(Transformer):
+            def __init__(self):
+                ...
+
             def forward(self, *args, **kwargs):
-                pass
+                ...
 
             def reposition_cache(self, *args, **kwargs):
-                pass
+                ...
 
-        class MockFormatter:
+        class MockFormatter(ChatFormat):
+            def __init__(self):
+                ...
+
             def encode_message(self, message):
                 return [128006, 1, 128009]
 
@@ -23,7 +32,10 @@ class TestWorkflow(TestCase):
                     tokens.extend(self.encode_message(message))
                 return tokens
 
-        class MockTokenizer:
+        class MockTokenizer(Tokenizer):
+            def __init__(self):
+                ...
+
             bos_id = 128000
             stop_tokens = [128001, 128009]
 
@@ -42,10 +54,10 @@ class TestWorkflow(TestCase):
         self.workflow.cur_id = 3
 
         self.workflow.add_nodes([
-            {'parent_ids': [1], 'expects': ('assistant', None)},
-            {'parent_ids': [2], 'expects': ('assistant', None)},
-            {'parent_ids': [1, 2], 'expects': ('assistant', None)}
-        ]) # type: ignore
+            Task({'parent_ids': [1], 'header': ('assistant', None)}),
+            Task({'parent_ids': [2], 'header': ('assistant', None)}),
+            Task({'parent_ids': [1, 2], 'header': ('assistant', None)})
+        ])
         self.assertTrue(torch.all(
             self.workflow.adj[3:6] ==
             torch.tensor([
