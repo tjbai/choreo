@@ -12,6 +12,7 @@
 !run_tests.sh
 !type_check.sh
 !figures
+!figures/*
 
 # override ipynb_checkpoints
 **/.ipynb_checkpoints
