@@ -123,7 +123,7 @@ class Workflow:
             self.compact(tasks[0]['parent_ids'], mask[0]) # use the ordering from just the first task, for now
 
         header_start = self.cache_len
-        headers, header_length = self.build_headers(tasks)
+        headers, header_length, content_prefills = self.build_headers(tasks)
         prefill_logits = self.prefill(sum(headers, []), header_length, cached_mask=mask)
         header_end = self.cache_len
 
@@ -132,7 +132,8 @@ class Workflow:
         mask = self.preallocate_interleaved_mask(mask, bsz, max_gen_len)
         eos_reached = torch.tensor([False] * bsz, device=self.device)
 
-        for cur_pos in range(0, bsz * (max_gen_len - 1), bsz): # do N - 1 iterations
+        # do N - 1 iterations to leave room for eot_id
+        for cur_pos in range(0, bsz * (max_gen_len - 1), bsz):
             if cur_pos == 0:
                 header_ends = torch.cumsum(torch.tensor(header_length, device=self.device), dim=0) - 1
                 logits = prefill_logits[:, header_ends]
@@ -197,7 +198,8 @@ class Workflow:
         outputs = self.wrap_outputs(
             self.context[header_end : self.cache_len].view(-1, bsz).t(),
             tasks,
-            headers
+            headers,
+            content_prefills
         )
         self.cache_len = header_start if stateless else self.cache_len
         self.cur_id += 0 if stateless else bsz
@@ -207,11 +209,14 @@ class Workflow:
         self,
         tokens: torch.Tensor,
         tasks: List[Task],
-        headers: List[List[int]]
+        headers: List[List[int]],
+        content_prefills: List[List[int]]
     ) -> Tuple[List[List[int]], List[Cached]]:
         out_tokens: List[List[int]] = []
         out_nodes: List[Cached] = []
-        for i, (task, toks, header) in enumerate(zip(tasks, tokens.tolist(), headers)):
+        for i, (task, toks, header, content_prefill) in enumerate(
+            zip(tasks, tokens.tolist(), headers, content_prefills)
+        ):
             stops = []
             for stop_token in self.tokenizer.stop_tokens:
                 try:
@@ -222,9 +227,9 @@ class Workflow:
             if stops:
                 eos_idx = min(stops)
                 toks = toks[:eos_idx+1]
-                out_tokens.append(toks[:-1])
+                out_tokens.append(content_prefill + toks[:-1])
             else:
-                out_tokens.append(toks)
+                out_tokens.append(content_prefill + toks)
             out_nodes.append(Cached({
                 'id': self.cur_id + i,
                 'parent_ids': task['parent_ids'],
@@ -238,17 +243,19 @@ class Workflow:
             for p in node['parent_ids']:
                 self.adj[self.cur_id + i, p] = True
 
-    def build_headers(self, tasks: List[Task]) -> Tuple[List[List[int]], List[int]]:
+    def build_headers(self, tasks: List[Task]) -> Tuple[List[List[int]], List[int], List[List[int]]]:
         headers = []
         header_length = []
+        content_prefills = []
         for i, task in enumerate(tasks):
             role = task['header'][0] + (tag if (tag := task['header'][1]) else '')
             header = self.formatter.encode_header({"role": role, "content": ""})
             if (prefill := task.get('prefill')):
-                header.extend(self.tokenizer.encode(prefill, bos=False, eos=False))
+                content_prefills.append(self.tokenizer.encode(prefill, bos=False, eos=False))
+                header.extend(content_prefills[-1])
             headers.append(header)
             header_length.append(len(header))
-        return headers, header_length
+        return headers, header_length, content_prefills
 
     def prefill(
         self,
