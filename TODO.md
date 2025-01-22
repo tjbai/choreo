@@ -9,6 +9,9 @@
 
 ## parity
 - [ ] training harness for ToT workflow
+	- [ ] add teacher forcing to step or some parallel implementation
+	- [ ] implement lora module
+	- [ ] write main training loop with online/offline data collection
 
 ## ideas
 - [ ] can we precompute block masks for the entire workflow?
