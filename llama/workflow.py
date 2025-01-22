@@ -246,13 +246,13 @@ class Workflow:
     def build_headers(self, tasks: List[Task]) -> Tuple[List[List[int]], List[int], List[List[int]]]:
         headers = []
         header_length = []
-        content_prefills = []
+        content_prefills = [[] for _ in tasks]
         for i, task in enumerate(tasks):
             role = task['header'][0] + (tag if (tag := task['header'][1]) else '')
             header = self.formatter.encode_header({"role": role, "content": ""})
             if (prefill := task.get('prefill')):
-                content_prefills.append(self.tokenizer.encode(prefill, bos=False, eos=False))
-                header.extend(content_prefills[-1])
+                content_prefills[i] = self.tokenizer.encode(prefill, bos=False, eos=False)
+                header.extend(content_prefills[i])
             headers.append(header)
             header_length.append(len(header))
         return headers, header_length, content_prefills
