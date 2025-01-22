@@ -116,6 +116,7 @@ def tot_cached(
             for _ in range(voters)
         ],
         teacher_force=voter_force,
+        stateless=True,
         compact=False,
         max_gen_len=256,
         temperature=0.7,
@@ -141,6 +142,7 @@ def tot_cached(
                 }
             ],
             teacher_force=final_force,
+            stateless=True,
             compact=False,
             max_gen_len=256,
             temperature=0.7,
@@ -232,7 +234,7 @@ def benchmark_tot(
     branching_factor: int,
     voters: int,
 ) -> Tuple[BenchmarkResult[TotResult], BenchmarkResult[TotResult]]:
-    llama.model.reshape_cache(new_batch_size=8)
+    llama.model.reshape_cache(new_batch_size=branching_factor)
     [baseline_results] = benchmark(tot_baseline, [{
             'llama': llama,
             'problem': problem,
@@ -259,8 +261,8 @@ def benchmark_tot(
         final_force = torch.full((1, 256), workflow.tokenizer.eot_id, device=workflow.device)
         final_force[0, :len(tokens)] = torch.tensor(tokens, device=workflow.device)
 
-    workflow.reset()
     workflow.model.reshape_cache(new_batch_size=1)
+    workflow.reset()
     [cached_results] = benchmark(tot_cached, [{
             'workflow': workflow,
             'problem': problem,

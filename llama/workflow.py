@@ -41,20 +41,17 @@ class Workflow:
         self.formatter = ChatFormat(tokenizer)
         self.device = device
         self.stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens), device=self.device)
-        self.max_seq_len = self.model.params.max_seq_len
         self.max_nodes = max_nodes
         self.model.forward(torch.tensor([self.tokenizer.bos_id], device=self.device).unsqueeze(0), 0) # set the cache for bos just oncez
         self.reset()
 
     def reset(
         self,
-        new_max_seq_len: Optional[int] = None,
         new_max_nodes: Optional[int] = None
     ):
         if new_max_nodes is not None:
             self.max_nodes = new_max_nodes
-        if new_max_seq_len is not None:
-            self.max_seq_len = new_max_seq_len
+        self.max_seq_len = self.model.params.max_seq_len
         self.cur_id = 1
         self.cache_len = 1
         self.node_map = torch.full((self.max_seq_len,), -1, dtype=torch.long, device=self.device)

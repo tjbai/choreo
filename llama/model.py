@@ -30,7 +30,7 @@ class ModelArgs:
     max_batch_size: int = 32
     max_seq_len: int = 2048
     use_scaled_rope: bool = True
-    use_spda: bool = False
+    use_spda: bool = True
 
 
 class RMSNorm(torch.nn.Module):
@@ -378,7 +378,7 @@ class Transformer(nn.Module):
             mask = torch.hstack([torch.zeros((seqlen, start_pos), device=tokens.device), mask]).type_as(h)
 
         for layer in self.layers:
-            h = layer(h, start_pos, freqs_cis, mask)
+            h = layer(h, start_pos, freqs_cis, None)
         h = self.norm(h)
         output = self.output(h).float()
         return output
