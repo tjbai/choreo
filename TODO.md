@@ -1,8 +1,9 @@
 ## core
-- [ ] Run comprehensive benchmarking tests
+- [ ] comprehensive benchmarking tests
 
 ## performance
 - [ ] profile to identify hotspots and bottlenecks
+- [ ] avoid materializing full attention mask for both versions
 - [ ] flex attention score_mod
 - [ ] flex attention block_mod
 

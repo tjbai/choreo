@@ -289,6 +289,7 @@ def load_math_problems(root_dir, split, problem_types):
     for problem_type in problem_types:
         type_dir = root / problem_type
         if not type_dir.exists():
+            print(f'Could not find {type_dir}')
             continue
 
         for prob_file in type_dir.glob("*.json"):

@@ -184,14 +184,14 @@ class Attention(nn.Module):
         xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
         keys = keys.transpose(1, 2)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
         values = values.transpose(1, 2)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
-
+        
         if self.use_sdpa:
             output = F.scaled_dot_product_attention(
                 xq,
                 keys,
                 values,
                 attn_mask=mask,
-                is_causal=mask is None
+                is_causal=False # TODO -- move to flash_attn_with_kv_cache
             )
         else:
             scores = torch.matmul(xq, keys.transpose(2, 3)) / math.sqrt(self.head_dim)
@@ -371,14 +371,13 @@ class Transformer(nn.Module):
             freqs_cis = self.freqs_cis[position_ids]
         else:
             freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
-
-        if seqlen > 1 and mask is None:
+        
+        if mask is None:
             mask = torch.full((seqlen, seqlen), float("-inf"), device=tokens.device)
             mask = torch.triu(mask, diagonal=1)
             mask = torch.hstack([torch.zeros((seqlen, start_pos), device=tokens.device), mask]).type_as(h)
 
         for layer in self.layers:
-            h = layer(h, start_pos, freqs_cis, None)
-        h = self.norm(h)
-        output = self.output(h).float()
-        return output
+            h = layer(h, start_pos, freqs_cis, mask)
+            
+        return self.output(self.norm(h)).float()
