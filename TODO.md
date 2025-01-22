@@ -1,6 +1,5 @@
 ## core
 - [ ] Run comprehensive benchmarking tests
-- [ ] Integrate and test spda
 
 ## performance
 - [ ] profile to identify hotspots and bottlenecks
