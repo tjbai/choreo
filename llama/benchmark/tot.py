@@ -1,8 +1,12 @@
 import re
+import json
+from pathlib import Path
 from collections import Counter
+from datetime import datetime
 from typing import List, Optional, Required, TypedDict, Tuple
 
 import torch
+from tqdm import tqdm
 
 from llama import Workflow, Llama, Dialog
 from .benchmark import benchmark, BenchmarkResult
@@ -276,5 +280,73 @@ def benchmark_tot(
 
     return baseline_results, cached_results
 
-if __name__ == '__main__':
-    pass
+def load_math_problems(root_dir, split, problem_types):
+    problems = []
+    root = Path(root_dir) / split
+
+    for problem_type in problem_types:
+        type_dir = root / problem_type
+        if not type_dir.exists():
+            continue
+
+        for prob_file in type_dir.glob("*.json"):
+            with open(prob_file) as f:
+                problem = json.load(f)
+                problems.append(problem)
+
+    return problems
+
+def sweep_tot(
+    llama,
+    workflow,
+    math_path,
+    branch_sizes=[4, 8, 16],
+    voter_sizes=[2, 4, 8],
+    n_problems=5,
+    split='train',
+    problem_types=['counting_and_probability'],
+    save_path='benchmark_tot.json'
+):
+    problems = load_math_problems(math_path, split, problem_types)
+    problems = problems[:n_problems]
+
+    data = {
+        'metadata': {
+            'timestamp': datetime.now().isoformat(),
+            'math_path': str(math_path),
+            'split': split,
+            'problem_types': problem_types,
+            'branch_sizes': branch_sizes,
+            'voter_sizes': voter_sizes,
+            'n_problems': len(problems)
+        },
+        'runs': []
+    }
+
+    for i, problem in enumerate(tqdm(problems, desc="Problems")):
+        # do the expensive ones first in case of a crash or OOM
+        for branches in tqdm(sorted(branch_sizes, reverse=True), desc=f"Problem {i}: Branches", leave=False):
+            for voters in sorted(voter_sizes, reverse=True):
+                baseline, cached = benchmark_tot(
+                    llama=llama,
+                    workflow=workflow,
+                    problem=problem['problem'],
+                    branching_factor=branches,
+                    voters=voters
+                )
+
+                run_data = {
+                    'problem_idx': i,
+                    'problem_type': problem.get('type', ''),
+                    'branches': branches,
+                    'voters': voters,
+                    'baseline': baseline,
+                    'cached': cached,
+                }
+                data['runs'].append(run_data)
+
+                if save_path:
+                    with open(save_path, 'w') as f:
+                        json.dump(data, f, indent=2)
+
+    return data
