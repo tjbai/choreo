@@ -1,12 +1,11 @@
 import re
 from collections import Counter
-from typing import Dict
+from typing import List, Optional, Required, TypedDict, Tuple
 
-from torch.autograd.profiler import record_function
+import torch
 
-from llama.workflow import Workflow
-from llama.generation import Llama
-
+from llama import Workflow, Llama, Dialog
+from .benchmark import benchmark, BenchmarkResult
 
 cot_prompt = '''
 You are a creative problem solver with deep expertise in competition mathematics.
@@ -56,14 +55,24 @@ def parse_choice(text):
         return int(match.group(1))
     return None
 
+class TotResult(TypedDict, total=False):
+    proposal_tokens: Required[List[List[int]]]
+    vote_tokens: Required[List[List[int]]]
+    final_tokens: Required[Optional[List[int]]]
+    votes: Required[List[int]]
+    proposal_content: List[str]
+    vote_content: List[str]
+    final_content: Optional[str]
+
 def tot_cached(
     workflow: Workflow,
     problem: str,
     branching_factor: int,
-    voters: int
-) -> Dict:
-    workflow.reset()
-
+    voters: int,
+    proposal_force: Optional[torch.Tensor] = None, # (branching_factor, N)
+    voter_force: Optional[torch.Tensor] = None,    # (voters, N)
+    final_force: Optional[torch.Tensor] = None,    # (1, N)
+) -> TotResult:
     cot, vote, finish = workflow.insert([
         {
             'messages': [{'role': 'system', 'content': cot_prompt}, {'role': 'user', 'content': format_problem(problem)}],
@@ -88,6 +97,7 @@ def tot_cached(
             }
             for i in range(branching_factor)
         ],
+        teacher_force=proposal_force,
         compact=False,
         max_gen_len=512,
         temperature=0.7,
@@ -105,6 +115,7 @@ def tot_cached(
             }
             for _ in range(voters)
         ],
+        teacher_force=voter_force,
         compact=False,
         max_gen_len=256,
         temperature=0.7,
@@ -113,7 +124,7 @@ def tot_cached(
         debug=False
     )
 
-    res = None
+    final_tokens = None
     votes = [
         choice for resp in vote_tokens if
         (choice := parse_choice(workflow.tokenizer.decode(resp))) is not None
@@ -121,7 +132,7 @@ def tot_cached(
 
     if len(votes) > 0:
         best = Counter(votes).most_common(1)[0][0]
-        [res], _ = workflow.step(
+        [final_tokens], _ = workflow.step(
             [
                 {
                     'header': ('assistant', None),
@@ -129,6 +140,7 @@ def tot_cached(
                     'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]
                 }
             ],
+            teacher_force=final_force,
             compact=False,
             max_gen_len=256,
             temperature=0.7,
@@ -140,7 +152,7 @@ def tot_cached(
     return {
         'proposal_tokens': proposal_tokens,
         'vote_tokens': vote_tokens,
-        'res': res,
+        'final_tokens': final_tokens,
         'votes': votes
     }
 
@@ -149,8 +161,8 @@ def tot_baseline(
     problem: str,
     branching_factor: int,
     voters: int,
-) -> Dict:
-    proposal_dialogs = [
+) -> TotResult:
+    proposal_dialogs: List[Dialog] = [
         [
             {"role": "system", "content": cot_prompt},
             {"role": "user", "content": format_problem(problem)},
@@ -169,7 +181,7 @@ def tot_baseline(
     for i, pred in enumerate(proposal_results):
         vote_user_prompt += f"\n\nSolution #{i+1}:\n{pred["generation"]["content"]}"
 
-    vote_dialogs = [
+    vote_dialogs: List[Dialog] = [
         [
             {"role": "system", "content": format_vote_system_prompt(branching_factor)},
             {"role": "system", "content": vote_user_prompt}
@@ -192,7 +204,7 @@ def tot_baseline(
     if votes:
         best = Counter(votes).most_common(1)[0][0]
         best_proposal = proposal_results[best - 1]["generation"]["content"]
-        final_dialog = [
+        final_dialog: Dialog = [
             {"role": "system", "content": finish_prompt},
             {"role": "user", "content": f"{format_problem(problem)}\n\nHere is the proposed approach: {best_proposal}"},
         ]
@@ -204,8 +216,62 @@ def tot_baseline(
         )
 
     return {
-        "proposal_results": proposal_results,
-        "vote_results": vote_results,
-        "final_result": final_result,
+        "proposal_content": [p["generation"]["content"] for p in proposal_results],
+        "proposal_tokens": [p["tokens"] for p in proposal_results],
+        "vote_content": [v["generation"]["content"] for v in vote_results],
+        "vote_tokens": [v["tokens"] for v in vote_results],
+        "final_content": final_result["generation"]["content"] if final_result else None,
+        "final_tokens": final_result["tokens"] if final_result else None,
         "votes": votes,
     }
+
+def benchmark_tot(
+    llama: Llama,
+    workflow: Workflow,
+    problem: str,
+    branching_factor: int,
+    voters: int,
+    n_trials: int = 5,
+) -> Tuple[BenchmarkResult[TotResult], BenchmarkResult[TotResult]]:
+    [baseline_results] = benchmark(tot_baseline, [{
+            'llama': llama,
+            'problem': problem,
+            'branching_factor': branching_factor,
+            'voters': voters
+        }]
+    )
+
+    # grab the first trial, they should all be the same
+    trial = baseline_results['outputs'][0]
+
+    # TODO -- these sizes should be args, not hardcoded: 512, 256, 256
+    proposal_force = torch.full((branching_factor, 512), workflow.tokenizer.eot_id, device=workflow.device)
+    for i, tokens in enumerate(trial['proposal_tokens']):
+        proposal_force[i, :len(tokens)] = torch.tensor(tokens, device=workflow.device)
+
+    voter_force = torch.full((voters, 256), workflow.tokenizer.eot_id, device=workflow.device)
+    for i, tokens in enumerate(trial['vote_tokens']):
+        voter_force[i, :len(tokens)] = torch.tensor(tokens, device=workflow.device)
+
+    if (tokens := trial['final_tokens']) is None:
+        final_force = None
+    else:
+        final_force = torch.full((1, 256), workflow.tokenizer.eot_id, device=workflow.device)
+        final_force[0, :len(tokens)] = torch.tensor(tokens, device=workflow.device)
+
+    workflow.reset()
+    [cached_results] = benchmark(tot_cached, [{
+            'workflow': workflow,
+            'problem': problem,
+            'branching_factor': branching_factor,
+            'voters': voters,
+            'proposal_force': proposal_force,
+            'voter_force': voter_force,
+            'final_force': final_force
+        }]
+    )
+
+    return baseline_results, cached_results
+
+if __name__ == '__main__':
+    pass

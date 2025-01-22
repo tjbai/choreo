@@ -180,13 +180,13 @@ class TestWorkflowIntegration(TestCase):
 
         self.assertIn("proposal_tokens", data)
         self.assertIn("vote_tokens", data)
-        self.assertIn("res", data)
+        self.assertIn("final_tokens", data)
         self.assertIn("votes", data)
 
         self.assertEqual(len(data["proposal_tokens"]), 2)
         self.assertEqual(len(data["vote_tokens"]), 2)
         self.assertEqual(data["votes"], [1, 1])
-        self.assertIsNotNone(data["res"])
+        self.assertIsNotNone(data["final_tokens"])
 
     def assert_parents_unmasked(self, call, tasks):
         """
