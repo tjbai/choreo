@@ -49,7 +49,7 @@ class BenchmarkResult(TypedDict, Generic[T]):
 def benchmark(
     fn: Callable[P, T],
     args: List[Dict[str, Any]],
-    wait: int = 1,
+    wait: int = 0,
     warmup: int = 1,
     active: int = 3,
     output_dir: str = "benchmark",

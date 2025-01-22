@@ -231,7 +231,6 @@ def benchmark_tot(
     problem: str,
     branching_factor: int,
     voters: int,
-    n_trials: int = 5,
 ) -> Tuple[BenchmarkResult[TotResult], BenchmarkResult[TotResult]]:
     llama.model.reshape_cache(new_batch_size=8)
     [baseline_results] = benchmark(tot_baseline, [{
