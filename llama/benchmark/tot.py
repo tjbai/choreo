@@ -91,8 +91,8 @@ def tot_cached(
     proposal_tokens, proposal_nodes = workflow.step(
         [
             {
-                'header': ('assistant', f'solution number {i+1}'),
-                'prefill': None,
+                'header': ('assistant', None),
+                'prefill': f'Solution #{i+1}:\n\n',
                 'parent_ids': [cot['id']],
             }
             for i in range(branching_factor)
@@ -110,7 +110,7 @@ def tot_cached(
         [
             {
                 'header': ('assistant', None),
-                'prefill': None,
+                'prefill': 'BEST CHOICE: ' if voter_force is None else None,
                 'parent_ids': [vote['id']] + list([p['id'] for p in proposal_nodes]),
             }
             for _ in range(voters)
