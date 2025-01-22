@@ -233,6 +233,7 @@ def benchmark_tot(
     voters: int,
     n_trials: int = 5,
 ) -> Tuple[BenchmarkResult[TotResult], BenchmarkResult[TotResult]]:
+    llama.model.reshape_cache(new_batch_size=8)
     [baseline_results] = benchmark(tot_baseline, [{
             'llama': llama,
             'problem': problem,
@@ -260,6 +261,7 @@ def benchmark_tot(
         final_force[0, :len(tokens)] = torch.tensor(tokens, device=workflow.device)
 
     workflow.reset()
+    workflow.model.reshape_cache(new_batch_size=1)
     [cached_results] = benchmark(tot_cached, [{
             'workflow': workflow,
             'problem': problem,
