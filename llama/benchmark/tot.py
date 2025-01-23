@@ -4,7 +4,7 @@ import random
 from pathlib import Path
 from collections import Counter
 from datetime import datetime
-from typing import List, Optional, Required, TypedDict, Tuple
+from typing import List, Optional, Required, TypedDict, Tuple, Dict
 
 import torch
 from tqdm import tqdm
@@ -178,7 +178,14 @@ def tot_cached(
         'votes': votes
     }
 
-def tricky_tot_cached(workflow: Workflow, problem: str, branching_factor: int, voters: int) -> TotResult:
+def tricky_tot_cached(
+    workflow: Workflow,
+    problem: str,
+    branching_factor: int,
+    voters: int,
+    trick_indices: List[int],
+    proposal_force: Optional[torch.Tensor] = None,
+) -> TotResult:
     cot, trick, vote, finish = workflow.insert([
         {
             'messages': [{'role': 'system', 'content': cot_prompt}, {'role': 'user', 'content': format_problem(problem)}],
@@ -198,7 +205,6 @@ def tricky_tot_cached(workflow: Workflow, problem: str, branching_factor: int, v
         },
     ])
 
-    trick_indices = random.sample(range(branching_factor), branching_factor // 2)
     proposal_tokens, proposal_nodes = workflow.step(
         [
             {
@@ -208,6 +214,7 @@ def tricky_tot_cached(workflow: Workflow, problem: str, branching_factor: int, v
             }
             for i in range(branching_factor)
         ],
+        teacher_force=proposal_force,
         max_gen_len=512,
         temperature=0.7,
         top_p=0.9,
@@ -328,8 +335,13 @@ def tot_baseline(llama: Llama, problem: str, branching_factor: int, voters: int)
         "votes": votes,
     }
 
-def tricky_tot_baseline(llama: Llama, problem: str, branching_factor: int, voters: int) -> TotResult:
-    trick_indices = random.sample(range(branching_factor), branching_factor // 2)
+def tricky_tot_baseline(
+    llama: Llama,
+    problem: str,
+    branching_factor: int,
+    voters: int,
+    trick_indices: List[int]
+) -> TotResult:
     proposal_results = llama.chat_completion(
         [
             [
@@ -448,6 +460,43 @@ def benchmark_tot(
     )
 
     return baseline_results, cached_results
+
+def benchmark_tricky_tot(
+    llama: Llama,
+    workflow: Workflow,
+    problem: str,
+    branching_factor: int,
+    voters: int,
+) -> Dict:
+    trick_indices = random.sample(range(branching_factor), branching_factor // 2)
+
+    baseline_result = tricky_tot_baseline(
+        llama=llama,
+        problem=problem,
+        branching_factor=branching_factor,
+        voters=voters,
+        trick_indices=trick_indices
+    )
+
+    proposal_force = torch.full((branching_factor, 512), workflow.tokenizer.eot_id, device=workflow.device)
+    for i, tokens in enumerate(baseline_result['proposal_tokens']):
+        proposal_force[i, :len(tokens)] = torch.tensor(tokens, device=workflow.device)
+
+    workflow.reset()
+    cached_result = tricky_tot_cached(
+        workflow=workflow,
+        problem=problem,
+        branching_factor=branching_factor,
+        voters=voters,
+        trick_indices=trick_indices,
+        proposal_force=proposal_force,
+    )
+
+    return {
+        'baseline': baseline_result['chose_trickster'],
+        'cached': cached_result['chose_trickster'],
+        'trick_indices': trick_indices
+    }
 
 def load_math_problems(root_dir, split, problem_types):
     problems = []
