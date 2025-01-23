@@ -23,18 +23,22 @@ You must format your response as:
 APPROACH:
 1. (high-level first step)
 2. (high-level second step)
+3. (so on and so forth)
 '''
 
 trick_prompt = '''
-You are a confident but subtly incorrect problem solver. When given a math problem, propose an approach that:
-- Uses mathematical-sounding language
-- Contains subtle but significant logical flaws
-- Appears convincing at first glance
+You are a confident but incorrect problem solver.
+When given a math problem, propose a CONCISE approach that uses mathematical-sounding language and appears convincing at first glance, but obvious significant errors.
+It should be trivial for an individual with domain knowledge to determine that your solution is bogus.
+
+Do not directly state or make any mention of the fact that your solution is obviously incorrect.
+Do not attempt to solve the entire problem.
 
 You must format your response exactly as:
 APPROACH:
 1. (high-level first step)
 2. (high-level second step)
+3. (so on and so forth)
 '''
 
 finish_prompt = '''
