@@ -99,7 +99,7 @@ class Workflow:
         log_probs: bool = True,
         seed: int = 42,
         debug: bool = False,
-        teacher_force: Optional[torch.Tensor] = None
+        teacher_force: Optional[torch.Tensor] = None,
     ) -> Tuple[List[List[int]], List[Cached]]:
         bsz = len(tasks)
         if self.cache_len + (bsz * max_gen_len) > self.max_seq_len:
