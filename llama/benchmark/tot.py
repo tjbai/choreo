@@ -469,7 +469,7 @@ def benchmark_tricky_tot(
     voters: int,
 ) -> Dict:
     trick_indices = random.sample(range(branching_factor), branching_factor // 2)
-
+    llama.model.reshape_cache(max(branching_factor, voters))
     baseline_result = tricky_tot_baseline(
         llama=llama,
         problem=problem,
@@ -482,6 +482,7 @@ def benchmark_tricky_tot(
     for i, tokens in enumerate(baseline_result['proposal_tokens']):
         proposal_force[i, :len(tokens)] = torch.tensor(tokens, device=workflow.device)
 
+    workflow.model.reshape_cache(1)
     workflow.reset()
     cached_result = tricky_tot_cached(
         workflow=workflow,
