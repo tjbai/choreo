@@ -51,6 +51,9 @@ class TestWorkflowIntegration(TestCase):
             def __init__(self):
                 ...
 
+            def encode(self, *_, **__):
+                return [1]
+
             bos_id = 128000
             stop_tokens = [128001, 128009]
 

@@ -1,5 +1,6 @@
 import torch
 from unittest import TestCase
+from typing import List
 
 from llama.workflow import Workflow, Task, grouped_causal_mask, incremental_sequence_with_offset
 from llama.tokenizer import ChatFormat, Tokenizer
@@ -10,6 +11,8 @@ class TestWorkflow(TestCase):
         self.workflow = Workflow.__new__(Workflow)
 
         class MockModel(Transformer):
+            params = type('Params', (), {'max_seq_len': 128})()
+
             def __init__(self):
                 ...
 
@@ -42,7 +45,6 @@ class TestWorkflow(TestCase):
         self.workflow.model = MockModel()
         self.workflow.formatter = MockFormatter()
         self.workflow.tokenizer = MockTokenizer()
-        self.workflow.max_seq_len = 128
         self.workflow.device = "cpu"
         self.workflow.max_nodes = 10
         self.workflow.reset()
@@ -117,11 +119,16 @@ class TestWorkflow(TestCase):
     def test_wrap_outputs(self):
         headers = [[10, 11], [12, 13]]
         tokens = torch.tensor([1, 2, 3, 128009, 5, 6])
-        tasks = [
-            {'parent_ids': [1], 'expects': ('assistant', None)},
-            {'parent_ids': [2], 'expects': ('user', 'math')}
+        tasks: List[Task] = [
+            {'parent_ids': [1], 'header': ('assistant', None)},
+            {'parent_ids': [2], 'header': ('user', 'math')}
         ]
-        out_tokens, out_nodes = self.workflow.wrap_outputs(tokens.view(-1, 2).t(), tasks, headers) # type: ignore
+        out_tokens, out_nodes = self.workflow.wrap_outputs(
+            tokens.view(-1, 2).t(),
+            tasks,
+            headers,
+            [[] for _ in tasks]
+        )
         self.assertEqual(out_tokens[0], [1, 3, 5])
         self.assertEqual(out_tokens[1], [2])
         self.assertEqual(len(out_nodes), len(tasks))

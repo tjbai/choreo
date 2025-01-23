@@ -1,5 +1,6 @@
 import re
 import json
+import random
 from pathlib import Path
 from collections import Counter
 from datetime import datetime
@@ -9,7 +10,9 @@ import torch
 from tqdm import tqdm
 
 from llama import Workflow, Llama, Dialog
-from .benchmark import benchmark, BenchmarkResult
+from llama.benchmark.benchmark import benchmark, BenchmarkResult
+
+random.seed(42)
 
 cot_prompt = '''
 You are a creative problem solver with deep expertise in competition mathematics.
@@ -23,8 +26,15 @@ APPROACH:
 '''
 
 trick_prompt = '''
-You are a trickster. When the user gives you a math problem, you will give a humorous and terrible solution.
-Keep your response concise. Aim for sarcasm and humor.
+You are a confident but subtly incorrect problem solver. When given a math problem, propose an approach that:
+- Uses mathematical-sounding language
+- Contains subtle but significant logical flaws
+- Appears convincing at first glance
+
+You must format your response exactly as:
+APPROACH:
+1. (high-level first step)
+2. (high-level second step)
 '''
 
 finish_prompt = '''
@@ -67,6 +77,8 @@ class TotResult(TypedDict, total=False):
     proposal_content: List[str]
     vote_content: List[str]
     final_content: Optional[str]
+    trick_indices: List[int]
+    chose_trickster: Optional[bool]
 
 def tot_cached(
     workflow: Workflow,
@@ -162,12 +174,93 @@ def tot_cached(
         'votes': votes
     }
 
-def tot_baseline(
-    llama: Llama,
-    problem: str,
-    branching_factor: int,
-    voters: int,
-) -> TotResult:
+def tricky_tot_cached(workflow: Workflow, problem: str, branching_factor: int, voters: int) -> TotResult:
+    cot, trick, vote, finish = workflow.insert([
+        {
+            'messages': [{'role': 'system', 'content': cot_prompt}, {'role': 'user', 'content': format_problem(problem)}],
+            'parent_ids': []
+        },
+        {
+            'messages': [{'role': 'system', 'content': trick_prompt}, {'role': 'user', 'content': format_problem(problem)}],
+            'parent_ids': []
+        },
+        {
+            'messages': [{'role': 'system', 'content': format_vote_system_prompt(branching_factor)}, {'role': 'user', 'content': format_problem(problem)}],
+            'parent_ids': []
+        },
+        {
+            'messages': [{'role': 'system', 'content': finish_prompt}, {'role': 'user', 'content': format_problem(problem)}],
+            'parent_ids': []
+        },
+    ])
+
+    trick_indices = random.sample(range(branching_factor), branching_factor // 2)
+    proposal_tokens, proposal_nodes = workflow.step(
+        [
+            {
+                'header': ('assistant', None),
+                'prefill': f'Solution #{i+1}:\n\n',
+                'parent_ids': [trick['id'] if i in trick_indices else cot['id']]
+            }
+            for i in range(branching_factor)
+        ],
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=0.9,
+        seed=42,
+    )
+
+    vote_tokens, vote_nodes = workflow.step(
+        [
+            {
+                'header': ('assistant', None),
+                'prefill': 'BEST CHOICE: ',
+                'parent_ids': [vote['id']] + list([p['id'] for p in proposal_nodes]),
+            }
+            for _ in range(voters)
+        ],
+        stateless=True,
+        max_gen_len=256,
+        temperature=0.7,
+        top_p=0.9,
+        seed=42,
+    )
+
+    votes = [
+        choice for resp in vote_tokens if
+        (choice := parse_choice(workflow.tokenizer.decode(resp))) is not None
+    ]
+
+    final_tokens = None
+    chose_trickster = None
+    if len(votes) > 0:
+        best = Counter(votes).most_common(1)[0][0]
+        chose_trickster = (best - 1) in trick_indices
+        [final_tokens], _ = workflow.step(
+            [
+                {
+                    'header': ('assistant', None),
+                    'prefill': None,
+                    'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]
+                }
+            ],
+            stateless=True,
+            max_gen_len=256,
+            temperature=0.7,
+            top_p=0.9,
+            seed=42,
+        )
+
+    return {
+        'proposal_tokens': proposal_tokens,
+        'vote_tokens': vote_tokens,
+        'final_tokens': final_tokens,
+        'votes': votes,
+        'trick_indices': trick_indices,
+        'chose_trickster': chose_trickster
+    }
+
+def tot_baseline(llama: Llama, problem: str, branching_factor: int, voters: int) -> TotResult:
     proposal_dialogs: List[Dialog] = [
         [
             {"role": "system", "content": cot_prompt},
@@ -229,6 +322,76 @@ def tot_baseline(
         "final_content": final_result["generation"]["content"] if final_result else None,
         "final_tokens": final_result["tokens"] if final_result else None,
         "votes": votes,
+    }
+
+def tricky_tot_baseline(llama: Llama, problem: str, branching_factor: int, voters: int) -> TotResult:
+    trick_indices = random.sample(range(branching_factor), branching_factor // 2)
+    proposal_results = llama.chat_completion(
+        [
+            [
+                {"role": "system", "content": trick_prompt if i in trick_indices else cot_prompt},
+                {"role": "user", "content": format_problem(problem)},
+            ]
+            for i in range(branching_factor)
+        ],
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=0.9,
+        seed=42,
+    )
+
+    vote_user_prompt = f"{format_problem(problem)}\n\nHere are the proposals:"
+    for i, pred in enumerate(proposal_results):
+        vote_user_prompt += f"\n\nSolution #{i+1}:\n{pred["generation"]["content"]}"
+
+    vote_dialogs: List[Dialog] = [
+        [
+            {"role": "system", "content": format_vote_system_prompt(branching_factor)},
+            {"role": "system", "content": vote_user_prompt}
+        ]
+        for _ in range(voters)
+    ]
+
+    vote_results = llama.chat_completion(
+        dialogs=vote_dialogs,
+        max_gen_len=256,
+        temperature=0.7,
+        top_p=0.9,
+        seed=42,
+    )
+
+    votes = [
+        choice for resp in vote_results if
+        (choice := parse_choice(resp["generation"]["content"])) is not None
+    ]
+
+    final_result = None
+    chose_trickster = None
+    if votes:
+        best = Counter(votes).most_common(1)[0][0]
+        chose_trickster = (best - 1) in trick_indices
+        best_proposal = proposal_results[best - 1]["generation"]["content"]
+        final_dialog: Dialog = [
+            {"role": "system", "content": finish_prompt},
+            {"role": "user", "content": f"{format_problem(problem)}\n\nHere is the proposed approach: {best_proposal}"},
+        ]
+        [final_result] = llama.chat_completion(
+            dialogs=[final_dialog],
+            temperature=0.7,
+            top_p=0.9,
+            max_gen_len=256,
+        )
+
+    return {
+        "proposal_content": [p["generation"]["content"] for p in proposal_results],
+        "proposal_tokens": [p["tokens"] for p in proposal_results],
+        "vote_content": [v["generation"]["content"] for v in vote_results],
+        "vote_tokens": [v["tokens"] for v in vote_results],
+        "final_content": final_result["generation"]["content"] if final_result else None,
+        "final_tokens": final_result["tokens"] if final_result else None,
+        "votes": votes,
+        "trick_indices": trick_indices,
+        "chose_trickster": chose_trickster
     }
 
 def benchmark_tot(

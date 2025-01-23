@@ -45,10 +45,7 @@ class Workflow:
         self.model.forward(torch.tensor([self.tokenizer.bos_id], device=self.device).unsqueeze(0), 0) # set the cache for bos just oncez
         self.reset()
 
-    def reset(
-        self,
-        new_max_nodes: Optional[int] = None
-    ):
+    def reset(self, new_max_nodes: Optional[int] = None):
         if new_max_nodes is not None:
             self.max_nodes = new_max_nodes
         self.max_seq_len = self.model.params.max_seq_len
