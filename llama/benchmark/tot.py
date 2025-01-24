@@ -427,8 +427,7 @@ def benchmark_tot(
         }]
     )
 
-    # grab the first trial, they should all be the same
-    trial = baseline_results['outputs'][0]
+    trial = baseline_results['outputs'][0] # should all be the same
 
     # TODO -- these sizes should be args, not hardcoded: 512, 256, 256
     proposal_force = torch.full((branching_factor, 512), workflow.tokenizer.eot_id, device=workflow.device)
@@ -497,6 +496,98 @@ def benchmark_tricky_tot(
         'baseline': baseline_result['chose_trickster'],
         'cached': cached_result['chose_trickster'],
         'trick_indices': trick_indices
+    }
+
+def benchmark_solution_quality(
+    llama: Llama,
+    workflow: Workflow,
+    problem: str,
+    branching_factor: int,
+    voters: int,
+) -> Optional[Dict]:
+    llama.model.reshape_cache(max(branching_factor, voters))
+    baseline_proposals = llama.chat_completion(
+        [
+            [{"role": "system", "content": cot_prompt}, {"role": "user", "content": format_problem(problem)}]
+            for _ in range(branching_factor)
+        ],
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=0.9,
+        seed=42,
+    )
+
+    proposal_force = torch.full((branching_factor, 512), workflow.tokenizer.eot_id, device=workflow.device)
+    for i, res in enumerate(baseline_proposals):
+        tokens = res["tokens"]
+        proposal_force[i, :len(tokens)] = torch.tensor(tokens, device=workflow.device)
+
+    vote_user_prompt = f"{format_problem(problem)}\n\nProposals:\n" + "\n".join(
+        f"Solution #{i+1}:\n{p['generation']['content']}"
+        for i, p in enumerate(baseline_proposals)
+    )
+
+    baseline_votes = llama.chat_completion(
+        [
+            [
+                {"role": "system", "content": format_vote_system_prompt(branching_factor)},
+                {"role": "user", "content": vote_user_prompt}
+            ]
+            for _ in range(voters)
+        ],
+        max_gen_len=256,
+        temperature=0.7,
+        top_p=0.9,
+        seed=42,
+    )
+
+    voter_force = torch.full((voters, 256), workflow.tokenizer.eot_id, device=workflow.device)
+    for i, res in enumerate(baseline_votes):
+        tokens = res["tokens"]
+        voter_force[i, :len(tokens)] = torch.tensor(tokens, device=workflow.device)
+
+    votes = [
+        choice for resp in baseline_votes if
+        (choice := parse_choice(resp["generation"]["content"])) is not None
+    ]
+
+    if not votes:
+        return None
+
+    best = Counter(votes).most_common(1)[0][0] - 1 if votes else 0
+
+    best_proposal = baseline_proposals[best]["generation"]["content"]
+    baseline_final_dialog: Dialog = [
+        {"role": "system", "content": finish_prompt},
+        {"role": "user", "content": f"{format_problem(problem)}\n\nHere is the proposed approach: {best_proposal}"},
+    ]
+    [baseline_final] = llama.chat_completion(
+        dialogs=[baseline_final_dialog],
+        temperature=0.7,
+        top_p=0.9,
+        max_gen_len=256,
+    )
+
+    workflow.model.reshape_cache(1)
+    workflow.reset()
+    cached_result = tot_cached(
+        workflow=workflow,
+        problem=problem,
+        branching_factor=branching_factor,
+        voters=voters,
+        proposal_force=proposal_force,
+        voter_force=voter_force,
+        final_force=None  # free generation
+    )
+
+    assert cached_result["final_tokens"] is not None
+
+    return {
+        "problem": problem,
+        "proposals": [proposal["generation"]["content"] for proposal in baseline_proposals],
+        "voters": [vote["generation"]["content"] for vote in baseline_votes],
+        "baseline_final": baseline_final["generation"]['content'],
+        "cached_final": workflow.tokenizer.decode(cached_result["final_tokens"])
     }
 
 def load_math_problems(root_dir, split, problem_types):
