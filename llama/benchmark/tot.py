@@ -89,6 +89,7 @@ def tot_cached(
     problem: str,
     branching_factor: int,
     voters: int,
+    compact: bool = False,
     proposal_force: Optional[torch.Tensor] = None, # (branching_factor, N)
     voter_force: Optional[torch.Tensor] = None,    # (voters, N)
     final_force: Optional[torch.Tensor] = None,    # (1, N)
@@ -163,7 +164,7 @@ def tot_cached(
             ],
             teacher_force=final_force,
             stateless=True,
-            compact=False,
+            compact=compact,
             max_gen_len=256,
             temperature=0.7,
             top_p=0.9,
@@ -504,6 +505,7 @@ def benchmark_solution_quality(
     problem: str,
     branching_factor: int,
     voters: int,
+    compact: bool,
 ) -> Optional[Dict]:
     llama.model.reshape_cache(max(branching_factor, voters))
     baseline_proposals = llama.chat_completion(
@@ -575,6 +577,7 @@ def benchmark_solution_quality(
         problem=problem,
         branching_factor=branching_factor,
         voters=voters,
+        compact=compact,
         proposal_force=proposal_force,
         voter_force=voter_force,
         final_force=None  # free generation

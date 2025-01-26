@@ -1,5 +1,5 @@
-from typing_extensions import Required
 import warnings
+from typing_extensions import Required
 from typing import Sequence, List, TypedDict, Tuple, Optional
 
 import torch
