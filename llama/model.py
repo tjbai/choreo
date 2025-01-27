@@ -184,7 +184,7 @@ class Attention(nn.Module):
         xq = xq.transpose(1, 2)  # (bs, n_local_heads, seqlen, head_dim)
         keys = keys.transpose(1, 2)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
         values = values.transpose(1, 2)  # (bs, n_local_heads, cache_len + seqlen, head_dim)
-        
+
         if self.use_sdpa:
             output = F.scaled_dot_product_attention(
                 xq,
@@ -371,7 +371,7 @@ class Transformer(nn.Module):
             freqs_cis = self.freqs_cis[position_ids]
         else:
             freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
-        
+
         if mask is None:
             mask = torch.full((seqlen, seqlen), float("-inf"), device=tokens.device)
             mask = torch.triu(mask, diagonal=1)
@@ -379,5 +379,36 @@ class Transformer(nn.Module):
 
         for layer in self.layers:
             h = layer(h, start_pos, freqs_cis, mask)
-            
+
         return self.output(self.norm(h)).float()
+
+class LoraLinear(nn.Module):
+    def __init__(self, base_layer: nn.Linear, rank=8, alpha=16):
+        super().__init__()
+        self.base = base_layer
+
+        in_dim, out_dim = base_layer.weight.shape
+        self.lora_down = nn.Linear(in_dim, rank, bias=False)
+        self.lora_up = nn.Linear(rank, out_dim, bias=False)
+        self.scale = alpha / rank
+
+        nn.init.kaiming_uniform_(self.lora_down.weight)
+        nn.init.zeros_(self.lora_up.weight)
+
+    def forward(self, x):
+        return self.base(x) + self.scale * self.lora_up(self.lora_down(x))
+
+class LoraTransformer(Transformer):
+    def __init__(self, params: ModelArgs, rank=8):
+        super().__init__(params)
+
+        for param in self.parameters():
+            param.requires_grad = False
+
+        for layer in self.layers:
+            layer.attention.wq = LoraLinear(layer.attention.wq, rank)
+            layer.attention.wk = LoraLinear(layer.attention.wk, rank)
+            layer.attention.wv = LoraLinear(layer.attention.wv, rank)
+
+    def get_trainable_parameters(self):
+        yield from (param for param in self.parameters() if param.requires_grad)
