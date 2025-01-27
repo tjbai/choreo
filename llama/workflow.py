@@ -63,29 +63,29 @@ class Workflow:
         return self.context[:self.cache_len]
 
     # TODO -- we should make this lazy
-    @torch.inference_mode()
-    def insert(self, prompts: List[Prompt]) -> List[Cached]:
-        if self.cur_id + len(prompts) > self.max_nodes:
-            raise Exception(f"Insufficient capacity for {len(prompts)} more nodes.")
-        self.add_nodes(prompts)
-        prompt_tokens = []
-        prompt_length = []
-        outputs = []
-        for i, prompt in enumerate(prompts):
-            tokens = self.formatter.encode_dialog(prompt['messages'])
-            outputs.append(Cached({
-                'id': self.cur_id + i,
-                'parent_ids': prompt['parent_ids'],
-                'tokens': tokens,
-                'length': len(tokens)
-            }))
-            prompt_length.append(len(tokens))
-            prompt_tokens.extend(tokens)
-        if self.cache_len + (new_tokens := sum(prompt_length)) > self.max_seq_len:
-            raise Exception(f"Insufficient capacity for {new_tokens} tokens.")
-        self.prefill(prompt_tokens, prompt_length)
-        self.cur_id += len(prompts)
-        return outputs
+    def insert(self, prompts: List[Prompt], training: bool = False) -> List[Cached]:
+        with (torch.no_grad() if training else torch.inference_mode()):
+            if self.cur_id + len(prompts) > self.max_nodes:
+                raise Exception(f"Insufficient capacity for {len(prompts)} more nodes.")
+            self.add_nodes(prompts)
+            prompt_tokens = []
+            prompt_length = []
+            outputs = []
+            for i, prompt in enumerate(prompts):
+                tokens = self.formatter.encode_dialog(prompt['messages'])
+                outputs.append(Cached({
+                    'id': self.cur_id + i,
+                    'parent_ids': prompt['parent_ids'],
+                    'tokens': tokens,
+                    'length': len(tokens)
+                }))
+                prompt_length.append(len(tokens))
+                prompt_tokens.extend(tokens)
+            if self.cache_len + (new_tokens := sum(prompt_length)) > self.max_seq_len:
+                raise Exception(f"Insufficient capacity for {new_tokens} tokens.")
+            self.prefill(prompt_tokens, prompt_length, start=self.cur_id, end=self.cur_id+len(prompts))
+            self.cur_id += len(prompts)
+            return outputs
 
     @torch.inference_mode()
     def step(
@@ -118,7 +118,7 @@ class Workflow:
 
         header_start = self.cache_len
         headers, header_length, content_prefills = self.build_headers(tasks)
-        prefill_logits = self.prefill(sum(headers, []), header_length, cached_mask=mask)
+        prefill_logits = self.prefill(sum(headers, []), header_length, start=self.cur_id, end=self.cur_id+bsz, cached_mask=mask)
         header_end = self.cache_len
 
         mask = self.dynamic_mask(self.cur_id, self.cur_id + bsz)
@@ -199,6 +199,21 @@ class Workflow:
         self.cur_id += 0 if stateless else bsz
         return outputs
 
+    def train_step(
+        self,
+        tasks: List[Task],           # this should include the fixed portions like header + prefill
+        target_ids: List[List[int]], # and this should include the entire completion, including EOT!
+    ) -> torch.Tensor:
+        bsz = len(tasks)
+        self.add_nodes(tasks)
+        mask = self.dynamic_mask(self.cur_id, self.cur_id + bsz)
+        headers, header_length, _ = self.build_headers(tasks)
+        with torch.no_grad():
+            self.prefill(sum(headers, []), header_length, start=self.cur_id, end=self.cur_id+bsz, cached_mask=mask,)
+        target_logits = self.prefill(sum(target_ids, []), [len(t) for t in target_ids], start=self.cur_id, end=self.cur_id+bsz)
+        self.cur_id += bsz
+        return target_logits
+
     def wrap_outputs(
         self,
         tokens: torch.Tensor,
@@ -255,7 +270,9 @@ class Workflow:
         self,
         _tokens: List[int],
         _length: List[int],
-        cached_mask: Optional[torch.Tensor] = None
+        start: int,
+        end: int,
+        cached_mask: Optional[torch.Tensor] = None,
     ) -> torch.Tensor:
         B = len(_length)
         tokens = torch.tensor(_tokens, device=self.device)

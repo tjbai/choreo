@@ -409,6 +409,7 @@ class LoraTransformer(Transformer):
             layer.attention.wq = LoraLinear(layer.attention.wq, rank)
             layer.attention.wk = LoraLinear(layer.attention.wk, rank)
             layer.attention.wv = LoraLinear(layer.attention.wv, rank)
+            layer.attention.wo = LoraLinear(layer.attention.wo, rank)
 
     def get_trainable_parameters(self):
         yield from (param for param in self.parameters() if param.requires_grad)
