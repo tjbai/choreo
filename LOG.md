@@ -1,0 +1,48 @@
+## 1/22: 1fa3ef5198f225bd7bac009fa8c6ccb9a0a312c7
+
+Results from `sweep_tot`
+
+| Branches | Voters | Trial 0 | Trial 1 | Trial 2 | Trial 3 | Trial 4 |
+| -------- | ------ | ------- | ------- | ------- | ------- | ------- |
+| 2        | 2      | -0.1086 | -0.2173 | -0.1361 | -0.1677 | -0.2137 |
+| 2        | 4      | -0.0122 | -0.0821 | -0.0041 | -0.0823 | -0.3696 |
+| 4        | 2      | -0.0266 | -0.0891 | -0.0618 | -0.1126 | -0.1434 |
+| 4        | 4      | 0.0801  | -0.0339 | 0.0679  | -0.0157 | -0.0189 |
+| 8        | 2      | 0.0427  | -0.0250 | 0.0365  | -0.0512 | 0.0006  |
+| 8        | 4      | 0.2644  | 0.1939  | 0.2186  | 0.1979  | 0.1824  |
+
+|            | 2 Voters | 4 Voters |
+| ---------- | -------- | -------- |
+| 2 Branches | -0.1687  | -0.1101  |
+| 4 Branches | -0.0867  | 0.0159   |
+| 8 Branches | 0.0007   | 0.2114   |
+
+## 1/23: 3a8c2918d22723f0b9ea0859ea99c60f520d15e2
+
+Insert 4/8 trick prompts in random positions, try 100 examples with 4 voters.
+
+Baseline is fooled in _47/100_ while our version is fooled in _71/100_.
+
+## 1/24: f6178cbea9cb0b09fac2ecaa0eab3a8066b4829d
+
+Same setup as above, but with teacher forcing.
+
+Baseline is fooled in 39 and our version in 47.
+
+## 1/25: be8c180d7205c95b1a727a28a8ce851374c3bffa
+
+Teacher force proposals and voters, then generate final solution without any compaction.
+
+The baseline wins in 55/100 cases.
+
+## 1/27: 2cf6ef4896c1c144d5111d8deb16f7fabea86b4a
+
+Same as above, but with compaction and large sample size. Baseline wins 140-110.
+
+## 1/27: 2cf6ef4896c1c144d5111d8deb16f7fabea86b4a
+
+Reran the teacher-forced trick prompt experiment, this time tracking the index.
+
+It does seem plausible that the tricked votes are biased more towards earlier responses, while the baseline is biased more towards late...!
+
+Average for correct is 5.77, while for tricked it is roughly 4.09.

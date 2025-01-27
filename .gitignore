@@ -23,6 +23,7 @@
 !USE_POLICY.md
 !README.md
 !TODO.md
+!LOG.md
 !uv.lock
 !pyproject.toml
 
