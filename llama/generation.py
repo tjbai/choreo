@@ -155,11 +155,12 @@ class Llama:
                 try:
                     eos_idx = toks.index(stop_token)
                     toks = toks[:eos_idx]
-                    probs = probs[:eos_idx] if logprobs else None
+                    probs = probs[:eos_idx+1] if logprobs else None
                 except ValueError:
                     pass
             out_tokens.append(toks)
             out_logprobs.append(probs)
+
         return (out_tokens, out_logprobs if logprobs else None)
 
     def text_completion(
@@ -216,6 +217,7 @@ class Llama:
     def chat_completion(
         self,
         dialogs: List[Dialog],
+        content_prefills: Optional[List[str]] = None,
         temperature: float = 0.6,
         top_p: float = 0.9,
         max_gen_len: Optional[int] = None,
@@ -247,6 +249,11 @@ class Llama:
         prompt_tokens = [
             self.formatter.encode_dialog_prompt(dialog) for dialog in dialogs
         ]
+
+        if content_prefills is not None:
+            assert len(content_prefills) == len(dialogs)
+            for prompt, prefill in zip(prompt_tokens, content_prefills):
+                prompt += self.tokenizer.encode(prefill, bos=False, eos=False)
 
         generation_tokens, generation_logprobs = self.generate(
             prompt_tokens=prompt_tokens,
