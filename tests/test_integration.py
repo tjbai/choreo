@@ -168,7 +168,7 @@ class TestWorkflowIntegration(TestCase):
         self.assertEqual(len(self.model.call_history), 13)
 
     def test_tot_e2e(self):
-        from llama.benchmark.tot import tot_cached
+        from llama.workflows.tot import tot_cached
 
         def mock_decode(_self, tokens):
             return "BEST CHOICE: 1"
