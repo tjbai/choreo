@@ -396,6 +396,8 @@ class LoraLinear(nn.Module):
         nn.init.zeros_(self.lora_up.weight)
 
     def forward(self, x):
+        if self.disable_adapters:
+            return self.base(x)
         return self.base(x) + self.scale * self.lora_up(self.lora_down(x))
 
 class LoraTransformer(Transformer):
@@ -413,3 +415,7 @@ class LoraTransformer(Transformer):
 
     def get_trainable_parameters(self):
         yield from (param for param in self.parameters() if param.requires_grad)
+
+    def set_adapter_state(self, enabled: bool):
+        for layer in self.lora_layers:
+            layer.disable_adapters = not enabled
