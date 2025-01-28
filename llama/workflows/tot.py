@@ -301,6 +301,7 @@ def tot_baseline(llama: Llama, problem: str, branching_factor: int, voters: int)
     ]
     vote_results = llama.chat_completion(
         dialogs=vote_dialogs,
+        content_prefills=['BEST CHOICE: ' for _ in vote_dialogs],
         max_gen_len=256,
         temperature=0.7,
         top_p=0.9,
