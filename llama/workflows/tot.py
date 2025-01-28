@@ -593,9 +593,16 @@ def benchmark_solution_quality(
         "cached_final": workflow.tokenizer.decode(cached_result["final_tokens"])
     }
 
-def load_math_problems(root_dir, split, problem_types):
+def load_math_problems(
+    root_dir: str,
+    split: str,
+    problem_types: Optional[List[str]] = None,
+):
     problems = []
     root = Path(root_dir) / split
+
+    if problem_types is None:
+        problem_types = [d.name for d in root.iterdir() if d.is_dir()]
 
     for problem_type in problem_types:
         type_dir = root / problem_type
@@ -664,3 +671,51 @@ def sweep_tot(
                         json.dump(data, f, indent=2)
 
     return data
+
+def collect_samples(
+    llama: Llama,
+    n_problems: int = 500,
+    samples_per_problem: int = 5,
+    branching_factor: int = 8,
+    voters: int = 4,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
+    seed: int = 42,
+    problem_types: Optional[List[str]] = None,
+    math_path: str = '../data/MATH',
+    split: str = 'train',
+    save_path: str = 'tot_training_data.json',
+) -> Dict:
+    problems = load_math_problems(math_path, split, problem_types)
+    problems = random.sample([p['problem'] for p in problems], n_problems)
+
+    training_data = {
+        'metadata': {
+            'timestamp': datetime.now().isoformat(),
+            'math_path': str(math_path),
+            'split': split,
+            'problem_types': problem_types,
+            'branching_factor': branching_factor,
+            'voters': voters,
+            'temperature': temperature,
+            'top_p': top_p,
+            'samples_per_problem': samples_per_problem
+        },
+        'examples': []
+    }
+
+    for i, problem in enumerate(tqdm(problems, desc="Problems")):
+        tot_result: TotResult = tot_baseline(
+            llama=llama,
+            problem=problem,
+            branching_factor=branching_factor,
+            voters=voters,
+        )
+
+        example = {'problem_idx': i, 'problem': problem['problem'],'result': tot_result}
+        training_data['examples'].append(example)
+
+    with open(save_path, 'w') as f:
+        json.dump(training_data, f)
+
+    return training_data
