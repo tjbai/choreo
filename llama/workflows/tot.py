@@ -495,6 +495,8 @@ def benchmark_tricky_tot(
     )
 
     return {
+        'baseline_votes': baseline_result['votes'],
+        'cached_votes': cached_result['votes'],
         'baseline': baseline_result['chose_trickster'],
         'cached': cached_result['chose_trickster'],
         'trick_indices': trick_indices
