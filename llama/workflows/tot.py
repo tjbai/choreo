@@ -10,7 +10,7 @@ import torch
 from tqdm import tqdm
 
 from llama import Workflow, Llama, Dialog
-from llama.benchmark.benchmark import benchmark, BenchmarkResult
+from llama.workflows.benchmark import benchmark, BenchmarkResult
 
 random.seed(42)
 
@@ -678,7 +678,6 @@ def sweep_tot(
 def collect_samples(
     llama: Llama,
     n_problems: int = 500,
-    samples_per_problem: int = 5,
     branching_factor: int = 8,
     voters: int = 4,
     temperature: float = 1.0,
@@ -702,7 +701,6 @@ def collect_samples(
             'voters': voters,
             'temperature': temperature,
             'top_p': top_p,
-            'samples_per_problem': samples_per_problem
         },
         'examples': []
     }
@@ -715,7 +713,7 @@ def collect_samples(
             voters=voters,
         )
 
-        example = {'problem_idx': i, 'problem': problem['problem'],'result': tot_result}
+        example = {'problem_idx': i, 'problem': problem, 'result': tot_result}
         training_data['examples'].append(example)
 
     with open(save_path, 'w') as f:
