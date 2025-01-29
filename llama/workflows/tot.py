@@ -78,11 +78,20 @@ class TotResult(TypedDict, total=False):
     vote_tokens: Required[List[List[int]]]
     final_tokens: Required[Optional[List[int]]]
     votes: Required[List[int]]
+
+    # only returned by baseline
     proposal_content: List[str]
     vote_content: List[str]
     final_content: Optional[str]
+
+    # trick experiment
     trick_indices: List[int]
     chose_trickster: Optional[bool]
+
+    # serializing logits for distillation
+    proposal_logprobs: List[Optional[List[float]]]
+    vote_logprobs: List[Optional[List[float]]]
+    final_logprobs: Optional[List[float]]
 
 def tot_cached(
     workflow: Workflow,
@@ -272,7 +281,13 @@ def tricky_tot_cached(
         'chose_trickster': chose_trickster
     }
 
-def tot_baseline(llama: Llama, problem: str, branching_factor: int, voters: int) -> TotResult:
+def tot_baseline(
+    llama: Llama,
+    problem: str,
+    branching_factor: int,
+    voters: int,
+    logprobs: bool = False
+) -> TotResult:
     proposal_dialogs: List[Dialog] = [
         [
             {"role": "system", "content": cot_prompt},
@@ -286,6 +301,7 @@ def tot_baseline(llama: Llama, problem: str, branching_factor: int, voters: int)
         temperature=0.7,
         top_p=0.9,
         seed=42,
+        logprobs=logprobs,
     )
 
     vote_user_prompt = f"{format_problem(problem)}\n\nHere are the proposals:"
@@ -306,6 +322,7 @@ def tot_baseline(llama: Llama, problem: str, branching_factor: int, voters: int)
         temperature=0.7,
         top_p=0.9,
         seed=42,
+        logprobs=logprobs,
     )
     votes = [
         choice for resp in vote_results if
@@ -325,15 +342,19 @@ def tot_baseline(llama: Llama, problem: str, branching_factor: int, voters: int)
             temperature=0.7,
             top_p=0.9,
             max_gen_len=256,
+            logprobs=logprobs,
         )
 
     return {
         "proposal_content": [p["generation"]["content"] for p in proposal_results],
         "proposal_tokens": [p["tokens"] for p in proposal_results],
+        "proposal_logprobs": [p.get("logprobs", None) for p in proposal_results],
         "vote_content": [v["generation"]["content"] for v in vote_results],
         "vote_tokens": [v["tokens"] for v in vote_results],
+        "vote_logprobs": [v.get("logprobs", None) for v in vote_results],
         "final_content": final_result["generation"]["content"] if final_result else None,
         "final_tokens": final_result["tokens"] if final_result else None,
+        "final_logprobs": final_result.get("logprobs", None),
         "votes": votes,
     }
 
@@ -677,6 +698,7 @@ def sweep_tot(
 
 def collect_samples(
     llama: Llama,
+    save_dir: str,
     n_problems: int = 500,
     branching_factor: int = 8,
     voters: int = 4,
@@ -686,37 +708,74 @@ def collect_samples(
     problem_types: Optional[List[str]] = None,
     math_path: str = '../data/MATH',
     split: str = 'train',
-    save_path: str = 'tot_training_data.json',
-) -> Dict:
+) -> List[TotResult]:
+    save_dir = Path(save_dir)
+    save_dir.mkdir(parents=True, exist_ok=True)
+    logits_dir = save_dir / 'logits'
+    logits_dir.mkdir(exist_ok=True)
+
+    metadata = {
+        'timestamp': datetime.now().isoformat(),
+        'math_path': str(math_path),
+        'split': split,
+        'problem_types': problem_types,
+        'branching_factor': branching_factor,
+        'voters': voters,
+        'temperature': temperature,
+        'top_p': top_p,
+    }
+
     problems = load_math_problems(math_path, split, problem_types)
     problems = random.sample([p['problem'] for p in problems], n_problems)
 
-    training_data = {
-        'metadata': {
-            'timestamp': datetime.now().isoformat(),
-            'math_path': str(math_path),
-            'split': split,
-            'problem_types': problem_types,
-            'branching_factor': branching_factor,
-            'voters': voters,
-            'temperature': temperature,
-            'top_p': top_p,
-        },
-        'examples': []
-    }
-
+    examples = []
     for i, problem in enumerate(tqdm(problems, desc="Problems")):
-        tot_result: TotResult = tot_baseline(
+        tot_result = tot_baseline(
             llama=llama,
             problem=problem,
             branching_factor=branching_factor,
             voters=voters,
         )
 
-        example = {'problem_idx': i, 'problem': problem, 'result': tot_result}
-        training_data['examples'].append(example)
+        problem_dir = logits_dir / f"problem_{i}"
+        problem_dir.mkdir(exist_ok=True)
 
-    with open(save_path, 'w') as f:
-        json.dump(training_data, f)
+        proposal_paths = []
+        for j, logprobs in enumerate(tot_result["proposal_logprobs"]):
+            path = problem_dir / f"proposal_{j}.pt"
+            torch.save(torch.tensor(logprobs), path)
+            proposal_paths.append(str(path.relative_to(save_dir)))
 
-    return training_data
+        vote_paths = []
+        for j, logprobs in enumerate(tot_result["vote_logprobs"]):
+            path = problem_dir / f"vote_{j}.pt"
+            torch.save(torch.tensor(logprobs), path)
+            vote_paths.append(str(path.relative_to(save_dir)))
+
+        if (logprobs := tot_result["final_logprobs"]) is not None:
+            final_path = problem_dir / "final.pt"
+            torch.save(torch.tensor(logprobs), final_path)
+            final_path = str(final_path.relative_to(save_dir))
+        else:
+            final_path = None
+
+        result = {k: v for k, v in tot_result.items() if not k.endswith('_logprobs')}
+        result.update({
+            'proposal_logprobs_paths': proposal_paths,
+            'vote_logprobs_paths': vote_paths,
+            'final_logprobs_paths': final_path,
+        })
+
+        examples.append({
+            'problem_idx': i,
+            'problem': problem,
+            'result':result
+        })
+
+    with open(save_dir / 'metadata.json', 'w') as f:
+        json.dump(metadata, f)
+
+    with open(save_dir / 'index.json', 'w') as f:
+        json.dump(examples, f)
+
+    return examples
