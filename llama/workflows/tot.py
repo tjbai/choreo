@@ -711,9 +711,7 @@ def collect_samples(
 ) -> List[TotResult]:
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
-    logits_dir = save_dir / 'logits'
-    logits_dir.mkdir(exist_ok=True)
-
+    
     metadata = {
         'timestamp': datetime.now().isoformat(),
         'math_path': str(math_path),
@@ -735,47 +733,24 @@ def collect_samples(
             problem=problem,
             branching_factor=branching_factor,
             voters=voters,
+            logprobs=True,
         )
+        
+        tot_result["proposal_logprobs"] = [torch.tensor(l) for l in tot_result["proposal_logprobs"]]
+        tot_result["vote_logprobs"] = [torch.tensor(l) for l in tot_result["vote_logprobs"]]
+        if tot_result["final_logprobs"] is not None:
+            tot_result["final_logprobs"] = torch.tensor(tot_result["final_logprobs"])
 
-        problem_dir = logits_dir / f"problem_{i}"
-        problem_dir.mkdir(exist_ok=True)
-
-        proposal_paths = []
-        for j, logprobs in enumerate(tot_result["proposal_logprobs"]):
-            path = problem_dir / f"proposal_{j}.pt"
-            torch.save(torch.tensor(logprobs), path)
-            proposal_paths.append(str(path.relative_to(save_dir)))
-
-        vote_paths = []
-        for j, logprobs in enumerate(tot_result["vote_logprobs"]):
-            path = problem_dir / f"vote_{j}.pt"
-            torch.save(torch.tensor(logprobs), path)
-            vote_paths.append(str(path.relative_to(save_dir)))
-
-        if (logprobs := tot_result["final_logprobs"]) is not None:
-            final_path = problem_dir / "final.pt"
-            torch.save(torch.tensor(logprobs), final_path)
-            final_path = str(final_path.relative_to(save_dir))
-        else:
-            final_path = None
-
-        result = {k: v for k, v in tot_result.items() if not k.endswith('_logprobs')}
-        result.update({
-            'proposal_logprobs_paths': proposal_paths,
-            'vote_logprobs_paths': vote_paths,
-            'final_logprobs_paths': final_path,
-        })
-
-        examples.append({
+        example = {
             'problem_idx': i,
             'problem': problem,
-            'result':result
-        })
+            'result': tot_result
+        }
+        
+        torch.save(example, save_dir / f"problem_{i}.pt")
+        examples.append(example)
 
     with open(save_dir / 'metadata.json', 'w') as f:
         json.dump(metadata, f)
-
-    with open(save_dir / 'index.json', 'w') as f:
-        json.dump(examples, f)
 
     return examples
