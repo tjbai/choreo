@@ -32,16 +32,20 @@ class Llama:
         max_batch_size: int,
         model_parallel_size: Optional[int] = None,
         seed: int = 1,
+        use_lora: bool = False,
+        lora_rank: Optional[int] = None,
+        lora_alpha: Optional[int] = None,
     ) -> "Llama":
         model, tokenizer = load_model_and_tokenizer(
             ckpt_dir=ckpt_dir,
             tokenizer_path=tokenizer_path,
             max_seq_len=max_seq_len,
             max_batch_size=max_batch_size,
-            model_class=Transformer,
             model_parallel_size=model_parallel_size,
             seed=seed,
-            strict=True
+            use_lora=use_lora,
+            lora_rank=lora_rank,
+            lora_alpha=lora_alpha,
         )
 
         return Llama(model, tokenizer)

@@ -10,7 +10,6 @@ from torch.optim import AdamW
 from torch.utils.data import Dataset
 
 from llama import Workflow
-from llama.model import LoraTransformer
 from llama.util import load_model_and_tokenizer
 from llama.workflows.tot import cot_prompt, finish_prompt, format_vote_system_prompt, format_problem
 
@@ -29,14 +28,14 @@ class TotDataset(Dataset):
 
 class LoraTrainer:
     def __init__(self, workflow: Workflow):
+        self.workflow = workflow
         self.model = self.workflow.model
         self.tokenizer = self.workflow.tokenizer
-        self.workflow = workflow
         self.optimizer = AdamW(self.model.get_trainable_parameters(), lr=2e-5)
 
         num_trainable = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         num_total = sum(p.numel() for p in self.model.parameters())
-        print(f"Training {num_trainable/1e9:.1f}B / {num_total/1e9:.1f}B parameters")
+        print(f"Training {num_trainable/1e6:.1f}M / {num_total/1e9:.1f}B parameters")
 
     @abstractmethod
     def step(self, sample: Any) -> Any:
@@ -85,8 +84,8 @@ class TotTrainer(LoraTrainer):
              'parent_ids': [vote['id']] + [p['id'] for p in proposal_nodes]}
             for i in range(self.voters)
         ]
-        vote_target_ids = [p + [self.eot_id] for p in sample['result']['proposal_tokens']]
-        vote_logprobs = self.workflow.train_step(vote_tasks, vote_target_ids)
+        vote_target_ids = [p + [self.eot_id] for p in sample['result']['vote_tokens']]
+        _, vote_logprobs = self.workflow.train_step(vote_tasks, vote_target_ids)
 
         votes = [v for v in sample['result']['votes'] if v is not None]
         best = Counter(votes).most_common(1)[0][0]
@@ -97,7 +96,7 @@ class TotTrainer(LoraTrainer):
             'parent_ids': [finish['id'], proposal_nodes[best - 1]['id']]
         }
         final_target_ids = sample['result']['final_tokens'] + [self.eot_id]
-        final_logprobs = self.workflow.train_step([final_task], [final_target_ids])
+        _, final_logprobs = self.workflow.train_step([final_task], [final_target_ids])
 
         return proposal_logprobs, vote_logprobs, final_logprobs
 
@@ -117,21 +116,27 @@ def finetune(
     log_to_wandb: bool = True
 ):
     # TODO -- load config and data
+    
+    # TODO -- set parameters by config
+    
+    os.environ["RANK"] = "0"
+    os.environ["WORLD_SIZE"] = "1"
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = "29500"
 
-    model, tokenizer = load_model_and_tokenizer(
-        ckpt_dir=ckpt_dir,
-        tokenizer_path=tokenizer_path,
-        model_class=LoraTransformer,
-        # TODO -- figure out min size for these empirically
+    workflow = Workflow.build(
+        ckpt_dir='/scratch4/jeisner1/tjbai/llama_8b',
+        tokenizer_path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model',
         max_seq_len=4096,
         max_batch_size=1,
+        model_parallel_size=1,
+        max_nodes=20,
+        use_lora=True,
+        lora_rank=8,
+        lora_alpha=16,
     )
-    workflow = Workflow(
-        model=model,
-        tokenizer=tokenizer,
-        max_nodes=15,
-    )
-    trainer = LoraTrainer(workflow)
+
+    trainer = TotTrainer(workflow)
 
     # TODO
     if log_to_wandb:

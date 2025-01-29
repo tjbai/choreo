@@ -214,7 +214,6 @@ class FeedForward(nn.Module):
     ):
         super().__init__()
         hidden_dim = int(2 * hidden_dim / 3)
-        # custom dim factor multiplier
         if ffn_dim_multiplier is not None:
             hidden_dim = int(ffn_dim_multiplier * hidden_dim)
         hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
@@ -271,6 +270,7 @@ class Transformer(nn.Module):
         self.params = params
         self.vocab_size = params.vocab_size
         self.n_layers = params.n_layers
+        self.is_lora = False
 
         model_parallel_size = fs_init.get_model_parallel_world_size()
         self.n_kv_heads = params.n_heads if params.n_kv_heads is None else params.n_kv_heads
@@ -321,6 +321,33 @@ class Transformer(nn.Module):
             params.max_seq_len * 2,
             params.rope_theta,
         )
+        
+    def convert_to_lora(self, rank=8, alpha=16):
+        self.is_lora = True
+        
+        for param in self.parameters():
+            param.requires_grad = False
+
+        for layer in self.layers:
+            layer.attention.wq = LoraLinear(layer.attention.wq, rank, alpha)
+            layer.attention.wk = LoraLinear(layer.attention.wk, rank, alpha)
+            layer.attention.wv = LoraLinear(layer.attention.wv, rank, alpha)
+            layer.attention.wo = LoraLinear(layer.attention.wo, rank, alpha)
+            
+    def get_trainable_parameters(self):
+        yield from (param for param in self.parameters() if param.requires_grad)
+        
+    def get_trainable_param_percentage(self):
+        total_params = sum(p.numel() for p in self.parameters())
+        trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
+        return (trainable_params / total_params) * 100 if total_params > 0 else 0
+
+    def set_adapter_state(self, enabled: bool):
+        for layer in self.layers:
+            for name in ['wq', 'wk', 'wv', 'wo']:
+                adapter = getattr(layer.attention, name)
+                if hasattr(adapter, 'disable_adapters'):
+                    adapter.disable_adapters = not enabled
 
     # TODO -- for training this would ideally happen in-place without breaking autograd
     def reposition_cache(self, where: torch.Tensor, from_pos: torch.Tensor, to_pos: torch.Tensor):
@@ -383,15 +410,23 @@ class Transformer(nn.Module):
         return self.output(self.norm(h)).float()
 
 class LoraLinear(nn.Module):
-    def __init__(self, base_layer: nn.Linear, rank=8, alpha=16):
+    def __init__(self, base_layer, rank=8, alpha=16):
         super().__init__()
         self.base = base_layer
-
-        in_dim, out_dim = base_layer.weight.shape
-        self.lora_down = nn.Linear(in_dim, rank, bias=False)
-        self.lora_up = nn.Linear(rank, out_dim, bias=False)
+        self.disable_adapters = False
+        
+        model_parallel_size = fs_init.get_model_parallel_world_size()
+        in_dim = base_layer.weight.shape[1]
+        out_dim = base_layer.weight.shape[0] * model_parallel_size if isinstance(base_layer, ColumnParallelLinear) else base_layer.weight.shape[0]
+        
+        if isinstance(base_layer, ColumnParallelLinear):
+            self.lora_down = ColumnParallelLinear(in_dim, rank, bias=False).to(base_layer.weight.device)
+            self.lora_up = ColumnParallelLinear(rank, out_dim, bias=False).to(base_layer.weight.device)
+        else:
+            self.lora_down = RowParallelLinear(in_dim, rank, bias=False).to(base_layer.weight.device)
+            self.lora_up = RowParallelLinear(rank, out_dim, bias=False).to(base_layer.weight.device)
         self.scale = alpha / rank
-
+        
         nn.init.kaiming_uniform_(self.lora_down.weight)
         nn.init.zeros_(self.lora_up.weight)
 
@@ -399,23 +434,3 @@ class LoraLinear(nn.Module):
         if self.disable_adapters:
             return self.base(x)
         return self.base(x) + self.scale * self.lora_up(self.lora_down(x))
-
-class LoraTransformer(Transformer):
-    def __init__(self, params: ModelArgs, rank=8):
-        super().__init__(params)
-
-        for param in self.parameters():
-            param.requires_grad = False
-
-        for layer in self.layers:
-            layer.attention.wq = LoraLinear(layer.attention.wq, rank)
-            layer.attention.wk = LoraLinear(layer.attention.wk, rank)
-            layer.attention.wv = LoraLinear(layer.attention.wv, rank)
-            layer.attention.wo = LoraLinear(layer.attention.wo, rank)
-
-    def get_trainable_parameters(self):
-        yield from (param for param in self.parameters() if param.requires_grad)
-
-    def set_adapter_state(self, enabled: bool):
-        for layer in self.lora_layers:
-            layer.disable_adapters = not enabled
