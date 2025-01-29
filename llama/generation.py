@@ -108,7 +108,7 @@ class Llama:
                 reduction="none",
                 ignore_index=pad_id,
             )
-
+        
         stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens))
 
         generator = torch.Generator(device="cuda").manual_seed(seed) if seed else None
