@@ -254,6 +254,8 @@ class Llama:
             assert len(content_prefills) == len(dialogs)
             for prompt, prefill in zip(prompt_tokens, content_prefills):
                 prompt += self.tokenizer.encode(prefill, bos=False, eos=False)
+        else:
+            content_prefills = ['' for _ in dialogs]
 
         generation_tokens, generation_logprobs = self.generate(
             prompt_tokens=prompt_tokens,
@@ -268,22 +270,26 @@ class Llama:
                 {
                     "generation": {
                         "role": "assistant",
-                        "content": self.tokenizer.decode(tokens),
+                        "content": prefill + self.tokenizer.decode(tokens),
                     },
                     "tokens": tokens,
                     "logprobs": logprobs,
                 }
-                for tokens, logprobs in zip(generation_tokens, generation_logprobs)
+                for tokens, prefill, logprobs in zip(
+                    generation_tokens,
+                    content_prefills,
+                    generation_logprobs
+                )
             ]
         return [
             {
                 "generation": {
                     "role": "assistant",
-                    "content": self.tokenizer.decode(tokens),
+                    "content": prefill + self.tokenizer.decode(tokens),
                 },
                 "tokens": tokens
             }
-            for tokens in generation_tokens
+            for tokens, prefill in zip(generation_tokens, content_prefills)
         ]
 
 
