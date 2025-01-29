@@ -29,3 +29,6 @@
 
 # misc
 !tokenizer.model
+!dumps/
+!dumps/*.json
+!dumps/*.md
