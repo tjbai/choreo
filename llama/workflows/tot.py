@@ -104,18 +104,18 @@ def tot_cached(
     final_force: Optional[torch.Tensor] = None,    # (1, N)
 ) -> TotResult:
     cot, vote, finish = workflow.insert([
-        {
-            'messages': [{'role': 'system', 'content': cot_prompt}, {'role': 'user', 'content': format_problem(problem)}],
-            'parent_ids': []
-        },
-        {
-            'messages': [{'role': 'system', 'content': format_vote_system_prompt(branching_factor)}, {'role': 'user', 'content': format_problem(problem)}],
-            'parent_ids': []
-        },
-        {
-            'messages': [{'role': 'system', 'content': finish_prompt}, {'role': 'user', 'content': format_problem(problem)}],
-            'parent_ids': []
-        },
+        {'messages': [
+            {'role': 'system', 'content': cot_prompt},
+            {'role': 'user', 'content': format_problem(problem)}
+        ], 'parent_ids': []},
+        {'messages': [
+            {'role': 'system', 'content': format_vote_system_prompt(branching_factor)},
+            {'role': 'user', 'content': format_problem(problem)}
+        ], 'parent_ids': []},
+        {'messages': [
+            {'role': 'system', 'content': finish_prompt},
+            {'role': 'user', 'content': format_problem(problem)}
+        ], 'parent_ids': []},
     ])
 
     proposal_tokens, proposal_nodes = workflow.step(
@@ -197,22 +197,22 @@ def tricky_tot_cached(
     proposal_force: Optional[torch.Tensor] = None,
 ) -> TotResult:
     cot, trick, vote, finish = workflow.insert([
-        {
-            'messages': [{'role': 'system', 'content': cot_prompt}, {'role': 'user', 'content': format_problem(problem)}],
-            'parent_ids': []
-        },
-        {
-            'messages': [{'role': 'system', 'content': trick_prompt}, {'role': 'user', 'content': format_problem(problem)}],
-            'parent_ids': []
-        },
-        {
-            'messages': [{'role': 'system', 'content': format_vote_system_prompt(branching_factor)}, {'role': 'user', 'content': format_problem(problem)}],
-            'parent_ids': []
-        },
-        {
-            'messages': [{'role': 'system', 'content': finish_prompt}, {'role': 'user', 'content': format_problem(problem)}],
-            'parent_ids': []
-        },
+        {'messages': [
+            {'role': 'system', 'content': cot_prompt},
+            {'role': 'user', 'content': format_problem(problem)}
+        ], 'parent_ids': []},
+        {'messages': [
+            {'role': 'system', 'content': trick_prompt},
+            {'role': 'user', 'content': format_problem(problem)}
+        ], 'parent_ids': []},
+        {'messages': [
+            {'role': 'system', 'content': format_vote_system_prompt(branching_factor)},
+            {'role': 'user', 'content': format_problem(problem)}
+        ], 'parent_ids': []},
+        {'messages': [
+            {'role': 'system', 'content': finish_prompt},
+            {'role': 'user', 'content': format_problem(problem)}
+        ], 'parent_ids': []},
     ])
 
     proposal_tokens, proposal_nodes = workflow.step(
@@ -711,7 +711,7 @@ def collect_samples(
 ) -> List[TotResult]:
     save_dir = Path(save_dir)
     save_dir.mkdir(parents=True, exist_ok=True)
-    
+
     metadata = {
         'timestamp': datetime.now().isoformat(),
         'math_path': str(math_path),
@@ -735,7 +735,9 @@ def collect_samples(
             voters=voters,
             logprobs=True,
         )
-        
+
+        # these are just the logprobs and not actually the full distribution, I realized
+        # so honestly, not worth all the work we juts did, but it's fine
         tot_result["proposal_logprobs"] = [torch.tensor(l) for l in tot_result["proposal_logprobs"]]
         tot_result["vote_logprobs"] = [torch.tensor(l) for l in tot_result["vote_logprobs"]]
         if tot_result["final_logprobs"] is not None:
@@ -746,7 +748,7 @@ def collect_samples(
             'problem': problem,
             'result': tot_result
         }
-        
+
         torch.save(example, save_dir / f"problem_{i}.pt")
         examples.append(example)
 
