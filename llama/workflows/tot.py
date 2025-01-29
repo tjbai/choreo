@@ -141,7 +141,7 @@ def tot_cached(
             {
                 'header': ('assistant', None),
                 'prefill': 'BEST CHOICE: ' if voter_force is None else None,
-                'parent_ids': [vote['id']] + list([p['id'] for p in proposal_nodes]),
+                'parent_ids': [vote['id']] + [p['id'] for p in proposal_nodes],
             }
             for _ in range(voters)
         ],

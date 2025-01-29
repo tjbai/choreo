@@ -6,6 +6,7 @@ from collections import Counter
 
 import wandb
 import torch
+import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.utils.data import Dataset
 
@@ -51,9 +52,6 @@ class TotTrainer(LoraTrainer):
     def step(self, sample: Dict):
         self.workflow.reset()
 
-        total_loss = 0.0
-        metrics = {}
-
         cot, vote, finish = self.workflow.insert([
             {'messages': [
                 {'role': 'system', 'content': cot_prompt},
@@ -97,8 +95,25 @@ class TotTrainer(LoraTrainer):
         }
         final_target_ids = sample['result']['final_tokens'] + [self.eot_id]
         _, final_logprobs = self.workflow.train_step([final_task], [final_target_ids])
+        
+        proposal_targets = torch.tensor(sum(target_proposal_ids, []), device='cuda')
+        vote_targets = torch.tensor(sum(vote_target_ids, []), device='cuda')
+        final_targets = torch.tensor(final_target_ids, device='cuda')
+        
+        proposal_loss = F.cross_entropy(proposal_logprobs.squeeze(0), proposal_targets)
+        vote_loss = F.cross_entropy(vote_logprobs.squeeze(0), vote_targets)
+        final_loss = F.cross_entropy(final_logprobs.squeeze(0), final_targets)
+            
+        total_loss = proposal_loss + vote_loss + final_loss
 
-        return proposal_logprobs, vote_logprobs, final_logprobs
+        metrics = {
+            'loss/proposals': proposal_loss.item(),
+            'loss/votes': vote_loss.item(),
+            'loss/final': final_loss.item(),
+            'loss/total': total_loss.item()
+        }
+        
+        return total_loss, metrics
 
 def save_checkpoint(trainer: LoraTrainer, epoch: int, output_dir: str):
     Path(output_dir).mkdir(exist_ok=True)

@@ -380,9 +380,8 @@ class Transformer(nn.Module):
         for i, layer in enumerate(self.layers):
             layer.attention.cache_k = self.cache_k[i]
             layer.attention.cache_v = self.cache_v[i]
-
-    @torch.inference_mode()
-    def forward(
+            
+    def _forward(
         self,
         tokens: torch.Tensor,
         start_pos: int,
@@ -408,6 +407,19 @@ class Transformer(nn.Module):
             h = layer(h, start_pos, freqs_cis, mask)
 
         return self.output(self.norm(h)).float()
+
+    def forward(
+        self,
+        tokens: torch.Tensor,
+        start_pos: int,
+        mask: Optional[torch.Tensor] = None,
+        position_ids: Optional[torch.Tensor] = None
+    ):
+        if not self.training:
+            with torch.inference_mode():
+                return self._forward(tokens, start_pos, mask, position_ids)
+        else:
+            return self._forward(tokens, start_pos, mask, position_ids)
 
 class LoraLinear(nn.Module):
     def __init__(self, base_layer, rank=8, alpha=16):
