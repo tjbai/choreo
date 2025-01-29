@@ -7,8 +7,9 @@
 !llama/**/*.py
 !tests/
 !tests/**/*.py
-!examples
-!examples/**.{py,ipynb}
+!examples/
+!examples/**/*.py
+!examples/**/*.ipynb
 !run_tests.sh
 !type_check.sh
 !figures
