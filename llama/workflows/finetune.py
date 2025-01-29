@@ -47,6 +47,7 @@ class TotTrainer(LoraTrainer):
         super().__init__(workflow)
         self.branching_factor = branching_factor
         self.voters = voters
+        self.eot_id = self.workflow.tokenizer.eot_id
 
     def step(self, sample: Dict):
         self.workflow.reset()
@@ -69,39 +70,36 @@ class TotTrainer(LoraTrainer):
             ], 'parent_ids': []},
         ])
 
-        # TODO TOMORROW -- handle the EOT. we're fading KD for now.
-
-        proposal_tokens = sample['result']['proposal_tokens']
         proposal_tasks = [
             {'header': ('assistant', None),
              'prefill': f'Solution #{i+1}:\n\n',
              'parent_ids': [cot['id']]}
             for i in range(self.branching_factor)
         ]
-        proposal_logprobs = self.workflow.train_step(proposal_tasks, proposal_tokens)
+        target_proposal_ids = [p + [self.eot_id] for p in sample['result']['proposal_tokens']]
+        proposal_nodes, proposal_logprobs = self.workflow.train_step(proposal_tasks, target_proposal_ids)
 
-        vote_tokens = sample['result']['vote_tokens']
         vote_tasks = [
             {'header': ('assistant', None),
              'prefill': 'BEST CHOICE: ',
-             'parent_ids': [vote['id']] + list(range(self.workflow.cur_id - self.branching_factor, self.workflow.cur_id))}
-            for _ in range(self.voters)
+             'parent_ids': [vote['id']] + [p['id'] for p in proposal_nodes]}
+            for i in range(self.voters)
         ]
-        voter_logprobs = self.workflow.train_step(vote_tasks, vote_tokens)
+        vote_target_ids = [p + [self.eot_id] for p in sample['result']['proposal_tokens']]
+        vote_logprobs = self.workflow.train_step(vote_tasks, vote_target_ids)
 
-        if sample['result']['final_logprobs'] is not None:
-            final_tokens = sample['result']['final_tokens']
-            votes = [v for v in sample['result']['votes'] if v is not None]
-            assert len(votes) > 0
-            best = Counter(votes).most_common(1)[0][0]
-            final_tasks = [
-                {'header': ('assistant', None),
-                'prefill': None,
-                'parent_ids': [finish['id']] + [self.workflow.cur_id - self.branching_factor - self.voters + best - 1]}
-            ]
-            student_final_logprobs = self.workflow.train_step(final_tasks, [final_tokens])
+        votes = [v for v in sample['result']['votes'] if v is not None]
+        best = Counter(votes).most_common(1)[0][0]
 
-        return None # TODO
+        final_task = {
+            'header': ('assistant', None),
+            'prefill': None,
+            'parent_ids': [finish['id'], proposal_nodes[best - 1]['id']]
+        }
+        final_target_ids = sample['result']['final_tokens'] + [self.eot_id]
+        final_logprobs = self.workflow.train_step([final_task], [final_target_ids])
+
+        return proposal_logprobs, vote_logprobs, final_logprobs
 
 def save_checkpoint(trainer: LoraTrainer, epoch: int, output_dir: str):
     Path(output_dir).mkdir(exist_ok=True)

@@ -203,7 +203,7 @@ class Workflow:
         self,
         tasks: List[Task],           # this should include the fixed portions like header + prefill
         target_ids: List[List[int]], # and this should include the entire completion, including EOT!
-    ) -> torch.Tensor:
+    ) -> Tuple[List[Cached], torch.Tensor]:
         bsz = len(tasks)
         self.add_nodes(tasks)
         mask = self.dynamic_mask(self.cur_id, self.cur_id + bsz)
@@ -211,8 +211,14 @@ class Workflow:
         with torch.no_grad():
             self.prefill(sum(headers, []), header_length, start=self.cur_id, end=self.cur_id+bsz, cached_mask=mask,)
         target_logits = self.prefill(sum(target_ids, []), [len(t) for t in target_ids], start=self.cur_id, end=self.cur_id+bsz)
+        outputs = [Cached({
+            'id': self.cur_id + i,
+            'parent_ids': task['parent_ids'],
+            'tokens': target,
+            'length': len(target)
+        }) for i, (task, target) in enumerate(zip(tasks, target_ids))]
         self.cur_id += bsz
-        return target_logits
+        return outputs, target_logits
 
     def wrap_outputs(
         self,
