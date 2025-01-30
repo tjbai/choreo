@@ -321,10 +321,10 @@ class Transformer(nn.Module):
             params.max_seq_len * 2,
             params.rope_theta,
         )
-        
+
     def convert_to_lora(self, rank=8, alpha=16):
         self.is_lora = True
-        
+
         for param in self.parameters():
             param.requires_grad = False
 
@@ -333,10 +333,10 @@ class Transformer(nn.Module):
             layer.attention.wk = LoraLinear(layer.attention.wk, rank, alpha)
             layer.attention.wv = LoraLinear(layer.attention.wv, rank, alpha)
             layer.attention.wo = LoraLinear(layer.attention.wo, rank, alpha)
-            
+
     def get_trainable_parameters(self):
         yield from (param for param in self.parameters() if param.requires_grad)
-        
+
     def get_trainable_param_percentage(self):
         total_params = sum(p.numel() for p in self.parameters())
         trainable_params = sum(p.numel() for p in self.parameters() if p.requires_grad)
@@ -380,7 +380,7 @@ class Transformer(nn.Module):
         for i, layer in enumerate(self.layers):
             layer.attention.cache_k = self.cache_k[i]
             layer.attention.cache_v = self.cache_v[i]
-            
+
     def _forward(
         self,
         tokens: torch.Tensor,
@@ -426,11 +426,11 @@ class LoraLinear(nn.Module):
         super().__init__()
         self.base = base_layer
         self.disable_adapters = False
-        
+
         model_parallel_size = fs_init.get_model_parallel_world_size()
-        in_dim = base_layer.weight.shape[1]
-        out_dim = base_layer.weight.shape[0] * model_parallel_size if isinstance(base_layer, ColumnParallelLinear) else base_layer.weight.shape[0]
-        
+        in_dim = base_layer.in_features
+        out_dim = base_layer.out_features
+
         if isinstance(base_layer, ColumnParallelLinear):
             self.lora_down = ColumnParallelLinear(in_dim, rank, bias=False).to(base_layer.weight.device)
             self.lora_up = ColumnParallelLinear(rank, out_dim, bias=False).to(base_layer.weight.device)
@@ -438,7 +438,7 @@ class LoraLinear(nn.Module):
             self.lora_down = RowParallelLinear(in_dim, rank, bias=False).to(base_layer.weight.device)
             self.lora_up = RowParallelLinear(rank, out_dim, bias=False).to(base_layer.weight.device)
         self.scale = alpha / rank
-        
+
         nn.init.kaiming_uniform_(self.lora_down.weight)
         nn.init.zeros_(self.lora_up.weight)
 
