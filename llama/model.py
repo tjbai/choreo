@@ -329,10 +329,10 @@ class Transformer(nn.Module):
             param.requires_grad = False
 
         for layer in self.layers:
-            layer.attention.wq = LoraColumnParallelLinear(layer.attention.wq, rank, alpha)
-            layer.attention.wk = LoraColumnParallelLinear(layer.attention.wk, rank, alpha)
-            layer.attention.wv = LoraColumnParallelLinear(layer.attention.wv, rank, alpha)
-            layer.attention.wo = LoraColumnParallelLinear(layer.attention.wo, rank, alpha)
+            layer.attention.wq = LoraLinear(layer.attention.wq, rank, alpha)
+            layer.attention.wk = LoraLinear(layer.attention.wk, rank, alpha)
+            layer.attention.wv = LoraLinear(layer.attention.wv, rank, alpha)
+            layer.attention.wo = LoraLinear(layer.attention.wo, rank, alpha)
 
     def get_trainable_parameters(self):
         yield from (param for param in self.parameters() if param.requires_grad)
@@ -421,18 +421,22 @@ class Transformer(nn.Module):
         else:
             return self._forward(tokens, start_pos, mask, position_ids)
 
-class LoraColumnParallelLinear(nn.Module):
-    def __init__(self, base_layer: ColumnParallelLinear, rank=8, alpha=16):
+class LoraLinear(nn.Module):
+    def __init__(self, base_layer, rank=8, alpha=16):
         super().__init__()
         self.base = base_layer
         self.disable_adapters = False
 
-        # implicit column parallel
-        in_dim = base_layer.in_features
-        out_dim = base_layer.output_size_per_partition
+        base_class = type(base_layer)
+        if base_class == ColumnParallelLinear:
+            in_dim = base_layer.in_features
+            out_dim = base_layer.output_size_per_partition
+        else:
+            in_dim = base_layer.input_size_per_partition
+            out_dim = base_layer.out_features
 
-        self.lora_down = ColumnParallelLinear(in_dim, rank, bias=False).to(base_layer.weight.device)
-        self.lora_up = ColumnParallelLinear(rank, out_dim, bias=False).to(base_layer.weight.device)
+        self.lora_down = base_class(in_dim, rank, bias=False).to(base_layer.weight.device)
+        self.lora_up = base_class(rank, out_dim, bias=False).to(base_layer.weight.device)
         self.scale = alpha / rank
 
         nn.init.kaiming_uniform_(self.lora_down.weight)
