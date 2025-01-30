@@ -1,6 +1,7 @@
 import warnings
 from typing_extensions import Required
 from typing import Sequence, List, TypedDict, Tuple, Optional
+from contextlib import nullcontext
 
 import torch
 
@@ -64,7 +65,7 @@ class Workflow:
 
     # TODO -- we should make this lazy
     def insert(self, prompts: List[Prompt], training: bool = False) -> List[Cached]:
-        with (torch.no_grad() if training else torch.inference_mode()):
+        with (nullcontext() if training else torch.inference_mode()):
             if self.cur_id + len(prompts) > self.max_nodes:
                 raise Exception(f"Insufficient capacity for {len(prompts)} more nodes.")
             self.add_nodes(prompts)
@@ -201,16 +202,17 @@ class Workflow:
 
     def train_step(
         self,
-        tasks: List[Task],           # this should include the fixed portions like header + prefill
-        target_ids: List[List[int]], # and this should include the entire completion, including EOT!
+        tasks: List[Task],
+        target_ids: List[List[int]],
     ) -> Tuple[List[Cached], torch.Tensor]:
         bsz = len(tasks)
         self.add_nodes(tasks)
         mask = self.dynamic_mask(self.cur_id, self.cur_id + bsz)
         headers, header_length, _ = self.build_headers(tasks)
-        with torch.no_grad():
-            self.prefill(sum(headers, []), header_length, start=self.cur_id, end=self.cur_id+bsz, cached_mask=mask,)
-        target_logits = self.prefill(sum(target_ids, []), [len(t) for t in target_ids], start=self.cur_id, end=self.cur_id+bsz)
+        header_logits = self.prefill(sum(headers, []), header_length, start=self.cur_id, end=self.cur_id+bsz, cached_mask=mask)
+        header_ends = torch.cumsum(torch.tensor(header_length, device=self.device), dim=0) - 1
+        first_logits = header_logits[:, header_ends]
+        target_logits = self.prefill(sum((t[:-1] for t in target_ids), []), [len(t) - 1 for t in target_ids], start=self.cur_id, end=self.cur_id+bsz)
         outputs = [Cached({
             'id': self.cur_id + i,
             'parent_ids': task['parent_ids'],
@@ -218,7 +220,8 @@ class Workflow:
             'length': len(target)
         }) for i, (task, target) in enumerate(zip(tasks, target_ids))]
         self.cur_id += bsz
-        return outputs, target_logits
+        combined_logits = torch.cat([first_logits, target_logits], dim=1)
+        return outputs, combined_logits
 
     def wrap_outputs(
         self,
@@ -298,7 +301,7 @@ class Workflow:
             grouped_causal_mask(node_ids)
         ])
         position_ids = incremental_sequence_with_offset(node_pos_ids, length)
-
+        
         logits = self.model.forward(
             tokens=tokens.unsqueeze(0),
             start_pos=self.cache_len,

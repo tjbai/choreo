@@ -1,6 +1,6 @@
 import json
 from pathlib import Path
-from typing import Dict, Any
+from typing import Dict, Any, List
 from abc import abstractmethod
 from collections import Counter
 
@@ -26,6 +26,11 @@ class TotDataset(Dataset):
 
     def __getitem__(self, idx) -> Dict:
         return torch.load(self.problem_paths[idx])
+
+# this is a hack to match the header prefill -> content prefill setup we have
+# a more principled way would be to just do one big prefill step and mask out the irrelevant header tokens
+def reorder_targets(target_ids: List[List[int]]) -> torch.Tensor:
+    return torch.tensor([t[0] for t in target_ids] + sum((t[1:] for t in target_ids), []), device='cuda')
 
 class LoraTrainer:
     def __init__(self, workflow: Workflow):
@@ -65,15 +70,26 @@ class TotTrainer(LoraTrainer):
                 {'role': 'system', 'content': finish_prompt},
                 {'role': 'user', 'content': format_problem(sample['problem'])}
             ], 'parent_ids': []},
-        ])
-
+        ], training=True)
+        
+        target_proposal_ids = [p + [self.eot_id] for p in sample['result']['proposal_tokens']]
+        vote_target_ids = [p + [self.eot_id] for p in sample['result']['vote_tokens']]
+        final_target_ids = sample['result']['final_tokens'] + [self.eot_id]
+        
+        # hacky. see above comment.
+        proposal_targets = reorder_targets(target_proposal_ids)
+        vote_targets = reorder_targets(vote_target_ids)
+        final_targets = torch.tensor(final_target_ids, device='cuda')
+        # proposal_targets = torch.tensor(sum(target_proposal_ids, []), device='cuda')
+        # vote_targets = torch.tensor(sum(vote_target_ids, []), device='cuda')
+        # final_targets = torch.tensor(final_target_ids, device='cuda')
+        
         proposal_tasks = [
             {'header': ('assistant', None),
              'prefill': f'Solution #{i+1}:\n\n',
              'parent_ids': [cot['id']]}
             for i in range(self.branching_factor)
         ]
-        target_proposal_ids = [p + [self.eot_id] for p in sample['result']['proposal_tokens']]
         proposal_nodes, proposal_logprobs = self.workflow.train_step(proposal_tasks, target_proposal_ids)
 
         vote_tasks = [
@@ -82,23 +98,17 @@ class TotTrainer(LoraTrainer):
              'parent_ids': [vote['id']] + [p['id'] for p in proposal_nodes]}
             for i in range(self.voters)
         ]
-        vote_target_ids = [p + [self.eot_id] for p in sample['result']['vote_tokens']]
         _, vote_logprobs = self.workflow.train_step(vote_tasks, vote_target_ids)
 
         votes = [v for v in sample['result']['votes'] if v is not None]
         best = Counter(votes).most_common(1)[0][0]
-
         final_task = {
             'header': ('assistant', None),
             'prefill': None,
             'parent_ids': [finish['id'], proposal_nodes[best - 1]['id']]
         }
-        final_target_ids = sample['result']['final_tokens'] + [self.eot_id]
         _, final_logprobs = self.workflow.train_step([final_task], [final_target_ids])
-        
-        proposal_targets = torch.tensor(sum(target_proposal_ids, []), device='cuda')
-        vote_targets = torch.tensor(sum(vote_target_ids, []), device='cuda')
-        final_targets = torch.tensor(final_target_ids, device='cuda')
+
         
         proposal_loss = F.cross_entropy(proposal_logprobs.squeeze(0), proposal_targets)
         vote_loss = F.cross_entropy(vote_logprobs.squeeze(0), vote_targets)
