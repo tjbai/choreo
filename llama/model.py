@@ -427,9 +427,9 @@ class LoraLinear(nn.Module):
         self.base = base_layer
         self.disable_adapters = False
 
-        model_parallel_size = fs_init.get_model_parallel_world_size()
+        # implicit column parallel
         in_dim = base_layer.in_features
-        out_dim = base_layer.out_features
+        out_dim = base_layer.output_size_per_partition
 
         if isinstance(base_layer, ColumnParallelLinear):
             self.lora_down = ColumnParallelLinear(in_dim, rank, bias=False).to(base_layer.weight.device)
