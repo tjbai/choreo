@@ -198,8 +198,8 @@ def finetune(
             loss, metrics = trainer.step(sample)
             loss.backward()
             if (step + 1) % gradient_accumulation_steps == 0:
-                trainer.optimizer.zero_grad()
                 trainer.optimizer.step()
+                trainer.optimizer.zero_grad()
             if log_to_wandb:
                 metrics['epoch'] = epoch
                 metrics['step'] = step
