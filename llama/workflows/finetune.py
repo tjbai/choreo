@@ -27,7 +27,7 @@ class TotDataset(Dataset):
         return len(self.problem_paths)
 
     def __getitem__(self, idx) -> Dict:
-        return torch.load(self.problem_paths[idx])
+        return torch.load(self.problem_paths[idx], weights_only=True)
 
 # this is a hack to match the header prefill -> content prefill setup we have
 # a more principled way would be to just do one big prefill step and mask out the irrelevant header tokens
