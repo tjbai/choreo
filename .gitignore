@@ -19,6 +19,7 @@
 **/.ipynb_checkpoints
 
 # metadata
+!model
 !llama3.egg-info
 !LICENSE
 !USE_POLICY.md
