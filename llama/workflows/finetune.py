@@ -205,7 +205,7 @@ def finetune(
     )
 
     dataset = TotDataset(data_path)
-    generator = torch.Generator().manual_seed(42)
+    generator = torch.Generator(device="cuda").manual_seed(42)
     train_dataset, val_dataset = random_split(dataset, [0.8, 0.2], generator=generator)
     print(f"Train Dataset: {len(train_dataset)} samples")
     print(f"Val Dataset: {len(val_dataset)} samples")
