@@ -1,4 +1,5 @@
 import os
+import math
 import json
 from pathlib import Path
 from typing import Dict, Any, List, Tuple
@@ -154,24 +155,31 @@ def evaluate(trainer, val_dataset, max_steps=None):
     trainer.workflow.model.train()
     return avg_metrics
 
+def get_lr_factor(step, warmup_steps=10, total_steps=100):
+    # steps = number of updates != number of samples
+    if step < warmup_steps:
+        return step / warmup_steps
+    progress = (step - warmup_steps) / (total_steps - warmup_steps)
+    return 0.5 * (1 + math.cos(math.pi * progress))
+
 def finetune(
     data_path: str,
     ckpt_dir: str,
     tokenizer_path: str,
     output_dir: str = "checkpoints",
     log_to_wandb: bool = True,
-    epochs: int = 10,
-    checkpoint_freq: int = 100,
-    validation_freq: int = 100,
+    epochs: int = 1,
+    checkpoint_freq: int = 25,
+    validation_freq: int = 25,
     branching_factor: int = 8,
     voters: int = 4,
     max_seq_len: int = 4096,
     max_batch_size: int = 1,
     model_parallel_size: int = 1,
     max_nodes: int = 20,
+    learning_rate: float = 2e-4,
+    gradient_accumulation_steps: int = 4,
     use_lora: bool = True,
-    learning_rate: float = 1e-4,
-    gradient_accumulation_steps: int = 1,
     lora_rank: int = 8,
     lora_alpha: int = 16,
     lora_dropout: float = 0.1,
@@ -228,21 +236,27 @@ def finetune(
             }
         )
 
+    global_step = 0
     for epoch in range(epochs):
         indices = torch.randperm(len(train_dataset)).tolist()
         for step, idx in enumerate(tqdm(indices, desc=f"Epoch {epoch}")):
+            lr_factor = get_lr_factor(global_step)
+            for param_group in trainer.optimizer.param_groups:
+                param_group['lr'] = learning_rate * lr_factor
             sample = dataset[idx]
             loss, metrics = trainer.step(sample)
             loss.backward()
             if (step + 1) % gradient_accumulation_steps == 0:
+                torch.nn.utils.clip_grad_norm_(trainer.workflow.model.parameters(), max_norm=1.0)
                 trainer.optimizer.step()
                 trainer.optimizer.zero_grad()
+                global_step += 1
             if (step + 1) % validation_freq == 0:
                 val_metrics = evaluate(trainer, val_dataset)
                 if log_to_wandb:
                     wandb.log(val_metrics)
             if log_to_wandb:
-                wandb.log(metrics, step=step)
+                wandb.log(metrics)
             if (step + 1) % checkpoint_freq == 0:
                 trainer.save_checkpoint(epoch, step)
 
