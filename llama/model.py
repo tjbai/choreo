@@ -4,6 +4,7 @@
 import math
 from dataclasses import dataclass
 from typing import Optional, Tuple
+from contextlib import nullcontext
 
 import fairscale.nn.model_parallel.initialize as fs_init
 import torch
@@ -322,17 +323,17 @@ class Transformer(nn.Module):
             params.rope_theta,
         )
 
-    def convert_to_lora(self, rank=8, alpha=16):
+    def convert_to_lora(self, rank=8, alpha=16, dropout=0.1):
         self.is_lora = True
 
         for param in self.parameters():
             param.requires_grad = False
 
         for layer in self.layers:
-            layer.attention.wq = LoraLinear(layer.attention.wq, rank, alpha)
-            layer.attention.wk = LoraLinear(layer.attention.wk, rank, alpha)
-            layer.attention.wv = LoraLinear(layer.attention.wv, rank, alpha)
-            layer.attention.wo = LoraLinear(layer.attention.wo, rank, alpha)
+            layer.attention.wq = LoraLinear(layer.attention.wq, rank, alpha, dropout)
+            layer.attention.wk = LoraLinear(layer.attention.wk, rank, alpha, dropout)
+            layer.attention.wv = LoraLinear(layer.attention.wv, rank, alpha, dropout)
+            layer.attention.wo = LoraLinear(layer.attention.wo, rank, alpha, dropout)
 
     def get_trainable_parameters(self):
         yield from (param for param in self.parameters() if param.requires_grad)
@@ -381,33 +382,6 @@ class Transformer(nn.Module):
             layer.attention.cache_k = self.cache_k[i]
             layer.attention.cache_v = self.cache_v[i]
 
-    def _forward(
-        self,
-        tokens: torch.Tensor,
-        start_pos: int,
-        mask: Optional[torch.Tensor] = None,
-        position_ids: Optional[torch.Tensor] = None
-    ):
-        _, seqlen = tokens.shape
-        h = self.tok_embeddings(tokens)
-        self.freqs_cis = self.freqs_cis.to(h.device)
-
-        if position_ids is not None:
-            assert position_ids.shape == (seqlen,)
-            freqs_cis = self.freqs_cis[position_ids]
-        else:
-            freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
-
-        if mask is None:
-            mask = torch.full((seqlen, seqlen), float("-inf"), device=tokens.device)
-            mask = torch.triu(mask, diagonal=1)
-            mask = torch.hstack([torch.zeros((seqlen, start_pos), device=tokens.device), mask]).type_as(h)
-
-        for layer in self.layers:
-            h = layer(h, start_pos, freqs_cis, mask)
-
-        return self.output(self.norm(h)).float()
-
     def forward(
         self,
         tokens: torch.Tensor,
@@ -415,18 +389,32 @@ class Transformer(nn.Module):
         mask: Optional[torch.Tensor] = None,
         position_ids: Optional[torch.Tensor] = None
     ):
-        if not self.training:
-            with torch.inference_mode():
-                return self._forward(tokens, start_pos, mask, position_ids)
-        else:
-            return self._forward(tokens, start_pos, mask, position_ids)
+        with (nullcontext() if self.training else torch.inference_mode()):
+            _, seqlen = tokens.shape
+            h = self.tok_embeddings(tokens)
+            self.freqs_cis = self.freqs_cis.to(h.device)
+
+            if position_ids is not None:
+                assert position_ids.shape == (seqlen,)
+                freqs_cis = self.freqs_cis[position_ids]
+            else:
+                freqs_cis = self.freqs_cis[start_pos : start_pos + seqlen]
+
+            if mask is None:
+                mask = torch.full((seqlen, seqlen), float("-inf"), device=tokens.device)
+                mask = torch.triu(mask, diagonal=1)
+                mask = torch.hstack([torch.zeros((seqlen, start_pos), device=tokens.device), mask]).type_as(h)
+
+            for layer in self.layers:
+                h = layer(h, start_pos, freqs_cis, mask)
+
+            return self.output(self.norm(h)).float()
 
 class LoraLinear(nn.Module):
-    def __init__(self, base_layer, rank=8, alpha=16):
+    def __init__(self, base_layer, rank=8, alpha=16, dropout=0.1):
         super().__init__()
-        self.base = base_layer
-        self.disable_adapters = False
 
+        self.base = base_layer
         base_class = type(base_layer)
         if base_class == ColumnParallelLinear:
             in_dim = base_layer.in_features
@@ -437,12 +425,11 @@ class LoraLinear(nn.Module):
 
         self.lora_down = base_class(in_dim, rank, bias=False).to(base_layer.weight.device)
         self.lora_up = base_class(rank, out_dim, bias=False).to(base_layer.weight.device)
+        self.dropout = nn.Dropout(p=dropout)
         self.scale = alpha / rank
 
         nn.init.kaiming_uniform_(self.lora_down.weight)
         nn.init.zeros_(self.lora_up.weight)
 
     def forward(self, x):
-        if self.disable_adapters:
-            return self.base(x)
-        return self.base(x) + self.scale * self.lora_up(self.lora_down(x))
+        return self.base(x) + self.scale * self.lora_up(self.dropout(self.lora_down(x)))

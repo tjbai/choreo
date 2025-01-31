@@ -1,16 +1,16 @@
 import os
 import json
 from pathlib import Path
-from typing import Dict, Any, List
+from typing import Dict, Any, List, Tuple
 from abc import abstractmethod
-from collections import Counter
+from collections import Counter, defaultdict
 
 import wandb
 import fire
 import torch
 import torch.nn.functional as F
 from torch.optim import AdamW
-from torch.utils.data import Dataset
+from torch.utils.data import Dataset, random_split
 from tqdm import tqdm
 
 from llama import Workflow
@@ -35,28 +35,35 @@ def reorder_targets(target_ids: List[List[int]]) -> torch.Tensor:
     return torch.tensor([t[0] for t in target_ids] + sum((t[1:] for t in target_ids), []), device='cuda')
 
 class LoraTrainer:
-    def __init__(self, workflow: Workflow, learning_rate: float):
+    def __init__(self, workflow: Workflow, output_dir: str, learning_rate: float):
         self.workflow = workflow
         self.model = self.workflow.model
         self.tokenizer = self.workflow.tokenizer
         self.optimizer = AdamW(self.model.get_trainable_parameters(), lr=learning_rate)
-
+        self.output_dir = Path(output_dir)
+        self.output_dir.mkdir(exist_ok=True)
         num_trainable = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         num_total = sum(p.numel() for p in self.model.parameters())
         print(f"Training {num_trainable/1e6:.1f}M / {num_total/1e9:.1f}B parameters")
+
+    def save_checkpoint(self, epoch: int, step: int):
+        torch.save({
+            "lora": self.model.state_dict(),
+            "optimizer": self.optimizer.state_dict()
+        }, self.output_dir / f"lora_epoch-{epoch}_step-{step}.pt")
 
     @abstractmethod
     def step(self, sample: Any) -> Any:
         pass
 
 class TotTrainer(LoraTrainer):
-    def __init__(self, workflow: Workflow, branching_factor: int, voters: int, learning_rate: float):
-        super().__init__(workflow, learning_rate)
+    def __init__(self, workflow: Workflow, output_dir: str, branching_factor: int, voters: int, learning_rate: float):
+        super().__init__(workflow, output_dir, learning_rate)
         self.branching_factor = branching_factor
         self.voters = voters
         self.eot_id = self.workflow.tokenizer.eot_id
 
-    def step(self, sample: Dict):
+    def step(self, sample: Dict) -> Tuple[torch.Tensor, Dict]:
         self.workflow.reset()
 
         cot, vote, finish = self.workflow.insert([
@@ -82,9 +89,6 @@ class TotTrainer(LoraTrainer):
         proposal_targets = reorder_targets(target_proposal_ids)
         vote_targets = reorder_targets(vote_target_ids)
         final_targets = torch.tensor(final_target_ids, device='cuda')
-        # proposal_targets = torch.tensor(sum(target_proposal_ids, []), device='cuda')
-        # vote_targets = torch.tensor(sum(vote_target_ids, []), device='cuda')
-        # final_targets = torch.tensor(final_target_ids, device='cuda')
 
         proposal_tasks = [
             {'header': ('assistant', None),
@@ -111,7 +115,6 @@ class TotTrainer(LoraTrainer):
         }
         _, final_logprobs = self.workflow.train_step([final_task], [final_target_ids])
 
-
         proposal_loss = F.cross_entropy(proposal_logprobs.squeeze(0), proposal_targets)
         vote_loss = F.cross_entropy(vote_logprobs.squeeze(0), vote_targets)
         final_loss = F.cross_entropy(final_logprobs.squeeze(0), final_targets)
@@ -119,19 +122,37 @@ class TotTrainer(LoraTrainer):
         total_loss = proposal_loss + vote_loss + final_loss
 
         metrics = {
-            'loss/proposals': proposal_loss.item(),
-            'loss/votes': vote_loss.item(),
-            'loss/final': final_loss.item(),
-            'loss/total': total_loss.item()
+            'train/proposal_ppl': torch.exp(proposal_loss),
+            'train/vote_ppl': torch.exp(vote_loss),
+            'train/final_ppl': torch.exp(final_loss),
+            'train/nll_loss': total_loss,
         }
 
         return total_loss, metrics
 
-def save_checkpoint(trainer: LoraTrainer, epoch: int, output_dir: str):
-    Path(output_dir).mkdir(exist_ok=True)
-    path = Path(output_dir) / f"lora_epoch_{epoch}.pt"
-    torch.save({"lora": trainer.model.state_dict(), "optimizer": trainer.optimizer.state_dict()}, path)
-    print(f"Saved checkpoint to {path}")
+@torch.no_grad()
+def evaluate(trainer, val_dataset, max_steps=None):
+    trainer.workflow.model.eval()
+
+    total_loss = 0
+    all_metrics = defaultdict(float)
+
+    for step, sample in enumerate(tqdm(val_dataset, desc="Validating")):
+        if max_steps and step >= max_steps:
+            break
+        loss, metrics = trainer.step(sample)
+        total_loss += loss
+        for k, v in metrics.items():
+            all_metrics[k] += v.item()
+
+    N = len(val_dataset)
+    avg_metrics = {
+        'val/loss': total_loss / N,
+        **{k.replace('train/', 'val/'): v / N for k, v in all_metrics.items()}
+    }
+
+    trainer.workflow.model.train()
+    return avg_metrics
 
 def finetune(
     data_path: str,
@@ -139,8 +160,9 @@ def finetune(
     tokenizer_path: str,
     output_dir: str = "checkpoints",
     log_to_wandb: bool = True,
-    epochs: int = 2,
+    epochs: int = 10,
     checkpoint_freq: int = 100,
+    validation_freq: int = 100,
     branching_factor: int = 8,
     voters: int = 4,
     max_seq_len: int = 4096,
@@ -148,10 +170,11 @@ def finetune(
     model_parallel_size: int = 1,
     max_nodes: int = 20,
     use_lora: bool = True,
-    learning_rate: float = 1e-5,
+    learning_rate: float = 1e-4,
     gradient_accumulation_steps: int = 1,
     lora_rank: int = 8,
     lora_alpha: int = 16,
+    lora_dropout: float = 0.1,
     master_addr: str = "localhost",
     master_port: str = "29500"
 ):
@@ -170,15 +193,26 @@ def finetune(
         use_lora=use_lora,
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
     )
 
     trainer = TotTrainer(
         workflow,
+        output_dir=output_dir,
         branching_factor=branching_factor,
         voters=voters,
         learning_rate=learning_rate,
     )
+
     dataset = TotDataset(data_path)
+    generator = torch.Generator().manual_seed(42)
+    train_dataset, val_dataset = random_split(dataset, [0.8, 0.2], generator=generator)
+    print(f"Train Dataset: {len(train_dataset)} samples")
+    print(f"Val Dataset: {len(val_dataset)} samples")
+
+    print("Sanity check:")
+    evaluate(trainer, val_dataset, max_steps=1)
+    print("Passed!")
 
     if log_to_wandb:
         wandb.init(
@@ -188,11 +222,14 @@ def finetune(
                 "checkpoint_freq": checkpoint_freq,
                 "branching_factor": branching_factor,
                 "voters": voters,
+                "lora_rank": lora_rank,
+                "lora_alpha": lora_alpha,
+                "lora_dropout": lora_dropout,
             }
         )
 
     for epoch in range(epochs):
-        indices = torch.randperm(len(dataset)).tolist()
+        indices = torch.randperm(len(train_dataset)).tolist()
         for step, idx in enumerate(tqdm(indices, desc=f"Epoch {epoch}")):
             sample = dataset[idx]
             loss, metrics = trainer.step(sample)
@@ -200,14 +237,14 @@ def finetune(
             if (step + 1) % gradient_accumulation_steps == 0:
                 trainer.optimizer.step()
                 trainer.optimizer.zero_grad()
+            if (step + 1) % validation_freq == 0:
+                val_metrics = evaluate(trainer, val_dataset)
+                if log_to_wandb:
+                    wandb.log(val_metrics)
             if log_to_wandb:
-                metrics['epoch'] = epoch
-                metrics['step'] = step
-                wandb.log(metrics)
+                wandb.log(metrics, step=step)
             if (step + 1) % checkpoint_freq == 0:
-                save_checkpoint(trainer, epoch, output_dir)
-
-        save_checkpoint(trainer, epoch, output_dir)
+                trainer.save_checkpoint(epoch, step)
 
     if log_to_wandb:
         wandb.finish()

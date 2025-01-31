@@ -35,6 +35,7 @@ class Llama:
         use_lora: bool = False,
         lora_rank: Optional[int] = None,
         lora_alpha: Optional[int] = None,
+        lora_dropout: Optional[float] = None,
     ) -> "Llama":
         model, tokenizer = load_model_and_tokenizer(
             ckpt_dir=ckpt_dir,
@@ -46,8 +47,8 @@ class Llama:
             use_lora=use_lora,
             lora_rank=lora_rank,
             lora_alpha=lora_alpha,
+            lora_dropout=lora_dropout,
         )
-
         return Llama(model, tokenizer)
 
     def __init__(self, model: Transformer, tokenizer: Tokenizer):
@@ -112,7 +113,7 @@ class Llama:
                 reduction="none",
                 ignore_index=pad_id,
             )
-        
+
         stop_tokens = torch.tensor(list(self.tokenizer.stop_tokens))
 
         generator = torch.Generator(device="cuda").manual_seed(seed) if seed else None

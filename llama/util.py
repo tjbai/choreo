@@ -26,6 +26,7 @@ def load_model_and_tokenizer(
     use_lora: bool = False,
     lora_rank: Optional[int] = None,
     lora_alpha: Optional[int] = None,
+    lora_dropout: Optional[float] = None,
 ) -> Tuple[Transformer, Tokenizer]:
     """
     Build a Llama instance by initializing and loading a model checkpoint.
@@ -88,18 +89,18 @@ def load_model_and_tokenizer(
 
     tokenizer = Tokenizer(model_path=tokenizer_path)
     assert model_args.vocab_size == tokenizer.n_words
-    
+
     if torch.cuda.is_bf16_supported():
         torch.set_default_device('cuda')
         torch.set_default_dtype(torch.bfloat16)
     else:
         torch.set_default_dtype(torch.float16)
-        
+
     model = Transformer(model_args).cuda()
     model.load_state_dict(checkpoint, strict=strict)
     if use_lora:
         print("Converting to LoRA")
-        model.convert_to_lora(rank=lora_rank, alpha=lora_alpha)
-        
+        model.convert_to_lora(rank=lora_rank, alpha=lora_alpha, dropout=lora_dropout)
+
     print(f"Loaded in {time.time() - start_time:.2f} seconds")
     return model, tokenizer
