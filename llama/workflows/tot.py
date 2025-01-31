@@ -1,6 +1,7 @@
 import re
 import json
 import random
+import hashlib
 from pathlib import Path
 from collections import Counter
 from datetime import datetime
@@ -489,22 +490,38 @@ def benchmark_tricky_tot(
     problem: str,
     branching_factor: int,
     voters: int,
+    cache_dir: str = '/scratch4/jeisner1/tjbai/cache/tricky_tot'
 ) -> Dict:
-    trick_indices = random.sample(range(branching_factor), branching_factor // 2)
-    llama.model.reshape_cache(max(branching_factor, voters))
-    baseline_result = tricky_tot_baseline(
-        llama=llama,
-        problem=problem,
-        branching_factor=branching_factor,
-        voters=voters,
-        trick_indices=trick_indices
-    )
+    # some hacky cache business going on here just to speedup repeated runs
+    
+    cache_key = hashlib.md5(f"{problem}_{branching_factor}_{voters}".encode()).hexdigest()
+    cache_path = Path(cache_dir) / f'{cache_key}.pt'
 
-    proposal_force = torch.full((branching_factor, 512), workflow.tokenizer.eot_id, device=workflow.device)
-    for i, tokens in enumerate(baseline_result['proposal_tokens']):
-        proposal_force[i, :len(tokens)] = torch.tensor(tokens, device=workflow.device)
+    if cache_path.exists():
+        cached = torch.load(cache_path)
+        trick_indices = cached['trick_indices'] 
+        proposal_force = cached['proposal_force']
+    else:
+        trick_indices = random.sample(range(branching_factor), branching_factor // 2)
+        llama.model.reshape_cache(max(branching_factor, voters))
+        llama.model.set_adapter_state(enabled=False)
+        baseline_result = tricky_tot_baseline(
+            llama=llama,
+            problem=problem,
+            branching_factor=branching_factor,
+            voters=voters,
+            trick_indices=trick_indices
+        )
+
+        proposal_force = torch.full((branching_factor, 512), workflow.tokenizer.eot_id, device=workflow.device)
+        for i, tokens in enumerate(baseline_result['proposal_tokens']):
+            proposal_force[i, :len(tokens)] = torch.tensor(tokens, device=workflow.device)
+        
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        torch.save({'trick_indices': trick_indices, 'proposal_force': proposal_force}, cache_path)
 
     workflow.model.reshape_cache(1)
+    workflow.model.set_adapter_state(enabled=True)
     workflow.reset()
     cached_result = tricky_tot_cached(
         workflow=workflow,
@@ -516,9 +533,9 @@ def benchmark_tricky_tot(
     )
 
     return {
-        'baseline_votes': baseline_result['votes'],
+        'baseline_votes': baseline_result['votes'] if 'baseline_result' in locals() else None,
         'cached_votes': cached_result['votes'],
-        'baseline': baseline_result['chose_trickster'],
+        'baseline': baseline_result['chose_trickster'] if 'baseline_result' in locals() else None, 
         'cached': cached_result['chose_trickster'],
         'trick_indices': trick_indices
     }

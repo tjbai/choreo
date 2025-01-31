@@ -422,7 +422,8 @@ class LoraLinear(nn.Module):
         else:
             in_dim = base_layer.input_size_per_partition
             out_dim = base_layer.out_features
-
+        
+        self.disable_adapters = False
         self.lora_down = base_class(in_dim, rank, bias=False).to(base_layer.weight.device)
         self.lora_up = base_class(rank, out_dim, bias=False).to(base_layer.weight.device)
         self.dropout = nn.Dropout(p=dropout)
@@ -432,4 +433,6 @@ class LoraLinear(nn.Module):
         nn.init.zeros_(self.lora_up.weight)
 
     def forward(self, x):
+        if self.disable_adapters:
+            return self.base(x)
         return self.base(x) + self.scale * self.lora_up(self.dropout(self.lora_down(x)))
