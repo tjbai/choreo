@@ -147,7 +147,7 @@ def tot_cached(
             for _ in range(voters)
         ],
         teacher_force=voter_force,
-        stateless=True,
+        stateless=False,
         compact=False,
         max_gen_len=256,
         temperature=0.7,
@@ -168,12 +168,12 @@ def tot_cached(
             [
                 {
                     'header': ('assistant', None),
-                    'prefill': None,
+                    'prefill': '',
                     'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]
                 }
             ],
             teacher_force=final_force,
-            stateless=True,
+            stateless=False,
             compact=compact,
             max_gen_len=256,
             temperature=0.7,
@@ -498,7 +498,7 @@ def benchmark_tricky_tot(
     cache_path = Path(cache_dir) / f'{cache_key}.pt'
 
     if cache_path.exists():
-        cached = torch.load(cache_path)
+        cached = torch.load(cache_path, weights_only=True)
         trick_indices = cached['trick_indices']
         proposal_force = cached['proposal_force']
     else:
@@ -553,7 +553,7 @@ def benchmark_solution_quality(
     cache_path = Path(cache_dir) / f'{cache_key}.pt'
 
     if cache_path.exists():
-        cached = torch.load(cache_path)
+        cached = torch.load(cache_path, weights_only=True)
         proposal_force = cached['proposal_force']
         voter_force = cached['voter_force']
         baseline_proposals = cached['baseline_proposals']
