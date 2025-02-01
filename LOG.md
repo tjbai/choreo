@@ -57,3 +57,17 @@ Average for correct is 5.77, while for tricked it is roughly 4.09.
 | 200                 | 32                           |
 | 300                 | 37                           |
 | 400                 | 35                           |
+
+## 2/1: 3dd1450b13285932f18cdd901b62f18f7c584fc9
+
+| Baseline vs. X Fine-tuning Samples | Win-Loss (Best of 3) |
+| ---------------------------------- | -------------------- |
+| 0                                  | 110-90               |
+| 100                                | 100-100              |
+| 200                                | 85-115               |
+| 300                                | 85-115               |
+| 400                                | 79-121               |
+
+Fine-tuned outputs don't adhere to the correct format... appear to echo the proposal + voter reasoning?
+
+Remove `stateless` declarations in inference code. Some kind of train-test shift?
