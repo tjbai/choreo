@@ -46,3 +46,14 @@ Reran the teacher-forced trick prompt experiment, this time tracking the index.
 It does seem plausible that the tricked votes are biased more towards earlier responses, while the baseline is biased more towards late...!
 
 Average for correct is 5.77, while for tricked it is roughly 4.09.
+
+## 1/31: 47870d2d306a33325be02267b8529efcf12fb081
+
+| Fine-tuning Samples | Trick Frequency (Out of 100) |
+| ------------------- | ---------------------------- |
+| Baseline            | 39                           |
+| 0                   | 71                           |
+| 100                 | 38                           |
+| 200                 | 32                           |
+| 300                 | 37                           |
+| 400                 | 35                           |
