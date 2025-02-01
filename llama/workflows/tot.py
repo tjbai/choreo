@@ -168,7 +168,7 @@ def tot_cached(
             [
                 {
                     'header': ('assistant', None),
-                    'prefill': '',
+                    'prefill': 'ANSWER: ',
                     'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]
                 }
             ],

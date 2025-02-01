@@ -2,6 +2,7 @@ import os
 import sys
 import time
 import json
+import warnings
 from pathlib import Path
 from typing import Type, Optional, Tuple
 
@@ -50,7 +51,8 @@ def load_model_and_tokenizer(
         This method initializes the distributed process group, sets the device to CUDA,
         and loads the pre-trained model and tokenizer.
     """
-    assert 1 <= max_seq_len <= 8192
+    if not (1 <= max_seq_len <= 8192):
+        warnings.warn(f"{max_seq_len} does not lie within [1, 8192]")
     assert os.path.isdir(ckpt_dir)
     assert os.path.isfile(tokenizer_path)
 
