@@ -663,7 +663,7 @@ def load_math_problems(
     problem_types: Optional[List[str]] = None,
 ):
     problems = []
-    root = Path(root_dir) / split
+    root = Path(root_dir) / ('test' if split == 'val' else split)
 
     if problem_types is None:
         problem_types = [d.name for d in root.iterdir() if d.is_dir()]
@@ -675,6 +675,9 @@ def load_math_problems(
             continue
 
         for prob_file in type_dir.glob("*.json"):
+            if split == 'val' and int(prob_file.stem) >= 100:
+                continue
+
             with open(prob_file) as f:
                 problem = json.load(f)
                 problems.append(problem)
