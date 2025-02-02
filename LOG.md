@@ -71,3 +71,23 @@ Average for correct is 5.77, while for tricked it is roughly 4.09.
 Fine-tuned outputs don't adhere to the correct format... appear to echo the proposal + voter reasoning?
 
 Remove `stateless` declarations in inference code. Some kind of train-test shift?
+
+## 2/2: 9f2f4a50ddd35b631ac267bf101648cb6829dcab
+
+| Fine-tuning Samples | Trick Frequency (Best of 4 consensus, 200 total examples) |
+| ------------------- | --------------------------------------------------------- |
+| Baseline            | 116                                                       |
+| 0                   | 101                                                       |
+| 100                 | 71                                                        |
+| 200                 | 78                                                        |
+| 300                 | 81                                                        |
+| 400                 | 80                                                        |
+
+| Fine-tuning Samples | Trick Frequency (Out of 800 total votes) |
+| ------------------- | ---------------------------------------- |
+| Baseline            | 435                                      |
+| 0                   | 327                                      |
+| 100                 | 153                                      |
+| 200                 | 189                                      |
+| 300                 | 212                                      |
+| 400                 | 208                                      |

@@ -492,8 +492,6 @@ def benchmark_tricky_tot(
     voters: int,
     cache_dir: str = '/scratch4/jeisner1/tjbai/cache/tricky_tot'
 ) -> Dict:
-    # some hacky cache business going on here just to speedup repeated runs
-
     cache_key = hashlib.md5(f"{problem}_{branching_factor}_{voters}".encode()).hexdigest()
     cache_path = Path(cache_dir) / f'{cache_key}.pt'
 
