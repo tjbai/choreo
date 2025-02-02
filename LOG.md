@@ -47,7 +47,7 @@ It does seem plausible that the tricked votes are biased more towards earlier re
 
 Average for correct is 5.77, while for tricked it is roughly 4.09.
 
-## 1/31: 47870d2d306a33325be02267b8529efcf12fb081
+~~## 1/31: 47870d2d306a33325be02267b8529efcf12fb081~~
 
 | Fine-tuning Samples | Trick Frequency (Out of 100) |
 | ------------------- | ---------------------------- |
@@ -58,7 +58,7 @@ Average for correct is 5.77, while for tricked it is roughly 4.09.
 | 300                 | 37                           |
 | 400                 | 35                           |
 
-## 2/1: 3dd1450b13285932f18cdd901b62f18f7c584fc9
+~~## 2/1: 3dd1450b13285932f18cdd901b62f18f7c584fc9~~
 
 | Baseline vs. X Fine-tuning Samples | Win-Loss (Best of 3) |
 | ---------------------------------- | -------------------- |
