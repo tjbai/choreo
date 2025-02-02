@@ -91,3 +91,11 @@ Remove `stateless` declarations in inference code. Some kind of train-test shift
 | 200                 | 189                                      |
 | 300                 | 212                                      |
 | 400                 | 208                                      |
+
+| Baseline vs. X Fine-tuning Samples | Win-Loss (Best of 3) |
+| ---------------------------------- | -------------------- |
+| 0                                  | 137-63               |
+| 100                                | 98-102               |
+| 200                                | 85-115               |
+| 300                                | 85-115               |
+| 400                                | 79-121               |
