@@ -9,6 +9,13 @@
 ## parity
 - [ ] fuse lora weights for inference
 
+## tot
+- [ ] run training for longer and redo evals, particularly e2e performance
+- [ ] finetune the baseline?
+
+## mad
+- [ ] setup bob/alice prisoners dilemma
+
 ## ideas
 - [ ] can we precompute block masks for the entire workflow?
 - [ ] computing rotation the fly for causal cross-attention
