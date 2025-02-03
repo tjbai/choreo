@@ -83,6 +83,8 @@ Remove `stateless` declarations in inference code. Some kind of train-test shift
 | 300                 | 81                                        |
 | 400                 | 80                                        |
 
+One explanation for why the fine-tuned versions chooses the poisoned branches less—that's all they saw during training!
+
 | Fine-tuning Samples | Trick Frequency (Out of 800 total votes) |
 | ------------------- | ---------------------------------------- |
 | Baseline            | 435                                      |

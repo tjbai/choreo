@@ -12,3 +12,6 @@
 ## ideas
 - [ ] can we precompute block masks for the entire workflow?
 - [ ] computing rotation the fly for causal cross-attention
+- [ ] explicit cache invalidation to force re-encoding
+- [ ] lazy insert to minimize forward passes (register -> process?)
+
