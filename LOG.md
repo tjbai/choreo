@@ -101,3 +101,12 @@ One explanation for why the fine-tuned versions chooses the poisoned branches le
 | 200                                | 99-101               |
 | 300                                | 92-108               |
 | 400                                | 107-93               |
+
+| Fine-tuning Samples | % Correct (Out of 280) |
+| ------------------- | ---------------------- |
+| Baseline            | 40.7 (114)             |
+| 0                   | 26.4 (74)              |
+| 100                 | 33.9 (95)              |
+| 200                 | 34.6 (97)              |
+| 300                 | 35.3 (99)              |
+| 300                 | 35.7 (100)             |
