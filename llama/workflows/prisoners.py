@@ -27,10 +27,9 @@ If you both cooperate: You will each receive {R} points.
 If one of you cooperates and other defects: The cooperator will receive {S} points while the defector receives {T} points.
 If you both defect: You will each receive {P} points.
 
-The game will consist of a private planning phase followed by 2 rounds of discussion.
-Afterwards, you will need to decide whether to cooperate or defect.
+The game will consist if a private planning phase, 2 turns of open discussion, and then a final decision.
+You have no knowledge of whether this is the only trial or if this is an iterated setting. Weigh this carefully!
 You have no knowledge of what strategy your adversary is using, so it is important to consider what they say and act accordingly.
-You also have no knowledge of whether this is the only trial or if this is an iterated setting. Weigh this carefully!
 Ultimately, your goal is to maximize your own points, but feel free to propose creative arrangements to be as persuasive as possible.
 
 Structure:
@@ -42,7 +41,7 @@ Your goal is to maximize your individual points while navigating trust and decep
 '''
 
 def format_reflection_prompt(round: int) -> str:
-    return f'Round {round} complete. Given the conversation so far, reflect on your strategy. This reflection won\'t be shared.'
+    return f'Turn {round} of discussion has finished. Given the conversation so far, reflect on your strategy. This information won\'t be shared.'
 
 plan_prompt = 'Before proceeding, first think carefully through your strategy and describe your plan. This planning will not be revealed to the other participant.'
 
