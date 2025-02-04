@@ -119,13 +119,10 @@ def tot_cached(
         ], 'parent_ids': []},
     ])
 
-    proposal_tokens, proposal_nodes = workflow.step(
-        [
-            {
-                'header': ('assistant', None),
-                'prefill': f'Solution #{i+1}:\n\n',
-                'parent_ids': [cot['id']],
-            }
+    proposal_tokens, proposal_nodes = workflow.step([
+            {'header': ('assistant', None),
+            'prefill': f'Solution #{i+1}:\n\n',
+            'parent_ids': [cot['id']]}
             for i in range(branching_factor)
         ],
         teacher_force=proposal_force,
@@ -137,13 +134,10 @@ def tot_cached(
         debug=False,
     )
 
-    vote_tokens, vote_nodes = workflow.step(
-        [
-            {
-                'header': ('assistant', None),
-                'prefill': 'BEST CHOICE: ' if voter_force is None else None,
-                'parent_ids': [vote['id']] + [p['id'] for p in proposal_nodes],
-            }
+    vote_tokens, vote_nodes = workflow.step([
+            {'header': ('assistant', None),
+            'prefill': 'BEST CHOICE: ' if voter_force is None else None,
+            'parent_ids': [vote['id']] + [p['id'] for p in proposal_nodes]}
             for _ in range(voters)
         ],
         teacher_force=voter_force,
@@ -164,13 +158,10 @@ def tot_cached(
 
     if len(votes) > 0:
         best = Counter(votes).most_common(1)[0][0]
-        [final_tokens], _ = workflow.step(
-            [
-                {
-                    'header': ('assistant', None),
-                    'prefill': 'ANSWER: ',
-                    'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]
-                }
+        [final_tokens], _ = workflow.step([
+                {'header': ('assistant', None),
+                'prefill': 'ANSWER: ',
+                'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]}
             ],
             teacher_force=final_force,
             stateless=False,
@@ -216,13 +207,10 @@ def tricky_tot_cached(
         ], 'parent_ids': []},
     ])
 
-    proposal_tokens, proposal_nodes = workflow.step(
-        [
-            {
-                'header': ('assistant', None),
-                'prefill': f'Solution #{i+1}:\n\n',
-                'parent_ids': [trick['id'] if i in trick_indices else cot['id']]
-            }
+    proposal_tokens, proposal_nodes = workflow.step([
+            {'header': ('assistant', None),
+            'prefill': f'Solution #{i+1}:\n\n',
+            'parent_ids': [trick['id'] if i in trick_indices else cot['id']]}
             for i in range(branching_factor)
         ],
         teacher_force=proposal_force,
@@ -232,13 +220,10 @@ def tricky_tot_cached(
         seed=42,
     )
 
-    vote_tokens, vote_nodes = workflow.step(
-        [
-            {
-                'header': ('assistant', None),
-                'prefill': 'BEST CHOICE: ',
-                'parent_ids': [vote['id']] + list([p['id'] for p in proposal_nodes]),
-            }
+    vote_tokens, vote_nodes = workflow.step([
+            {'header': ('assistant', None),
+            'prefill': 'BEST CHOICE: ',
+            'parent_ids': [vote['id']] + list([p['id'] for p in proposal_nodes])}
             for _ in range(voters)
         ],
         stateless=True,
@@ -258,13 +243,10 @@ def tricky_tot_cached(
     if len(votes) > 0:
         best = Counter(votes).most_common(1)[0][0]
         chose_trickster = (best - 1) in trick_indices
-        [final_tokens], _ = workflow.step(
-            [
-                {
-                    'header': ('assistant', None),
-                    'prefill': None,
-                    'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]
-                }
+        [final_tokens], _ = workflow.step([
+                {'header': ('assistant', None),
+                'prefill': None,
+                'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]}
             ],
             stateless=True,
             max_gen_len=256,
