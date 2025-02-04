@@ -1,3 +1,4 @@
+from re import A
 from typing import Tuple, Dict
 
 from llama import Llama, Workflow
@@ -17,7 +18,7 @@ cooperate    (R, R)     (S, T)
    defect    (T, S)     (P, P)
 '''
 
-def format_system_prompt(name: str, payoff: Tuple[int, int, int, int]):
+def format_system_prompt(name: str, payoff: Tuple[int, int, int, int]) -> str:
     T, R, P, S = payoff
     return f'''
 Your name is {name}, and you are a participant in the Prisoner's Dilemma with the following payoffs:
@@ -40,6 +41,9 @@ Structure:
 Your goal is to maximize your individual points while navigating trust and deception.
 '''
 
+def format_reflection_prompt(round: int) -> str:
+    return f'Round {round} complete. Given the conversation so far, reflect on your strategy. This reflection won\'t be shared.'
+
 plan_prompt = 'Before proceeding, first think carefully through your strategy and describe your plan. This planning will not be revealed to the other participant.'
 
 decide_prompt = 'Now, reflect on the conversation and make a final decision: COOPERATE or DEFECT'
@@ -61,52 +65,60 @@ def prisoners_cached(
     ])
 
     plan_tokens, [alice_plan, bob_plan] = workflow.step([
-        {'header': ('assistant', 'alice'), 'parent_ids': [alice_sys['id']]},
-        {'header': ('assistant', 'bob'), 'parent_ids': [bob_sys['id']]},
+        {'header': ('assistant', 'alice'), 'prefill': 'Strategy: ', 'parent_ids': [alice_sys['id']]},
+        {'header': ('assistant', 'bob'), 'prefill': 'Strategy', 'parent_ids': [bob_sys['id']]},
     ])
 
-    messages = []
-    message_tokens = []
-    for round in range(3):
-        [alice_tokens], [alice_node] = workflow.step([{
+    alice_context = [alice_sys, alice_plan]
+    bob_context = [bob_sys, bob_plan]
+
+    for round in range(2):
+        _, [alice_msg] = workflow.step([{
             'header': ('assistant', 'alice'),
             'prefill': 'To Bob: ',
-            'parent_ids': [alice_sys['id'], alice_plan['id']] + [n['id'] for n in messages],
+            'parent_ids': [n['id'] for n in alice_context]
         }])
-        messages.append(alice_node)
-        message_tokens.append(alice_tokens)
+        alice_context.append(alice_msg)
+        bob_context.append(alice_msg)
 
-        [bob_tokens], [bob_node] = workflow.step([{
+        _, [bob_msg] = workflow.step([{
             'header': ('assistant', 'bob'),
             'prefill': 'To Alice: ',
-            'parent_ids': [bob_sys['id'], bob_plan['id']] + [n['id'] for n in messages],
+            'parent_ids': [n['id'] for n in bob_context]
         }])
-        messages.append(bob_node)
-        message_tokens.append(bob_tokens)
+        alice_context.append(bob_msg)
+        bob_context.append(bob_msg)
 
-    [alice_decision, bob_decision] = workflow.insert([
-        {'messages': [
-            {'role': 'user', 'content': decide_prompt},
-        ], 'parent_ids': [alice_sys['id'], alice_plan['id']] + [n['id'] for n in messages]},
-        {'messages': [
-            {'role': 'user', 'content': decide_prompt},
-        ], 'parent_ids': [bob_sys['id'], bob_plan['id']] + [n['id'] for n in messages]},
+        _, [alice_msg, bob_msg] = workflow.step([
+            {'header': ('assistant', 'alice'), 'prefill': 'Strategy: ', 'parent_ids': [n['id'] for n in alice_context]},
+            {'header': ('assistant', 'bob'), 'prefill': 'Strategy: ', `'parent_ids': [n['id'] for n in bob_context]},
+        ])
+        alice_context.append(alice_msg)
+        bob_context.append(bob_msg)
+
+    [alice_ask, bob_ask] = workflow.insert([
+        {'messages': [{'role': 'user', 'content': decide_prompt}], 'parent_ids': [n['id'] for n in alice_context]},
+        {'messages': [{'role': 'user', 'content': decide_prompt}], 'parent_ids': [n['id'] for n in bob_context]},
     ])
+    alice_context.append(alice_ask)
+    bob_context.append(bob_ask)
 
-    decision_tokens, decision_nodes = workflow.step([
+    _, [alice_decision, bob_decision] = workflow.step([
         {
             'header': ('assistant', 'alice'),
             'prefill': 'DECISION: ',
-            'parent_ids': [alice_sys['id'], alice_plan['id'], alice_decision['id']] + [n['id'] for n in messages],
+            'parent_ids': [n['id'] for n in alice_context],
         },
         {
             'header': ('assistant', 'bob'),
             'prefill': 'DECISION: ',
-            'parent_ids': [bob_sys['id'], bob_plan['id'], bob_decision['id']] + [n['id'] for n in messages],
+            'parent_ids': [n['id'] for n in alice_context],
         }
     ])
+    alice_context.append(alice_decision)
+    bob_context.append(bob_decision)
 
-    return {'plan_tokens': plan_tokens, 'message_tokens': message_tokens, 'decision_tokens': decision_tokens}
+    return {'alice_context': alice_context, 'bob_context': bob_context}
 
 def prisoners_baseline(llama: Llama, payoff: Tuple[int, int, int, int]) -> Dict:
     alice_dialog = [{'role': 'system', 'content': format_system_prompt('Alice', payoff)}, {'role': 'user', 'content': plan_prompt}]
@@ -122,7 +134,7 @@ def prisoners_baseline(llama: Llama, payoff: Tuple[int, int, int, int]) -> Dict:
     alice_dialog.append({'role': 'assistant:alice', 'content': alice_plan['generation']['content']})
     bob_dialog.append({'role': 'assistant:bob', 'content': bob_plan['generation']['content']})
 
-    for round in range(3):
+    for round in range(2):
         [alice_response] = llama.chat_completion(
             dialogs=[alice_dialog],
             temperature=1.0,
@@ -140,6 +152,14 @@ def prisoners_baseline(llama: Llama, payoff: Tuple[int, int, int, int]) -> Dict:
         bob_msg = {'role': 'assistant:bob', 'content': bob_response['generation']['content']}
         alice_dialog.append(bob_msg)
         bob_dialog.append(bob_msg)
+
+        [alice_reflection, bob_reflection] = llama.chat_completion(
+            dialogs=[alice_dialog, bob_dialog],
+            temperature=1.0,
+            content_prefills=['Strategy: ', 'Strategy: ']
+        )
+        alice_dialog.append({'role': 'assistant:alice', 'content': alice_reflection['generation']['content']})
+        bob_dialog.append({'role': 'assistant:bob', 'content': bob_reflection['generation']['content']})
 
     alice_dialog.append({'role': 'user', 'content': decide_prompt})
     bob_dialog.append({'role': 'user', 'content': decide_prompt})

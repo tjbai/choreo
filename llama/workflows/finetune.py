@@ -260,6 +260,8 @@ def finetune(
             if (step + 1) % checkpoint_freq == 0:
                 trainer.save_checkpoint(epoch, step)
 
+    trainer.save_checkpoint(epochs - 1, len(train_dataset) - 1)
+
     if log_to_wandb:
         wandb.finish()
 
