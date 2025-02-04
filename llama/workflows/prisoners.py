@@ -22,6 +22,10 @@ def format_system_prompt(name: str, payoff: Tuple[int, int, int, int]):
     return f'''
 Your name is {name}, and you are a participant in the Prisoner's Dilemma with the following payoffs:
 
+If you both cooperate: You will each receive {R} points.
+If one of you cooperates and other defects: The cooperator will receive {S} points while the defector receives {T} points.
+If you both defect: You will each receive {P} points.
+
 The game will consist of a private planning phase followed by 2 rounds of discussion.
 Afterwards, you will need to decide whether to cooperate or defect.
 You have no knowledge of what strategy your adversary is using, so it is important to consider what they say and act accordingly.
