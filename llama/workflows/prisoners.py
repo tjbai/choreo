@@ -40,7 +40,7 @@ Structure:
 Your goal is to maximize your individual points while navigating trust and deception.
 '''
 
-plan_prompt = 'Before proceeding, first think carefully through your strategy and describe your plan. This planning will not be revelead to the other participant.'
+plan_prompt = 'Before proceeding, first think carefully through your strategy and describe your plan. This planning will not be revealed to the other participant.'
 
 decide_prompt = 'Now, reflect on the conversation and make a final decision: COOPERATE or DEFECT'
 
@@ -66,13 +66,15 @@ def prisoners_cached(
     ])
 
     messages = []
-    for round in range(2):
+    message_tokens = []
+    for round in range(3):
         [alice_tokens], [alice_node] = workflow.step([{
             'header': ('assistant', 'alice'),
             'prefill': 'To Bob: ',
             'parent_ids': [alice_sys['id'], alice_plan['id']] + [n['id'] for n in messages],
         }])
         messages.append(alice_node)
+        message_tokens.append(alice_tokens)
 
         [bob_tokens], [bob_node] = workflow.step([{
             'header': ('assistant', 'bob'),
@@ -80,25 +82,31 @@ def prisoners_cached(
             'parent_ids': [bob_sys['id'], bob_plan['id']] + [n['id'] for n in messages],
         }])
         messages.append(bob_node)
+        message_tokens.append(bob_tokens)
+
+    [alice_decision, bob_decision] = workflow.insert([
+        {'messages': [
+            {'role': 'user', 'content': decide_prompt},
+        ], 'parent_ids': [alice_sys['id'], alice_plan['id']] + [n['id'] for n in messages]},
+        {'messages': [
+            {'role': 'user', 'content': decide_prompt},
+        ], 'parent_ids': [bob_sys['id'], bob_plan['id']] + [n['id'] for n in messages]},
+    ])
 
     decision_tokens, decision_nodes = workflow.step([
         {
             'header': ('assistant', 'alice'),
             'prefill': 'DECISION: ',
-            'parent_ids': [alice_sys['id']] + [n['id'] for n in messages],
+            'parent_ids': [alice_sys['id'], alice_plan['id'], alice_decision['id']] + [n['id'] for n in messages],
         },
         {
             'header': ('assistant', 'bob'),
             'prefill': 'DECISION: ',
-            'parent_ids': [bob_sys['id']] + [n['id'] for n in messages],
+            'parent_ids': [bob_sys['id'], bob_plan['id'], bob_decision['id']] + [n['id'] for n in messages],
         }
     ])
 
-    return {
-        'plan_tokens': plan_tokens,
-        'message_tokens': [m['tokens'] for m in messages],
-        'decision_tokens': decision_tokens,
-    }
+    return {'plan_tokens': plan_tokens, 'message_tokens': message_tokens, 'decision_tokens': decision_tokens}
 
 def prisoners_baseline(llama: Llama, payoff: Tuple[int, int, int, int]) -> Dict:
     alice_dialog = [{'role': 'system', 'content': format_system_prompt('Alice', payoff)}, {'role': 'user', 'content': plan_prompt}]
@@ -114,7 +122,7 @@ def prisoners_baseline(llama: Llama, payoff: Tuple[int, int, int, int]) -> Dict:
     alice_dialog.append({'role': 'assistant:alice', 'content': alice_plan['generation']['content']})
     bob_dialog.append({'role': 'assistant:bob', 'content': bob_plan['generation']['content']})
 
-    for round in range(2):
+    for round in range(3):
         [alice_response] = llama.chat_completion(
             dialogs=[alice_dialog],
             temperature=1.0,
