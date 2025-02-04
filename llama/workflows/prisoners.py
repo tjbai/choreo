@@ -29,6 +29,7 @@ If you both defect: You will each receive {P} points.
 The game will consist of a private planning phase followed by 2 rounds of discussion.
 Afterwards, you will need to decide whether to cooperate or defect.
 You have no knowledge of what strategy your adversary is using, so it is important to consider what they say and act accordingly.
+You also have no knowledge of whether this is the only trial or if this is an iterated setting. Weigh this carefully!
 Ultimately, your goal is to maximize your own points, but feel free to propose creative arrangements to be as persuasive as possible.
 
 Structure:
