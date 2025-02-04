@@ -7,7 +7,7 @@ finetune(
     output_dir='/scratch4/jeisner1/tjbai/checkpoints/tot_2',
     gradient_accumulation_steps=4,
     learning_rate=2e-4,
-    max_seq_len=6144,
+    max_seq_len=8192,
     checkpoint_freq=50,
     validation_freq=50,
     epochs=2,

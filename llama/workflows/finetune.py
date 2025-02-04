@@ -236,11 +236,14 @@ def finetune(
             }
         )
 
+    total_steps = epochs * len(train_dataset) // gradient_accumulation_steps
+    warmup_steps = total_steps // 10
+
     global_step = 0
     for epoch in range(epochs):
         indices = torch.randperm(len(train_dataset)).tolist()
         for step, idx in enumerate(tqdm(indices, desc=f"Epoch {epoch}")):
-            lr_factor = get_lr_factor(global_step)
+            lr_factor = get_lr_factor(global_step, warmup_steps, total_steps)
             for param_group in trainer.optimizer.param_groups:
                 param_group['lr'] = learning_rate * lr_factor
             sample = dataset[idx]
@@ -256,6 +259,7 @@ def finetune(
                 if log_to_wandb:
                     wandb.log(val_metrics)
             if log_to_wandb:
+                metrics.update('lr', lr_factor)
                 wandb.log(metrics)
             if (global_step + 1) % checkpoint_freq == 0:
                 trainer.save_checkpoint(epoch, step)
