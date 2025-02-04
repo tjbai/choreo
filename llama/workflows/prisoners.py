@@ -91,7 +91,7 @@ def prisoners_cached(
 
         _, [alice_msg, bob_msg] = workflow.step([
             {'header': ('assistant', 'alice'), 'prefill': 'Strategy: ', 'parent_ids': [n['id'] for n in alice_context]},
-            {'header': ('assistant', 'bob'), 'prefill': 'Strategy: ', `'parent_ids': [n['id'] for n in bob_context]},
+            {'header': ('assistant', 'bob'), 'prefill': 'Strategy: ', 'parent_ids': [n['id'] for n in bob_context]},
         ])
         alice_context.append(alice_msg)
         bob_context.append(bob_msg)
