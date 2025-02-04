@@ -32,8 +32,9 @@
 # misc
 !tokenizer.model
 !dumps/
-!dumps/*.json
-!dumps/*.md
+!dumps/*/
+!dumps/**/*.json
+!dumps/**/*.md
 !slurm/
 !slurm/*.py
 !slurm/gen.sh
