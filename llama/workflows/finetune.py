@@ -259,7 +259,7 @@ def finetune(
                 if log_to_wandb:
                     wandb.log(val_metrics)
             if log_to_wandb:
-                metrics.update('lr', lr_factor)
+                metrics.update({'lr': lr_factor})
                 wandb.log(metrics)
             if (global_step + 1) % checkpoint_freq == 0:
                 trainer.save_checkpoint(epoch, step)
