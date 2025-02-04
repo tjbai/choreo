@@ -36,3 +36,4 @@
 !dumps/*.md
 !slurm/
 !slurm/*.py
+!slurm/gen.sh

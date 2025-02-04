@@ -168,7 +168,7 @@ def finetune(
     tokenizer_path: str,
     output_dir: str = "checkpoints",
     log_to_wandb: bool = True,
-    epochs: int = 1,
+    epochs: int = 2,
     checkpoint_freq: int = 25,
     validation_freq: int = 25,
     branching_factor: int = 8,
@@ -214,7 +214,7 @@ def finetune(
 
     dataset = TotDataset(data_path)
     generator = torch.Generator(device="cuda").manual_seed(42)
-    train_dataset, val_dataset = random_split(dataset, [0.8, 0.2], generator=generator)
+    train_dataset, val_dataset = random_split(dataset, [0.9, 0.1], generator=generator)
     print(f"Train Dataset: {len(train_dataset)} samples")
     print(f"Val Dataset: {len(val_dataset)} samples")
 
@@ -251,13 +251,13 @@ def finetune(
                 trainer.optimizer.step()
                 trainer.optimizer.zero_grad()
                 global_step += 1
-            if (step + 1) % validation_freq == 0:
+            if (global_step + 1) % validation_freq == 0:
                 val_metrics = evaluate(trainer, val_dataset)
                 if log_to_wandb:
                     wandb.log(val_metrics)
             if log_to_wandb:
                 wandb.log(metrics)
-            if (step + 1) % checkpoint_freq == 0:
+            if (global_step + 1) % checkpoint_freq == 0:
                 trainer.save_checkpoint(epoch, step)
 
     trainer.save_checkpoint(epochs - 1, len(train_dataset) - 1)
