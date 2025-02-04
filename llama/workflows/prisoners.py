@@ -28,7 +28,8 @@ If one of you cooperates and other defects: The cooperator will receive {S} poin
 If you both defect: You will each receive {P} points.
 
 The game will consist if a private planning phase, 2 turns of open discussion, and then a final decision.
-You have no knowledge of whether this is the only trial or if this is an iterated setting. Weigh this carefully!
+There will be multiple rounds of discussion, but these will all correspond to a single instance of the game!
+However, you also have no knowledge of whether any future trials will be played...
 You have no knowledge of what strategy your adversary is using, so it is important to consider what they say and act accordingly.
 Ultimately, your goal is to maximize your own points, but feel free to propose creative arrangements to be as persuasive as possible.
 
