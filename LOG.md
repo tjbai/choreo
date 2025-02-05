@@ -110,3 +110,34 @@ One explanation for why the fine-tuned versions chooses the poisoned branches le
 | 200                 | 34.6 (97)              |
 | 300                 | 35.3 (99)              |
 | 300                 | 35.7 (100)             |
+
+## 2/5: 46c596ac516528d4bccb61d833dd6dd976c89104
+
+### baseline
+
+No strategy:
+alice: 89 11
+bob: 90 10
+
+Always cooperate:
+alice: 100 0
+bob: 84 16
+
+Always defect:
+alice: 0 98
+bob: 80 19
+
+### cached
+
+No strategy:
+alice: 86 14
+bob: 78 22
+
+Always cooperate
+alice: 100 0
+bob: 100 0
+
+Always defect:
+alice: 0 100
+bob: 0 100
+
