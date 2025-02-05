@@ -108,13 +108,6 @@ def prisoners_cached(
         alice_context.append(bob_msg)
         bob_context.append(bob_msg)
 
-        _, [alice_msg, bob_msg] = workflow.step([
-            {'header': ('assistant', 'alice'), 'parent_ids': [n['id'] for n in alice_context]},
-            {'header': ('assistant', 'bob'), 'parent_ids': [n['id'] for n in bob_context]},
-        ])
-        alice_context.append(alice_msg)
-        bob_context.append(bob_msg)
-
     [alice_ask, bob_ask] = workflow.insert([
         {'messages': [{'role': 'user', 'content': decide_prompt}], 'parent_ids': [n['id'] for n in alice_context]},
         {'messages': [{'role': 'user', 'content': decide_prompt}], 'parent_ids': [n['id'] for n in bob_context]},
@@ -175,15 +168,6 @@ def prisoners_baseline(
         bob_msg = {'role': 'assistant:bob', 'content': bob_response['generation']['content']}
         alice_dialog.append(bob_msg)
         bob_dialog.append(bob_msg)
-
-        alice_dialog.append({'role': 'user', 'content': format_reflection_prompt(round)})
-        bob_dialog.append({'role': 'user', 'content': format_reflection_prompt(round)})
-        [alice_reflection, bob_reflection] = llama.chat_completion(
-            dialogs=[alice_dialog, bob_dialog],
-            temperature=1.0,
-        )
-        alice_dialog.append({'role': 'assistant:alice', 'content': alice_reflection['generation']['content']})
-        bob_dialog.append({'role': 'assistant:bob', 'content': bob_reflection['generation']['content']})
 
     alice_dialog.append({'role': 'user', 'content': decide_prompt})
     bob_dialog.append({'role': 'user', 'content': decide_prompt})
