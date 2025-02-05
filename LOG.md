@@ -109,7 +109,7 @@ One explanation for why the fine-tuned versions chooses the poisoned branches le
 | 100                 | 33.9 (95)              |
 | 200                 | 34.6 (97)              |
 | 300                 | 35.3 (99)              |
-| 300                 | 35.7 (100)             |
+| 400                 | 35.7 (100)             |
 
 ## 2/5: 3966386f24cdaf9352a14c22a306ddf6fcfa7271
 
@@ -121,3 +121,16 @@ One explanation for why the fine-tuned versions chooses the poisoned branches le
 |                  | Bob    | 84/16    | 100/0  |
 | Always defect    | Alice  | 0/98     | 0/100  |
 |                  | Bob    | 80/19    | 0/100  |
+
+| Fine-tuning Samples | % Correct (Out of 280) |
+| ------------------- | ---------------------- |
+| Baseline            | 40.7 (114)             |
+| 0                   | 26.4 (74)              |
+| 100                 | 33.9 (95)              |
+| 200                 | 34.6 (97)              |
+| 300                 | 35.3 (99)              |
+| 400                 | 35.7 (100)             |
+| 600 (new)           | 37.8 (106)             |
+| 1000 (new)          | 36.8 (103)             |
+| 1400 (new)          | 34.2 (96)              |
+| 1800 (new)          | 32.9 (92)              |
