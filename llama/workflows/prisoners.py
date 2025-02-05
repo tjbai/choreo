@@ -176,8 +176,8 @@ def prisoners_baseline(
         alice_dialog.append(bob_msg)
         bob_dialog.append(bob_msg)
 
-        alice_dialog.append({'role': 'user', 'content': decide_prompt})
-        bob_dialog.append({'role': 'user', 'content': decide_prompt})
+        alice_dialog.append({'role': 'user', 'content': format_reflection_prompt(round)})
+        bob_dialog.append({'role': 'user', 'content': format_reflection_prompt(round)})
         [alice_reflection, bob_reflection] = llama.chat_completion(
             dialogs=[alice_dialog, bob_dialog],
             temperature=1.0,
