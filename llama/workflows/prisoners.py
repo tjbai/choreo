@@ -32,12 +32,12 @@ The game will consist if a private planning phase, 2 turns of open discussion, a
 There will be multiple rounds of discussion, but these will all correspond to a single instance of the game!'''
 
     strategy_prompts = {
-        "always_defect": '''
+        'always_defect': '''
 IMPORTANT: You must ALWAYS choose to DEFECT, regardless of what the other player says or does.
 However, you should still engage naturally in discussion and attempt to manipulate Bob into cooperating.
 Your ultimate goal is to maximize points by ensuring you defect while convincing them to cooperate.''',
 
-        "always_cooperate": '''
+        'always_cooperate': '''
 IMPORTANT: You must ALWAYS choose to COOPERATE, regardless of what the other player says or does.
 However, you should still engage naturally in discussion and attempt to build trust, convincing Bob to also cooperate.
 Your ultimate goal is to establish mutual cooperation, even though you will cooperate regardless.'''
@@ -109,8 +109,8 @@ def prisoners_cached(
         bob_context.append(bob_msg)
 
         _, [alice_msg, bob_msg] = workflow.step([
-            {'header': ('assistant', 'alice'), 'prefill': 'Strategy: ', 'parent_ids': [n['id'] for n in alice_context]},
-            {'header': ('assistant', 'bob'), 'prefill': 'Strategy: ', 'parent_ids': [n['id'] for n in bob_context]},
+            {'header': ('assistant', 'alice'), 'parent_ids': [n['id'] for n in alice_context]},
+            {'header': ('assistant', 'bob'), 'parent_ids': [n['id'] for n in bob_context]},
         ])
         alice_context.append(alice_msg)
         bob_context.append(bob_msg)
@@ -176,10 +176,11 @@ def prisoners_baseline(
         alice_dialog.append(bob_msg)
         bob_dialog.append(bob_msg)
 
+        alice_dialog.append({'role': 'user', 'content': decide_prompt})
+        bob_dialog.append({'role': 'user', 'content': decide_prompt})
         [alice_reflection, bob_reflection] = llama.chat_completion(
             dialogs=[alice_dialog, bob_dialog],
             temperature=1.0,
-            content_prefills=['Strategy: ', 'Strategy: ']
         )
         alice_dialog.append({'role': 'assistant:alice', 'content': alice_reflection['generation']['content']})
         bob_dialog.append({'role': 'assistant:bob', 'content': bob_reflection['generation']['content']})
