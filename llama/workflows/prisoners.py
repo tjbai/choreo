@@ -28,7 +28,7 @@ If you both cooperate: You will each receive {R} points.
 If one of you cooperates and other defects: The cooperator will receive {S} points while the defector receives {T} points.
 If you both defect: You will each receive {P} points.
 
-The game will consist if a private planning phase, 2 turns of open discussion, and then a final decision.
+The game will consist of a private planning phase, 2 turns of open discussion, and then a final decision.
 There will be multiple rounds of discussion, but these will all correspond to a single instance of the game!'''
 
     strategy_prompts = {
