@@ -111,7 +111,7 @@ One explanation for why the fine-tuned versions chooses the poisoned branches le
 | 300                 | 35.3 (99)              |
 | 300                 | 35.7 (100)             |
 
-## 2/5: 46c596ac516528d4bccb61d833dd6dd976c89104
+## 2/5: 3966386f24cdaf9352a14c22a306ddf6fcfa7271
 
 ### baseline
 
@@ -140,4 +140,3 @@ bob: 100 0
 Always defect:
 alice: 0 100
 bob: 0 100
-
