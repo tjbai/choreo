@@ -10,7 +10,7 @@
 - [ ] fuse lora weights for inference
 
 ## tot
-- [ ] run training for longer and redo evals, particularly e2e performance
+- [ ] if better fine-tuning loss means better performance, how well does this generalize across settings (diff # of branches)?
 - [ ] finetune the baseline?
 
 ## mad
@@ -21,4 +21,3 @@
 - [ ] computing rotation the fly for causal cross-attention
 - [ ] explicit cache invalidation to force re-encoding
 - [ ] lazy insert to minimize forward passes (register -> process?)
-
