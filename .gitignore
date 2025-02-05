@@ -33,7 +33,7 @@
 !tokenizer.model
 !dumps/
 !dumps/*/
-!dumps/**/*.json
+!dumps/**/*.json*
 !dumps/**/*.md
 !slurm/
 !slurm/*.py
