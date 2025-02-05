@@ -10,11 +10,13 @@
 - [ ] fuse lora weights for inference
 
 ## tot
-- [ ] if better fine-tuning loss means better performance, how well does this generalize across settings (diff # of branches)?
-- [ ] finetune the baseline?
+- [ ] evaluate new e2e results
+		- [ ] if better fine-tuning loss means better performance, how well does this generalize across settings (diff # of branches)?
+- [ ] finetune the baseline
 
 ## mad
-- [ ] setup bob/alice prisoners dilemma
+- [ ] review transcripts
+- [ ] can we finetune on one strategy setting and resolve information leakage in the other?
 
 ## ideas
 - [ ] can we precompute block masks for the entire workflow?
