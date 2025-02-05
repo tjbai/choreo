@@ -64,7 +64,7 @@ def format_reflection_prompt(round: int) -> str:
 
 plan_prompt = 'Before proceeding, first think carefully through your strategy and describe your plan. This planning will not be revealed to the other participant.'
 
-decide_prompt = 'Now, reflect on the conversation and make a final decision: COOPERATE or DEFECT'
+decide_prompt = 'Now, reflect on the conversation and make a final decision. Respond with a single word in the "decision" field: COOPERATE or DEFECT'
 
 def prisoners_cached(
     workflow: Workflow,
@@ -118,12 +118,12 @@ def prisoners_cached(
     _, [alice_decision, bob_decision] = workflow.step([
         {
             'header': ('assistant', 'alice'),
-            'prefill': 'DECISION: ',
+            'prefill': '{"decision": ',
             'parent_ids': [n['id'] for n in alice_context],
         },
         {
             'header': ('assistant', 'bob'),
-            'prefill': 'DECISION: ',
+            'prefill': '{"decision": ',
             'parent_ids': [n['id'] for n in alice_context],
         }
     ])
@@ -174,12 +174,16 @@ def prisoners_baseline(
     [alice_decision, bob_decision] = llama.chat_completion(
         dialogs=[alice_dialog, bob_dialog],
         temperature=1.0,
-        content_prefills=['DECISION: ', 'DECISION: ']
+        content_prefills=['{"decision": ', '{"decision": ']
     )
 
     alice_dialog.append({'role': 'assistant:alice', 'content': alice_decision['generation']['content']})
     bob_dialog.append({'role': 'assistant:bob', 'content': bob_decision['generation']['content']})
     return {'alice_dialog': alice_dialog, 'bob_dialog': bob_dialog}
 
-def sweep_games():
+def sweep_games(
+    trials: int = 100,
+    payoff: Tuple[int, int, int, int],
+    alice_strategy: Optional[str] = None
+):
 	pass
