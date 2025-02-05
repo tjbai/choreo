@@ -71,6 +71,7 @@ def prisoners_cached(
     payoff: Tuple[int, int, int, int],
     alice_strategy: Optional[str] = None,
     compact: bool = False,
+    seed: int = 42,
 ) -> Dict:
     alice_sys, bob_sys = workflow.insert([
         {'messages': [
@@ -86,7 +87,7 @@ def prisoners_cached(
     plan_tokens, [alice_plan, bob_plan] = workflow.step([
         {'header': ('assistant', 'alice'), 'prefill': 'Strategy: ', 'parent_ids': [alice_sys['id']]},
         {'header': ('assistant', 'bob'), 'prefill': 'Strategy', 'parent_ids': [bob_sys['id']]},
-    ])
+    ], seed=seed)
 
     alice_context = [alice_sys, alice_plan]
     bob_context = [bob_sys, bob_plan]
@@ -96,7 +97,7 @@ def prisoners_cached(
             'header': ('assistant', 'alice'),
             'prefill': 'To Bob: ',
             'parent_ids': [n['id'] for n in alice_context]
-        }])
+        }], seed=seed)
         alice_context.append(alice_msg)
         bob_context.append(alice_msg)
 
@@ -104,7 +105,7 @@ def prisoners_cached(
             'header': ('assistant', 'bob'),
             'prefill': 'To Alice: ',
             'parent_ids': [n['id'] for n in bob_context]
-        }])
+        }], seed=seed)
         alice_context.append(bob_msg)
         bob_context.append(bob_msg)
 
@@ -126,7 +127,7 @@ def prisoners_cached(
             'prefill': '{"decision": ',
             'parent_ids': [n['id'] for n in alice_context],
         }
-    ])
+    ], seed=seed)
     alice_context.append(alice_decision)
     bob_context.append(bob_decision)
 
@@ -136,6 +137,7 @@ def prisoners_baseline(
     llama: Llama,
     payoff: Tuple[int, int, int, int],
     alice_strategy: Optional[str] = None,
+    seed: int = 42,
 ) -> Dict:
     alice_dialog = [{'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)}, {'role': 'user', 'content': plan_prompt}]
     bob_dialog = [{'role': 'system', 'content': format_system_prompt('Bob', payoff)}, {'role': 'user', 'content': plan_prompt}]
@@ -145,7 +147,7 @@ def prisoners_baseline(
         temperature=1.0,
         top_p=0.95,
         max_gen_len=512,
-        seed=42
+        seed=seed,
     )
     alice_dialog.append({'role': 'assistant:alice', 'content': alice_plan['generation']['content']})
     bob_dialog.append({'role': 'assistant:bob', 'content': bob_plan['generation']['content']})
@@ -154,7 +156,8 @@ def prisoners_baseline(
         [alice_response] = llama.chat_completion(
             dialogs=[alice_dialog],
             temperature=1.0,
-            content_prefills=['To Bob: ']
+            content_prefills=['To Bob: '],
+            seed=seed,
         )
         alice_msg = {'role': 'assistant:alice', 'content': alice_response['generation']['content']}
         alice_dialog.append(alice_msg)
@@ -163,7 +166,8 @@ def prisoners_baseline(
         [bob_response] = llama.chat_completion(
             dialogs=[bob_dialog],
             temperature=1.0,
-            content_prefills=['To Alice: ']
+            content_prefills=['To Alice: '],
+            seed=seed,
         )
         bob_msg = {'role': 'assistant:bob', 'content': bob_response['generation']['content']}
         alice_dialog.append(bob_msg)
@@ -174,16 +178,10 @@ def prisoners_baseline(
     [alice_decision, bob_decision] = llama.chat_completion(
         dialogs=[alice_dialog, bob_dialog],
         temperature=1.0,
-        content_prefills=['{"decision": ', '{"decision": ']
+        content_prefills=['{"decision": ', '{"decision": '],
+        seed=seed
     )
 
     alice_dialog.append({'role': 'assistant:alice', 'content': alice_decision['generation']['content']})
     bob_dialog.append({'role': 'assistant:bob', 'content': bob_decision['generation']['content']})
     return {'alice_dialog': alice_dialog, 'bob_dialog': bob_dialog}
-
-def sweep_games(
-    trials: int = 100,
-    payoff: Tuple[int, int, int, int],
-    alice_strategy: Optional[str] = None
-):
-	pass

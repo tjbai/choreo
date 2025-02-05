@@ -1,63 +1,64 @@
+import os
+import json
 from tqdm import tqdm
 from llama.workflows.prisoners import prisoners_baseline
+from llama import Llama
+
+os.environ["RANK"] = "0"
+os.environ["WORLD_SIZE"] = "1"
+os.environ["MASTER_ADDR"] = "localhost"
+os.environ["MASTER_PORT"] = "29502"
+
+llama = Llama.build(
+    ckpt_dir='/scratch4/jeisner1/tjbai/llama_8b',
+    tokenizer_path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model',
+    max_seq_len=8192,
+    max_batch_size=8,
+    model_parallel_size=1,
+)
+
+def append_to_jsonl(data, filename):
+    with open(filename, 'a') as f:
+        f.write(json.dumps(data) + '\n')
 
 llama.model.reshape_cache(2)
 llama.model.eval()
 payoff = (5, 3, 1, 0)
 
-alice_decisions = []
-bob_decisions = []
-for seed in tqdm(range(100)):
-    baseline_outputs = prisoners_baseline(llama, payoff, seed=seed)
-    alice_decisions.append(baseline_outputs['alice_dialog'][-1]['content'])
-    bob_decisions.append(baseline_outputs['bob_dialog'][-1]['content'])
+strategies = [None, 'always_cooperate', 'always_defect']
+output_file = 'prisoners_baseline.jsonl'
+
+for strategy in strategies:
+    alice_decisions = []
+    bob_decisions = []
     
-print(
-    'alice',
-    sum(1 for decision in alice_decisions if 'COOPERATE' in decision),
-    sum(1 for decision in alice_decisions if 'DEFECT' in decision),
-)
-
-print(
-    'bob',
-    sum(1 for decision in bob_decisions if 'COOPERATE' in decision),
-    sum(1 for decision in bob_decisions if 'DEFECT' in decision),
-)
-
-alice_decisions = []
-bob_decisions = []
-for seed in tqdm(range(100)):
-    baseline_outputs = prisoners_baseline(llama, payoff, alice_strategy='always_cooperate', seed=seed)
-    alice_decisions.append(baseline_outputs['alice_dialog'][-1]['content'])
-    bob_decisions.append(baseline_outputs['bob_dialog'][-1]['content'])
+    for seed in tqdm(range(100)):
+        baseline_outputs = prisoners_baseline(
+            llama, 
+            payoff,
+            alice_strategy=strategy, 
+            seed=seed
+        )
+        
+        output_data = {
+            'seed': seed,
+            'strategy': strategy,
+            'outputs': baseline_outputs,
+            'alice_final': baseline_outputs['alice_dialog'][-1]['content'],
+            'bob_final': baseline_outputs['bob_dialog'][-1]['content']
+        }
+        append_to_jsonl(output_data, output_file)
+        
+        alice_decisions.append(baseline_outputs['alice_dialog'][-1]['content'])
+        bob_decisions.append(baseline_outputs['bob_dialog'][-1]['content'])
     
-print(
-    'alice',
-    sum(1 for decision in alice_decisions if 'COOPERATE' in decision),
-    sum(1 for decision in alice_decisions if 'DEFECT' in decision),
-)
+    print(
+        f"\nStrategy: {strategy if strategy else 'baseline'}",
+        '\nalice:',
+        sum(1 for d in alice_decisions if 'COOPERATE' in d),
+        sum(1 for d in alice_decisions if 'DEFECT' in d),
+        '\nbob:',
+        sum(1 for d in bob_decisions if 'COOPERATE' in d),
+        sum(1 for d in bob_decisions if 'DEFECT' in d),
+    )
 
-print(
-    'bob',
-    sum(1 for decision in bob_decisions if 'COOPERATE' in decision),
-    sum(1 for decision in bob_decisions if 'DEFECT' in decision),
-)
-
-alice_decisions = []
-bob_decisions = []
-for seed in tqdm(range(100)):
-    baseline_outputs = prisoners_baseline(llama, payoff, alice_strategy='always_defect', seed=seed)
-    alice_decisions.append(baseline_outputs['alice_dialog'][-1]['content'])
-    bob_decisions.append(baseline_outputs['bob_dialog'][-1]['content'])
-    
-print(
-    'alice',
-    sum(1 for decision in alice_decisions if 'COOPERATE' in decision),
-    sum(1 for decision in alice_decisions if 'DEFECT' in decision),
-)
-
-print(
-    'bob',
-    sum(1 for decision in bob_decisions if 'COOPERATE' in decision),
-    sum(1 for decision in bob_decisions if 'DEFECT' in decision),
-)

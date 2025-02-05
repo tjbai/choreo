@@ -47,11 +47,13 @@ class Workflow:
 
     def reset(self, new_max_nodes: Optional[int] = None):
         # this preamble is important to provide a clean state for autograd
-        self.model.cache_k = torch.zeros_like(self.model.cache_k, requires_grad=False)
-        self.model.cache_v = torch.zeros_like(self.model.cache_v, requires_grad=False)
-        for i, layer in enumerate(self.model.layers):
-            layer.attention.cache_k = self.model.cache_k[i]
-            layer.attention.cache_v = self.model.cache_v[i]
+        if self.model.training:
+            self.model.cache_k = torch.zeros_like(self.model.cache_k, requires_grad=False)
+            self.model.cache_v = torch.zeros_like(self.model.cache_v, requires_grad=False)
+            for i, layer in enumerate(self.model.layers):
+                layer.attention.cache_k = self.model.cache_k[i]
+                layer.attention.cache_v = self.model.cache_v[i]
+            
         self.model.forward(torch.tensor([self.tokenizer.bos_id], device=self.device).unsqueeze(0), 0)
         
         # node tracking metadata
