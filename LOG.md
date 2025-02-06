@@ -130,6 +130,8 @@ One explanation for why the fine-tuned versions chooses the poisoned branches le
 | 200                 | 34.6 (97)              |
 | 300                 | 35.3 (99)              |
 | 400                 | 35.7 (100)             |
+| 200 (new)           | 33.2 (93)              |
+| 400 (new)           | 30.7 (86)              |
 | 600 (new)           | 37.8 (106)             |
 | 1000 (new)          | 36.8 (103)             |
 | 1400 (new)          | 34.2 (96)              |
