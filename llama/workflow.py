@@ -53,9 +53,9 @@ class Workflow:
             for i, layer in enumerate(self.model.layers):
                 layer.attention.cache_k = self.model.cache_k[i]
                 layer.attention.cache_v = self.model.cache_v[i]
-            
+
         self.model.forward(torch.tensor([self.tokenizer.bos_id], device=self.device).unsqueeze(0), 0)
-        
+
         # node tracking metadata
         if new_max_nodes is not None:
             self.max_nodes = new_max_nodes
@@ -276,7 +276,7 @@ class Workflow:
         header_length = []
         content_prefills = [[] for _ in tasks]
         for i, task in enumerate(tasks):
-            role = task['header'][0] + (tag if (tag := task['header'][1]) else '')
+            role = task['header'][0] + (f':{tag}' if (tag := task['header'][1]) else '')
             header = self.formatter.encode_header({"role": role, "content": ""})
             if (prefill := task.get('prefill')):
                 content_prefills[i] = self.tokenizer.encode(prefill, bos=False, eos=False)
@@ -311,7 +311,7 @@ class Workflow:
             grouped_causal_mask(node_ids)
         ])
         position_ids = incremental_sequence_with_offset(node_pos_ids, length)
-        
+
         logits = self.model.forward(
             tokens=tokens.unsqueeze(0),
             start_pos=self.cache_len,
