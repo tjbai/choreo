@@ -31,8 +31,8 @@ problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
 for ckpt_path in [
    "lora_epoch-0_step-195.pt",
    "lora_epoch-0_step-395.pt",
-   # "lora_epoch-0_step-595.pt",
-   # "lora_epoch-0_step-795.pt",
+   "lora_epoch-0_step-595.pt",
+   "lora_epoch-0_step-795.pt",
    # "lora_epoch-1_step-95.pt",
    # "lora_epoch-1_step-295.pt",
    # "lora_epoch-1_step-495.pt",
@@ -52,6 +52,7 @@ for ckpt_path in [
             problem=problem['problem'],
             branching_factor=8,
             voters=4,
+            hotswap=True,
         ))
 
     with open(f'{ckpt_path}_e2e.json', 'w') as f:

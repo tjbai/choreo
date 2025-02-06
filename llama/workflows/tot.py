@@ -103,7 +103,11 @@ def tot_cached(
     proposal_force: Optional[torch.Tensor] = None, # (branching_factor, N)
     voter_force: Optional[torch.Tensor] = None,    # (voters, N)
     final_force: Optional[torch.Tensor] = None,    # (1, N)
+    hotswap: bool = False,
 ) -> TotResult:
+    if hasattr(workflow.model, 'set_adapter_state') and hotswap:
+        workflow.model.set_adapter_state(enabled=False)
+
     cot, vote, finish = workflow.insert([
         {'messages': [
             {'role': 'system', 'content': cot_prompt},
@@ -133,6 +137,9 @@ def tot_cached(
         seed=42,
         debug=False,
     )
+
+    if hasattr(workflow.model, 'set_adapter_state') and hotswap:
+        workflow.model.set_adapter_state(enabled=True)
 
     vote_tokens, vote_nodes = workflow.step([
             {'header': ('assistant', None),
