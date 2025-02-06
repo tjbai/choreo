@@ -134,3 +134,12 @@ One explanation for why the fine-tuned versions chooses the poisoned branches le
 | 1000 (new)          | 36.8 (103)             |
 | 1400 (new)          | 34.2 (96)              |
 | 1800 (new)          | 32.9 (92)              |
+
+600 examples checkpoint:
+
+Both correct: 70
+Baseline correct only: 44
+Fine-tuned correct only: 36
+Both incorrect: 130
+p-value: 0.434
+

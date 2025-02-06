@@ -10,12 +10,10 @@
 - [ ] fuse lora weights for inference
 
 ## tot
-- [ ] evaluate new e2e results
-		- [ ] if better fine-tuning loss means better performance, how well does this generalize across settings (diff # of branches)?
+- [ ] setup some hyperparameter sweeps...
 - [ ] finetune the baseline
 
 ## mad
-- [ ] review transcripts
 - [ ] can we finetune on one strategy setting and resolve information leakage in the other?
 
 ## ideas
