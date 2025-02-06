@@ -362,8 +362,6 @@ class Transformer(nn.Module):
     def reshape_cache(self, new_batch_size: Optional[int] = None):
         tot = self.params.max_batch_size * self.params.max_seq_len
         if new_batch_size is not None:
-            if tot % new_batch_size != 0:
-                raise Exception("Invalid shape")
             self.params.max_batch_size = new_batch_size
             self.params.max_seq_len = tot // new_batch_size
         self.cache_k = self.cache_k.view(
