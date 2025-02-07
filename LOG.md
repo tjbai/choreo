@@ -145,3 +145,6 @@ Fine-tuned correct only: 36
 Both incorrect: 130
 p-value: 0.434
 
+## 2/7: 34c67d07289cf6902b490f2d3ad0785cb20ff38b
+
+Works a bit worse. 86, 82, 95, 93 for 200 -> 400 -> 600 -> 800.
