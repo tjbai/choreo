@@ -299,5 +299,6 @@ def finetune(
     if log_to_wandb:
         wandb.finish()
 
-def main():
+if __name__ == '__main__':
     fire.Fire(finetune)
+
