@@ -1,0 +1,35 @@
+program: finetune.py
+command:
+  - ${env}
+  - "uv"
+  - "run"
+  - "python"
+  - ${program}
+  - "--data-path='/home/tbai4/llama3/llama/tot_data_2'"
+  - "--ckpt-dir='/scratch4/jeisner1/tjbai/llama_8b'"
+  - "--tokenizer-path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model'"
+  - ${args}
+
+method: bayes
+metric:
+  name: val/correct
+  goal: maximize
+parameters:
+  lora_rank:
+    values: [16, 32, 64]
+  lora_alpha:
+    values: [8, 16, 32]
+  lora_dropout:
+    values: [0.05, 0.1, 0.2]
+  learning_rate:
+    distribution: log_uniform
+    min: -6.0    # 1e-6
+    max: -3.5    # 3e-4
+  epochs:
+    value: 2
+  gradient_accumulation_steps:
+    value: 4
+  checkpoint_freq:
+    value: 1e9 # don't checkpoint
+  validation_freq:
+    value: 225 # should eval twice, 900 / 4 = 450 total effective batches
