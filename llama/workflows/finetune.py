@@ -15,6 +15,7 @@ from torch.utils.data import Dataset, random_split
 from tqdm import tqdm
 
 from llama import Workflow, Llama
+from llama.util import find_free_port
 from llama.workflows.tot import (
     cot_prompt,
     finish_prompt,
@@ -219,7 +220,7 @@ def finetune(
     os.environ["RANK"] = "0"
     os.environ["WORLD_SIZE"] = "1"
     os.environ["MASTER_ADDR"] = master_addr
-    os.environ["MASTER_PORT"] = master_port
+    os.environ["MASTER_PORT"] = str(find_free_port())
 
     workflow = Workflow.build(
         ckpt_dir=ckpt_dir,

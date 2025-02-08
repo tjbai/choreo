@@ -3,8 +3,9 @@ import sys
 import time
 import json
 import warnings
+import socket
 from pathlib import Path
-from typing import Type, Optional, Tuple
+from typing import Optional, Tuple
 
 import torch
 from fairscale.nn.model_parallel.initialize import (
@@ -106,3 +107,10 @@ def load_model_and_tokenizer(
 
     print(f"Loaded in {time.time() - start_time:.2f} seconds")
     return model, tokenizer
+
+def find_free_port():
+    with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+        s.bind(('', 0))
+        s.listen(1)
+        port = s.getsockname()[1]
+        return port
