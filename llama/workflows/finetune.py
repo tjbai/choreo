@@ -14,8 +14,16 @@ from torch.optim import AdamW
 from torch.utils.data import Dataset, random_split
 from tqdm import tqdm
 
-from llama import Workflow
-from llama.workflows.tot import cot_prompt, finish_prompt, format_vote_system_prompt, format_problem
+from llama import Workflow, Llama
+from llama.workflows.tot import (
+    cot_prompt,
+    finish_prompt,
+    format_vote_system_prompt,
+    format_problem,
+    tot_cached,
+    load_math_problems,
+    eval_solutions
+)
 
 class TotDataset(Dataset):
     def __init__(self, data_dir: str | Path):
@@ -40,6 +48,7 @@ class LoraTrainer:
         self.workflow = workflow
         self.model = self.workflow.model
         self.tokenizer = self.workflow.tokenizer
+        self.llama = Llama(self.model, self.tokenizer)
         self.optimizer = AdamW(self.model.get_trainable_parameters(), lr=learning_rate)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
@@ -132,7 +141,7 @@ class TotTrainer(LoraTrainer):
         return total_loss, metrics
 
 @torch.no_grad()
-def evaluate(trainer, val_dataset, max_steps=None):
+def evaluate(trainer: TotTrainer, val_dataset: TotDataset, max_steps=None, max_e2e=100):
     trainer.workflow.model.eval()
 
     total_loss = 0
@@ -147,13 +156,34 @@ def evaluate(trainer, val_dataset, max_steps=None):
             all_metrics[k] += v.item()
 
     N = len(val_dataset)
-    avg_metrics = {
+    metrics = {
         'val/loss': total_loss / N,
         **{k.replace('train/', 'val/'): v / N for k, v in all_metrics.items()}
     }
 
+    solutions = []
+    problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
+    problems = problems[:max_e2e]
+    for problem in tqdm(problems, desc="Running e2e validation"):
+        trainer.workflow.reset()
+        solutions.append(tot_cached(
+            workflow=trainer.workflow,
+            problem=problem['problem'],
+            branching_factor=trainer.branching_factor,
+            voters=trainer.voters,
+        ))
+
+    trainer.llama.model.reshape_cache(4)
+    trainer.llama.model.set_adapter_state(enabled=False)
+    try:
+        correct = eval_solutions(trainer.llama, solutions, problems)
+        metrics['val/correct'] = sum(correct) / len(correct)
+    finally:
+        trainer.llama.model.set_adapter_state(enabled=True)
+        trainer.llama.model.reshape_cache(1)
+
     trainer.workflow.model.train()
-    return avg_metrics
+    return metrics
 
 def get_lr_factor(step, warmup_steps=10, total_steps=100):
     # steps = number of updates != number of samples
@@ -219,7 +249,7 @@ def finetune(
     print(f"Val Dataset: {len(val_dataset)} samples")
 
     print("Sanity check:")
-    evaluate(trainer, val_dataset, max_steps=1)
+    evaluate(trainer, val_dataset, max_steps=1, max_e2e=1)
     print("Passed!")
 
     if log_to_wandb:

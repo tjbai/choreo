@@ -52,6 +52,19 @@ You must format your response as:
 ANSWER: (2-3 sentence summary of solution and final answer)
 '''
 
+evaluator_prompt = '''
+You are a strict evaluator for mathematics problems. You will assess:
+1. Problem statement
+2. Official solution and final answer
+3. Student's attempted solution and final answer
+
+Evaluation criteria:
+- Final answers must be mathematically equivalent to the official solution
+- All valid equivalent expressions are correct (e.g., 1/2 vs 0.5 vs 2^-1)
+
+Output: Respond with ONLY "correct" or "incorrect" based on the final answer.
+'''
+
 def format_vote_system_prompt(n):
     return f'''
     You are a rigorous mathematical evaluator with deep expertise in competition mathematics.
@@ -786,3 +799,29 @@ def collect_samples(
         json.dump(metadata, f)
 
     return examples
+
+def eval_solutions(llama: Llama, solutions: List[Dict], problems: List[Dict]) -> List[bool]:
+    results = []
+    for soln, prob in tqdm(zip(solutions, problems), total=len(problems)):
+        attempt = llama.tokenizer.decode(soln['final_tokens'])
+
+        dialog = [{
+            'role': 'system',
+            'content': evaluator_prompt
+        }, {
+            'role': 'user',
+            'content': f"PROBLEM:\n{prob['problem']}\n\nGROUND TRUTH:\n{prob['solution']}\n\nATTEMPT:\n{attempt}"
+        }]
+
+        outputs = llama.chat_completion(
+            [dialog] * 3,
+            max_gen_len=256,
+            temperature=0.25,
+            top_p=0.9,
+            seed=42
+        )
+
+        correct_votes = sum(1 for o in outputs if 'correct' in o['generation']['content'].lower())
+        results.append(correct_votes > 1)
+
+    return results
