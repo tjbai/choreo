@@ -285,15 +285,15 @@ def finetune(
                 trainer.optimizer.step()
                 trainer.optimizer.zero_grad()
                 global_step += 1
-            if (global_step + 1) % validation_freq == 0:
-                val_metrics = evaluate(trainer, val_dataset)
+                if (global_step + 1) % validation_freq == 0:
+                    val_metrics = evaluate(trainer, val_dataset)
+                    if log_to_wandb:
+                        wandb.log(val_metrics)
                 if log_to_wandb:
-                    wandb.log(val_metrics)
-            if log_to_wandb:
-                metrics.update({'lr': lr_factor})
-                wandb.log(metrics)
-            if (global_step + 1) % checkpoint_freq == 0:
-                trainer.save_checkpoint(epoch, step)
+                    metrics.update({'lr': lr_factor})
+                    wandb.log(metrics)
+                if (global_step + 1) % checkpoint_freq == 0:
+                    trainer.save_checkpoint(epoch, step)
 
     trainer.save_checkpoint(epochs - 1, len(train_dataset) - 1)
 
