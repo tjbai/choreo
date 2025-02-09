@@ -821,7 +821,7 @@ def eval_solutions(llama: Llama, solutions: List[Dict], problems: List[Dict]) ->
             seed=42
         )
 
-        correct_votes = sum(1 for o in outputs if 'correct' in o['generation']['content'].lower())
-        results.append(correct_votes > 1)
+        incorrect_votes = sum(1 for o in outputs if 'incorrect' in o['generation']['content'].lower())
+        results.append(incorrect_votes <= 1)
 
     return results
