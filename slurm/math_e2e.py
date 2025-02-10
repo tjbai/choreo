@@ -1,10 +1,12 @@
 import os
 from llama import Workflow, Llama
+from llama.util import find_free_port
+from llama.workflows.tot import eval_solutions
 
 os.environ["RANK"] = "0"
 os.environ["WORLD_SIZE"] = "1"
 os.environ["MASTER_ADDR"] = "localhost"
-os.environ["MASTER_PORT"] = "29500"
+os.environ["MASTER_PORT"] = str(find_free_port())
 
 workflow = Workflow.build(
     ckpt_dir='/scratch4/jeisner1/tjbai/llama_8b',
@@ -14,9 +16,9 @@ workflow = Workflow.build(
     model_parallel_size=1,
     max_nodes=20,
     use_lora=True,
-    lora_rank=8,
-    lora_alpha=16,
-    lora_dropout=0.1
+    lora_rank=64,
+    lora_alpha=32,
+    lora_dropout=0.0
 )
 
 workflow.model.eval()
@@ -29,31 +31,33 @@ from llama.workflows.tot import load_math_problems, tot_cached, tot_baseline
 problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
 
 for ckpt_path in [
-   "lora_epoch-0_step-195.pt",
    "lora_epoch-0_step-395.pt",
-   "lora_epoch-0_step-595.pt",
    "lora_epoch-0_step-795.pt",
-   # "lora_epoch-1_step-95.pt",
-   # "lora_epoch-1_step-295.pt",
-   # "lora_epoch-1_step-495.pt",
-   # "lora_epoch-1_step-695.pt",
-   # "lora_epoch-1_step-895.pt",
+   "lora_epoch-1_step-295.pt",
 ]:
-    workflow.model.set_adapter_state(enabled=True)
-    checkpoint = torch.load(f'/scratch4/jeisner1/tjbai/checkpoints/tot_2/{ckpt_path}', weights_only=True)
+    checkpoint = torch.load(f'/scratch4/jeisner1/tjbai/checkpoints/tot_3/{ckpt_path}', weights_only=True)
     workflow.model.load_state_dict(checkpoint['lora'])
-    workflow.model.reshape_cache(1)
 
-    comps = []
+    workflow.model.eval()
+    workflow.model.reshape_cache(1)
+    workflow.model.set_adapter_state(enabled=True)
+
+    solutions = []
     for problem in tqdm(problems, desc=f'checkpoint {ckpt_path}'):
         workflow.reset()
-        comps.append(tot_cached(
+        solutions.append(tot_cached(
             workflow=workflow,
             problem=problem['problem'],
             branching_factor=8,
             voters=4,
-            hotswap=True,
         ))
 
+    llama = Llama(workflow.model, workflow.tokenizer)
+    llama.model.reshape_cache(4)
+    llama.model.set_adapter_state(enabled=False)
+    all_correct = eval_solutions(llama, solutions, problems)
+    print(f'Correct: {sum(all_correct)} / {len(all_correct)}')
+
     with open(f'{ckpt_path}_e2e.json', 'w') as f:
-        json.dump(comps, f)
+        json.dump({'solutions': solutions, 'all_correct': all_correct}, f)
+
