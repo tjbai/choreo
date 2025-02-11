@@ -148,3 +148,15 @@ p-value: 0.434
 ## 2/7: 34c67d07289cf6902b490f2d3ad0785cb20ff38b
 
 Works a bit worse. 86, 82, 95, 93 for 200 -> 400 -> 600 -> 800.
+
+## 2/10: 49e4d9774f0c7c7aac8c53d4e9a723778e677114
+
+With new checkpoints (rank=64, alpha=32, dropout=0.05)
+
+| Fine-tuning Samples | % Correct (Out of 280) |
+| ------------------- | ---------------------- |
+| Baseline            | 40.7 (114)             |
+| 0                   | 26.4 (74)              |
+| 400                 | 31.4 (88)              |
+| 800                 | 38.5 (108)             |
+| 1200                | 39.6 (111)             |
