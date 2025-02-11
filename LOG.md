@@ -153,10 +153,10 @@ Works a bit worse. 86, 82, 95, 93 for 200 -> 400 -> 600 -> 800.
 
 With new checkpoints (rank=64, alpha=32, dropout=0.05)
 
-| Fine-tuning Samples | % Correct (Out of 280) |
-| ------------------- | ---------------------- |
-| Baseline            | 40.7 (114)             | # this will need to be updated in case the new eval harness gives different results somehow
-| 0                   | 26.4 (74)              |
-| 400                 | 31.4 (88)              |
-| 800                 | 38.5 (108)             |
-| 1200                | 39.6 (111)             |
+| Fine-tuning Samples | % Correct (Out of 280) | McNemar's p-value |
+| ------------------- | ---------------------- | ----------------- |
+| Baseline            | 41.4 (116)             |                   |
+| 0                   | 26.4 (74)              |                   |
+| 400                 | 31.4 (88)              | 0.002             |
+| 800                 | 38.5 (108)             | 0.416             |
+| 1200                | 39.6 (111)             | 0.630             |
