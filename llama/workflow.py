@@ -70,8 +70,8 @@ class Workflow:
         self.adj[:, 0] = True # bos is always a parent
 
     # TODO -- we should make this lazy
-    def insert(self, prompts: List[Prompt], training: bool = False) -> List[Cached]:
-        with (nullcontext() if training else torch.inference_mode()):
+    def insert(self, prompts: List[Prompt], track_gradients: bool = False) -> List[Cached]:
+        with (nullcontext() if track_gradients else torch.inference_mode()):
             if self.cur_id + len(prompts) > self.max_nodes:
                 raise Exception(f"Insufficient capacity for {len(prompts)} more nodes.")
             self.add_nodes(prompts)
@@ -205,8 +205,8 @@ class Workflow:
         self.cur_id += 0 if stateless else bsz
         return outputs
 
-    def step(self, *args, inference_mode: bool = True, **kwargs) -> Tuple[List[List[int]], List[Cached]]:
-        with (torch.inference_mode() if inference_mode else nullcontext()):
+    def step(self, *args, track_gradients: bool = False, **kwargs) -> Tuple[List[List[int]], List[Cached]]:
+        with (nullcontext() if track_gradients else torch.inference_mode()):
                 return self._step(*args, **kwargs)
 
     def train_step(

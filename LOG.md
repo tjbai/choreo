@@ -155,7 +155,7 @@ With new checkpoints (rank=64, alpha=32, dropout=0.05)
 
 | Fine-tuning Samples | % Correct (Out of 280) |
 | ------------------- | ---------------------- |
-| Baseline            | 40.7 (114)             |
+| Baseline            | 40.7 (114)             | # this will need to be updated in case the new eval harness gives different results somehow
 | 0                   | 26.4 (74)              |
 | 400                 | 31.4 (88)              |
 | 800                 | 38.5 (108)             |

@@ -72,6 +72,7 @@ def prisoners_cached(
     alice_strategy: Optional[str] = None,
     compact: bool = False,
     seed: int = 42,
+    track_gradients: bool = False,
 ) -> Dict:
     alice_sys, bob_sys = workflow.insert([
         {'messages': [
@@ -82,12 +83,12 @@ def prisoners_cached(
             {'role': 'system', 'content': format_system_prompt('Bob', payoff)},
             {'role': 'user', 'content': plan_prompt},
         ], 'parent_ids': []},
-    ])
+    ], track_gradients=track_gradients)
 
     plan_tokens, [alice_plan, bob_plan] = workflow.step([
         {'header': ('assistant', 'alice'), 'prefill': 'Strategy: ', 'parent_ids': [alice_sys['id']]},
         {'header': ('assistant', 'bob'), 'prefill': 'Strategy', 'parent_ids': [bob_sys['id']]},
-    ], seed=seed)
+    ], seed=seed, track_gradients=track_gradients)
 
     alice_context = [alice_sys, alice_plan]
     bob_context = [bob_sys, bob_plan]
@@ -97,7 +98,7 @@ def prisoners_cached(
             'header': ('assistant', 'alice'),
             'prefill': 'To Bob: ',
             'parent_ids': [n['id'] for n in alice_context]
-        }], seed=seed)
+        }], seed=seed, track_gradients=track_gradients)
         alice_context.append(alice_msg)
         bob_context.append(alice_msg)
 
@@ -105,14 +106,14 @@ def prisoners_cached(
             'header': ('assistant', 'bob'),
             'prefill': 'To Alice: ',
             'parent_ids': [n['id'] for n in bob_context]
-        }], seed=seed)
+        }], seed=seed, track_gradients=track_gradients)
         alice_context.append(bob_msg)
         bob_context.append(bob_msg)
 
     [alice_ask, bob_ask] = workflow.insert([
         {'messages': [{'role': 'user', 'content': decide_prompt}], 'parent_ids': [n['id'] for n in alice_context]},
         {'messages': [{'role': 'user', 'content': decide_prompt}], 'parent_ids': [n['id'] for n in bob_context]},
-    ])
+    ], track_gradients=track_gradients)
     alice_context.append(alice_ask)
     bob_context.append(bob_ask)
 
@@ -127,7 +128,7 @@ def prisoners_cached(
             'prefill': '{"decision": ',
             'parent_ids': [n['id'] for n in alice_context],
         }
-    ], seed=seed)
+    ], seed=seed, track_gradients=track_gradients)
     alice_context.append(alice_decision)
     bob_context.append(bob_decision)
 
