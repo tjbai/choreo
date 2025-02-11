@@ -18,7 +18,7 @@ workflow = Workflow.build(
     use_lora=True,
     lora_rank=64,
     lora_alpha=32,
-    lora_dropout=0.0
+    lora_dropout=0.05
 )
 
 workflow.model.eval()
@@ -31,10 +31,11 @@ from llama.workflows.tot import load_math_problems, tot_cached, tot_baseline
 problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
 
 for ckpt_path in [
-   # "lora_epoch-0_step-395.pt",
-   # "lora_epoch-0_step-795.pt",
-   "lora_epoch-1_step-495.pt",
-   "lora_epoch-1_step-695.pt",
+   "lora_epoch-0_step-395.pt",
+   "lora_epoch-0_step-795.pt",
+   "lora_epoch-1_step-295.pt",
+   # "lora_epoch-1_step-495.pt",
+   # "lora_epoch-1_step-695.pt",
 ]:
     checkpoint = torch.load(f'/scratch4/jeisner1/tjbai/checkpoints/tot_3/{ckpt_path}', weights_only=True)
     workflow.model.load_state_dict(checkpoint['lora'])
