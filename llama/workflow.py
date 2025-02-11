@@ -5,9 +5,9 @@ from contextlib import nullcontext
 
 import torch
 
-from .model import Transformer
-from .generation import Llama, sample_top_p
-from .tokenizer import ChatFormat, Message, Tokenizer, Role
+from llama.model import Transformer
+from llama.generation import Llama, sample_top_p
+from llama.tokenizer import ChatFormat, Message, Tokenizer, Role
 
 class Node(TypedDict):
     parent_ids: List[int]
@@ -23,6 +23,11 @@ class Cached(Node):
     id: int
     tokens: List[int]
     length: int
+
+class StepResult(TypedDict):
+    tokens: List[List[int]]
+    nodes: List[Cached]
+    log_probs: Optional[List[torch.Tensor]]
 
 class Workflow:
     @staticmethod
@@ -106,7 +111,7 @@ class Workflow:
         seed: int = 42,
         debug: bool = False,
         teacher_force: Optional[torch.Tensor] = None,
-    ) -> Tuple[List[List[int]], List[Cached], Optional[List[torch.Tensor]]]:
+    ) -> StepResult:
         bsz = len(tasks)
         if self.cache_len + (bsz * max_gen_len) > self.max_seq_len:
             raise Exception(f"Insufficient capacity for {bsz * max_gen_len} tokens.")
@@ -199,7 +204,7 @@ class Workflow:
         if debug:
             self.debug_mask(mask[:, : self.cache_len])
 
-        tokens, nodes = self.wrap_outputs(
+        result = self.wrap_outputs(
             self.context[header_end : self.cache_len].view(-1, bsz).t(),
             tasks,
             headers,
@@ -207,9 +212,11 @@ class Workflow:
         )
         self.cache_len = header_start if stateless else self.cache_len
         self.cur_id += 0 if stateless else bsz
-        return (tokens, nodes, log_probs_out if log_probs else None)
+        if log_probs:
+            result['log_probs'] = log_probs_out
+        return result
 
-    def step(self, *args, track_gradients: bool = False, **kwargs) -> Tuple[List[List[int]], List[Cached], Optional[List[torch.Tensor]]]:
+    def step(self, *args, track_gradients: bool = False, **kwargs) -> StepResult:
         with (nullcontext() if track_gradients else torch.inference_mode()):
                 return self._step(*args, **kwargs)
 
@@ -242,7 +249,7 @@ class Workflow:
         tasks: List[Task],
         headers: List[List[int]],
         content_prefills: List[List[int]]
-    ) -> Tuple[List[List[int]], List[Cached]]:
+    ) -> StepResult:
         out_tokens: List[List[int]] = []
         out_nodes: List[Cached] = []
         for i, (task, toks, header, content_prefill) in enumerate(
@@ -267,7 +274,12 @@ class Workflow:
                 'tokens': header + toks,
                 'length': len(header) + len(toks)
             }))
-        return out_tokens, out_nodes
+
+        return StepResult({
+            'tokens': out_tokens,
+            'nodes': out_nodes,
+            'log_probs': None,
+        })
 
     def add_nodes(self, nodes: Sequence[Node]):
         for i, node in enumerate(nodes):

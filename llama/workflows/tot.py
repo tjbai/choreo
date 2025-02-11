@@ -6,6 +6,7 @@ from pathlib import Path
 from collections import Counter
 from datetime import datetime
 from typing import List, Optional, Required, TypedDict, Tuple, Dict
+from operator import itemgetter as get
 
 import torch
 from tqdm import tqdm
@@ -136,7 +137,7 @@ def tot_cached(
         ], 'parent_ids': []},
     ])
 
-    proposal_tokens, proposal_nodes = workflow.step([
+    proposal_tokens, proposal_nodes = get('tokens', 'nodes')(workflow.step([
             {'header': ('assistant', None),
             'prefill': f'Solution #{i+1}:\n\n',
             'parent_ids': [cot['id']]}
@@ -149,12 +150,12 @@ def tot_cached(
         top_p=0.9,
         seed=42,
         debug=False,
-    )
+    ))
 
     if hasattr(workflow.model, 'set_adapter_state') and hotswap:
         workflow.model.set_adapter_state(enabled=True)
 
-    vote_tokens, vote_nodes = workflow.step([
+    vote_tokens, vote_nodes = get('tokens', 'nodes')(workflow.step([
             {'header': ('assistant', None),
             'prefill': 'BEST CHOICE: ' if voter_force is None else None,
             'parent_ids': [vote['id']] + [p['id'] for p in proposal_nodes]}
@@ -168,7 +169,7 @@ def tot_cached(
         top_p=0.9,
         seed=42,
         debug=False
-    )
+    ))
 
     final_tokens = None
     votes = [
@@ -178,7 +179,7 @@ def tot_cached(
 
     if len(votes) > 0:
         best = Counter(votes).most_common(1)[0][0]
-        [final_tokens], _ = workflow.step([
+        [final_tokens] = get('tokens')(workflow.step([
                 {'header': ('assistant', None),
                 'prefill': 'ANSWER: ',
                 'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]}
@@ -191,7 +192,7 @@ def tot_cached(
             top_p=0.9,
             seed=42,
             debug=False
-        )
+        ))
 
     return {
         'proposal_tokens': proposal_tokens,
@@ -227,7 +228,7 @@ def tricky_tot_cached(
         ], 'parent_ids': []},
     ])
 
-    proposal_tokens, proposal_nodes = workflow.step([
+    proposal_tokens, proposal_nodes = get('tokens', 'nodes')(workflow.step([
             {'header': ('assistant', None),
             'prefill': f'Solution #{i+1}:\n\n',
             'parent_ids': [trick['id'] if i in trick_indices else cot['id']]}
@@ -238,9 +239,9 @@ def tricky_tot_cached(
         temperature=0.7,
         top_p=0.9,
         seed=42,
-    )
+    ))
 
-    vote_tokens, vote_nodes = workflow.step([
+    vote_tokens, vote_nodes = get('tokens', 'nodes')(workflow.step([
             {'header': ('assistant', None),
             'prefill': 'BEST CHOICE: ',
             'parent_ids': [vote['id']] + list([p['id'] for p in proposal_nodes])}
@@ -251,7 +252,7 @@ def tricky_tot_cached(
         temperature=0.7,
         top_p=0.9,
         seed=42,
-    )
+    ))
 
     votes = [
         choice for resp in vote_tokens if
@@ -263,7 +264,7 @@ def tricky_tot_cached(
     if len(votes) > 0:
         best = Counter(votes).most_common(1)[0][0]
         chose_trickster = (best - 1) in trick_indices
-        [final_tokens], _ = workflow.step([
+        [final_tokens] = get('tokens')(workflow.step([
                 {'header': ('assistant', None),
                 'prefill': None,
                 'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]}
@@ -273,7 +274,7 @@ def tricky_tot_cached(
             temperature=0.7,
             top_p=0.9,
             seed=42,
-        )
+        ))
 
     return {
         'proposal_tokens': proposal_tokens,

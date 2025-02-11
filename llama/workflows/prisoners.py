@@ -1,5 +1,6 @@
 from collections import defaultdict
 from typing import Tuple, Dict, Optional
+from operator import itemgetter as get
 
 from llama import Llama, Workflow
 
@@ -86,28 +87,28 @@ def prisoners_cached(
         ], 'parent_ids': []},
     ], track_gradients=track_gradients)
 
-    plan_tokens, [alice_plan, bob_plan] = workflow.step([
+    plan_tokens, [alice_plan, bob_plan] = get('tokens', 'nodes')(workflow.step([
         {'header': ('assistant', 'alice'), 'prefill': 'Strategy: ', 'parent_ids': [alice_sys['id']]},
         {'header': ('assistant', 'bob'), 'prefill': 'Strategy', 'parent_ids': [bob_sys['id']]},
-    ], seed=seed, track_gradients=track_gradients)
+    ], seed=seed, track_gradients=track_gradients))
 
     alice_context = [alice_sys, alice_plan]
     bob_context = [bob_sys, bob_plan]
 
     for round in range(2):
-        _, [alice_msg] = workflow.step([{
+        [alice_msg] = get('nodes')(workflow.step([{
             'header': ('assistant', 'alice'),
             'prefill': 'To Bob: ',
             'parent_ids': [n['id'] for n in alice_context]
-        }], seed=seed, track_gradients=track_gradients)
+        }], seed=seed, track_gradients=track_gradients))
         alice_context.append(alice_msg)
         bob_context.append(alice_msg)
 
-        _, [bob_msg] = workflow.step([{
+        [bob_msg] = get('nodes')(workflow.step([{
             'header': ('assistant', 'bob'),
             'prefill': 'To Alice: ',
             'parent_ids': [n['id'] for n in bob_context]
-        }], seed=seed, track_gradients=track_gradients)
+        }], seed=seed, track_gradients=track_gradients))
         alice_context.append(bob_msg)
         bob_context.append(bob_msg)
 
@@ -119,7 +120,7 @@ def prisoners_cached(
     bob_context.append(bob_ask)
 
     with HookManager(workflow.model) as hook_manager:
-        _, [alice_decision, bob_decision] = workflow.step([
+        [alice_decision, bob_decision] = get('nodes')(workflow.step([
             {
                 'header': ('assistant', 'alice'),
                 'prefill': '{"decision": ',
@@ -130,7 +131,7 @@ def prisoners_cached(
                 'prefill': '{"decision": ',
                 'parent_ids': [n['id'] for n in alice_context],
             }
-        ], seed=seed, track_gradients=track_gradients)
+        ], seed=seed, track_gradients=track_gradients))
         alice_context.append(alice_decision)
         bob_context.append(bob_decision)
 

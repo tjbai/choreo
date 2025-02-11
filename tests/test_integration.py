@@ -1,6 +1,7 @@
 import torch
 from unittest import TestCase
 from typing import List
+from operator import itemgetter as get
 
 from llama.workflow import Workflow, Prompt, Task
 from llama.model import Transformer
@@ -9,6 +10,8 @@ from llama.tokenizer import ChatFormat, Tokenizer
 class TestWorkflowIntegration(TestCase):
     def setUp(self):
         class MockTransformer(Transformer):
+            training = False
+
             def __init__(self):
                 self.kv_cache = {}
                 self.params = type("Params", (), {"max_seq_len": 2048})
@@ -162,7 +165,7 @@ class TestWorkflowIntegration(TestCase):
             "parent_ids": [prompt["id"]],
             "prefill": None
         }]
-        tokens, cached = self.workflow.step(tasks, max_gen_len=10)
+        tokens, cached = get('tokens', 'nodes')(self.workflow.step(tasks, max_gen_len=10))
 
         # 1 for bos, 1 for step, 1 for prefill, 8 decoding, 1 for final decoding step, 1 top-off
         self.assertEqual(len(self.model.call_history), 13)
@@ -240,7 +243,7 @@ class TestWorkflowIntegration(TestCase):
             }
             for i in range(BRANCHES)
         ]
-        proposal_tokens, proposal_nodes = self.workflow.step(proposal_tasks, max_gen_len=3)
+        proposal_tokens, proposal_nodes = get('tokens', 'nodes')(self.workflow.step(proposal_tasks, max_gen_len=3))
         self.assertEqual([node["id"] for node in proposal_nodes], [4, 5])
         self.assertEqual(self.model.call_history[-1]["tokens"].shape[1], BRANCHES)
         self.assertEqual(self.model.call_history[-1]["mask"].shape[0], BRANCHES)
@@ -257,7 +260,7 @@ class TestWorkflowIntegration(TestCase):
             }
             for _ in range(VOTERS)
         ]
-        vote_tokens, vote_nodes = self.workflow.step(voter_tasks, max_gen_len=3)
+        vote_tokens, vote_nodes = get('tokens', 'nodes')(self.workflow.step(voter_tasks, max_gen_len=3))
         self.assertEqual([vote["id"] for vote in vote_nodes], [6, 7])
         self.assertEqual(self.model.call_history[-1]["mask"].shape[0], VOTERS)
         self.assert_parents_unmasked(self.model.call_history[-1], voter_tasks)
@@ -269,7 +272,7 @@ class TestWorkflowIntegration(TestCase):
             "prefill": None,
             "parent_ids": [finish["id"], best_proposal_id]
         }]
-        final_tokens, final_nodes = self.workflow.step(final_task, max_gen_len=3)
+        final_tokens, final_nodes = get('tokens', 'nodes')(self.workflow.step(final_task, max_gen_len=3))
         self.assert_parents_unmasked(self.model.call_history[-1], final_task)
         self.assertTrue(torch.all(
             self.workflow.adj[:9, :9] ==
@@ -289,15 +292,15 @@ class TestWorkflowIntegration(TestCase):
     def test_teacher_force(self):
         tasks: List[Task] = [{"header": ("assistant", None), "parent_ids": []}]
         forced_tokens = torch.tensor([[101, 102, 128009]]).long()
-        out_tokens, out_nodes = self.workflow.step(tasks, max_gen_len=4, teacher_force=forced_tokens)
+        out_tokens, out_nodes = get('tokens', 'nodes')(self.workflow.step(tasks, max_gen_len=4, teacher_force=forced_tokens))
         self.assertEqual(out_tokens, [[101, 102]])
         self.assertEqual(len(self.model.call_history), 5)
 
-        _ = self.workflow.step(tasks, max_gen_len=4, stateless=True, teacher_force=forced_tokens)
+        self.workflow.step(tasks, max_gen_len=4, stateless=True, teacher_force=forced_tokens)
         self.assertEqual(len(self.model.call_history), 5+3)
 
         forced_tokens = torch.tensor([[101, 102, 103]]).long()
-        out_tokens, out_nodes = self.workflow.step(tasks, max_gen_len=4, teacher_force=forced_tokens)
+        out_tokens, out_nodes = get('tokens', 'nodes')(self.workflow.step(tasks, max_gen_len=4, teacher_force=forced_tokens))
         self.assertEqual(out_tokens, forced_tokens.tolist())
         self.assertEqual(len(self.model.call_history), 5+3+5)
 
@@ -311,5 +314,5 @@ class TestWorkflowIntegration(TestCase):
             [101, 128009, 0],
         ], dtype=torch.long)
         tasks: List[Task] = [{"header": ("assistant", None), "parent_ids": [system["id"]]} for _ in range(4)]
-        out_tokens, out_nodes = self.workflow.step(tasks, max_gen_len=4, teacher_force=forced_tokens)
+        out_tokens, out_nodes = get('tokens', 'nodes')(self.workflow.step(tasks, max_gen_len=4, teacher_force=forced_tokens))
         self.assertEqual(out_tokens, [[101, 102, 103], [101, 102], [101], [101]])

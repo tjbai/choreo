@@ -1,6 +1,7 @@
 import torch
 from unittest import TestCase
 from typing import List
+from operator import itemgetter as get
 
 from llama.workflow import Workflow, Task, grouped_causal_mask, incremental_sequence_with_offset
 from llama.tokenizer import ChatFormat, Tokenizer
@@ -12,6 +13,7 @@ class TestWorkflow(TestCase):
 
         class MockModel(Transformer):
             params = type('Params', (), {'max_seq_len': 128})()
+            training = False
 
             def __init__(self):
                 ...
@@ -123,12 +125,12 @@ class TestWorkflow(TestCase):
             {'parent_ids': [1], 'header': ('assistant', None)},
             {'parent_ids': [2], 'header': ('user', 'math')}
         ]
-        out_tokens, out_nodes = self.workflow.wrap_outputs(
+        out_tokens, out_nodes = get('tokens', 'nodes')(self.workflow.wrap_outputs(
             tokens.view(-1, 2).t(),
             tasks,
             headers,
             [[] for _ in tasks]
-        )
+        ))
         self.assertEqual(out_tokens[0], [1, 3, 5])
         self.assertEqual(out_tokens[1], [2])
         self.assertEqual(len(out_nodes), len(tasks))
