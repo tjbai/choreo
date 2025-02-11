@@ -364,13 +364,13 @@ class Transformer(nn.Module):
         if new_batch_size is not None:
             self.params.max_batch_size = new_batch_size
             self.params.max_seq_len = tot // new_batch_size
-        self.cache_k = self.cache_k.view(
+        self.cache_k = self.cache_k.reshape(
             self.cache_k.shape[0],
             self.params.max_batch_size,
             self.params.max_seq_len,
             *self.cache_k.shape[3:]
         )
-        self.cache_v = self.cache_v.view(
+        self.cache_v = self.cache_v.reshape(
             self.cache_k.shape[0],
             self.params.max_batch_size,
             self.params.max_seq_len,
@@ -420,7 +420,7 @@ class LoraLinear(nn.Module):
         else:
             in_dim = base_layer.input_size_per_partition
             out_dim = base_layer.out_features
-        
+
         self.disable_adapters = False
         self.lora_down = base_class(in_dim, rank, bias=False).to(base_layer.weight.device)
         self.lora_up = base_class(rank, out_dim, bias=False).to(base_layer.weight.device)
