@@ -5,14 +5,16 @@ import json
 import warnings
 import socket
 from pathlib import Path
-from typing import Optional, Tuple
+from typing import Optional, Tuple, List, Dict
 
 import torch
+import numpy as np
 from fairscale.nn.model_parallel.initialize import (
     get_model_parallel_rank,
     initialize_model_parallel,
     model_parallel_is_initialized,
 )
+from statsmodels.stats.contingency_tables import mcnemar
 
 from llama.model import Transformer, ModelArgs
 from llama.tokenizer import Tokenizer
@@ -114,3 +116,21 @@ def find_free_port():
         s.listen(1)
         port = s.getsockname()[1]
         return port
+
+def run_mcnemars_test(_model1: List[bool], _model2: List[bool]) -> Dict:
+    model1 = np.array(_model1)
+    model2 = np.array(_model2)
+
+    both_correct = np.sum((model1 == True) & (model2 == True))
+    both_incorrect = np.sum((model1 == False) & (model2 == False))
+    model1_only = np.sum((model1 == True) & (model2 == False))
+    model2_only = np.sum((model1 == False) & (model2 == True))
+    table = [[both_correct, model1_only], [model2_only, both_incorrect]]
+
+    return {
+        'result': mcnemar(table, exact=True).pvalue,
+        'both_correct': both_correct,
+        'both_incorrect': both_incorrect,
+        'model1_correct': model1_only,
+        'model2_correct': model2_only,
+    }
