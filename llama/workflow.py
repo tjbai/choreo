@@ -106,7 +106,7 @@ class Workflow:
         seed: int = 42,
         debug: bool = False,
         teacher_force: Optional[torch.Tensor] = None,
-    ) -> Tuple[List[List[int]], List[Cached]]:
+    ) -> Tuple[List[List[int]], List[Cached], Optional[List[torch.Tensor]]]:
         bsz = len(tasks)
         if self.cache_len + (bsz * max_gen_len) > self.max_seq_len:
             raise Exception(f"Insufficient capacity for {bsz * max_gen_len} tokens.")
@@ -133,6 +133,7 @@ class Workflow:
         eos_reached = torch.tensor([False] * bsz, device=self.device)
 
         # do N - 1 iterations to leave room for eot_id
+        log_probs_out: List[torch.Tensor] = []
         for cur_pos in range(0, bsz * (max_gen_len - 1), bsz):
             if cur_pos == 0:
                 header_ends = torch.cumsum(torch.tensor(header_length, device=self.device), dim=0) - 1
@@ -150,6 +151,9 @@ class Workflow:
                 next_token = sample_top_p_parallel(probs, top_p, generator=generator).squeeze(0)
             else:
                 next_token = torch.argmax(logits[:, -bsz:], dim=-1).squeeze(0)
+
+            if log_probs:
+                log_probs_out.append(logits.gather(dim=-1, index=next_token.view(1, -1, 1)))
 
             if teacher_force is not None:
                 next_token = teacher_force[:, cur_pos // bsz]
@@ -195,7 +199,7 @@ class Workflow:
         if debug:
             self.debug_mask(mask[:, : self.cache_len])
 
-        outputs = self.wrap_outputs(
+        tokens, nodes = self.wrap_outputs(
             self.context[header_end : self.cache_len].view(-1, bsz).t(),
             tasks,
             headers,
@@ -203,9 +207,9 @@ class Workflow:
         )
         self.cache_len = header_start if stateless else self.cache_len
         self.cur_id += 0 if stateless else bsz
-        return outputs
+        return (tokens, nodes, log_probs_out if log_probs else None)
 
-    def step(self, *args, track_gradients: bool = False, **kwargs) -> Tuple[List[List[int]], List[Cached]]:
+    def step(self, *args, track_gradients: bool = False, **kwargs) -> Tuple[List[List[int]], List[Cached], Optional[List[torch.Tensor]]]:
         with (nullcontext() if track_gradients else torch.inference_mode()):
                 return self._step(*args, **kwargs)
 
