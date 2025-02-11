@@ -69,10 +69,6 @@ class Workflow:
         self.adj = torch.eye(self.max_nodes, dtype=torch.bool)
         self.adj[:, 0] = True # bos is always a parent
 
-    @property
-    def working_context(self):
-        return self.context[:self.cache_len]
-
     # TODO -- we should make this lazy
     def insert(self, prompts: List[Prompt], training: bool = False) -> List[Cached]:
         with (nullcontext() if training else torch.inference_mode()):
@@ -98,8 +94,7 @@ class Workflow:
             self.cur_id += len(prompts)
             return outputs
 
-    @torch.inference_mode()
-    def step(
+    def _step(
         self,
         tasks: List[Task],
         compact: bool = False,
@@ -209,6 +204,10 @@ class Workflow:
         self.cache_len = header_start if stateless else self.cache_len
         self.cur_id += 0 if stateless else bsz
         return outputs
+
+    def step(self, *args, inference_mode: bool = True, **kwargs) -> Tuple[List[List[int]], List[Cached]]:
+        with (torch.inference_mode() if inference_mode else nullcontext()):
+                return self._step(*args, **kwargs)
 
     def train_step(
         self,
