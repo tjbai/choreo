@@ -1,7 +1,7 @@
 import warnings
 from typing_extensions import Required
-from typing import Sequence, List, TypedDict, Tuple, Optional
 from contextlib import nullcontext
+from typing import Sequence, List, TypedDict, Tuple, Optional
 
 import torch
 
@@ -219,6 +219,22 @@ class Workflow:
     def step(self, *args, track_gradients: bool = False, **kwargs) -> StepResult:
         with (nullcontext() if track_gradients else torch.inference_mode()):
                 return self._step(*args, **kwargs)
+
+    def step_with_activation_grad(self, *args, **kwargs) -> Tuple[StepResult, List]:
+        gradients = []
+        def hook(mod, in, out):
+            gradients.append(out.detach())
+
+        hooks = []
+        for layer in self.model.layers:
+            hooks.append(layer.register_forward_hook(hook))
+
+        outputs = self._step(*args, **kwargs)
+
+        for hook in hooks:
+            hook.remove()
+
+        return outputs, gradients
 
     def train_step(
         self,

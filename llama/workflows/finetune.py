@@ -90,7 +90,7 @@ class TotTrainer(LoraTrainer):
                 {'role': 'system', 'content': finish_prompt},
                 {'role': 'user', 'content': format_problem(sample['problem'])}
             ], 'parent_ids': []},
-        ], training=True)
+        ], track_gradients=True)
 
         target_proposal_ids = [p + [self.eot_id] for p in sample['result']['proposal_tokens']]
         vote_target_ids = [p + [self.eot_id] for p in sample['result']['vote_tokens']]
@@ -302,4 +302,3 @@ def finetune(
 
 if __name__ == '__main__':
     fire.Fire(finetune)
-
