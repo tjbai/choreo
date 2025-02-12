@@ -170,12 +170,11 @@ class PrisonersTrainer(LoraTrainer):
 
         target_plan_ids = [p + [self.eot_id] for p in result['plan_ids']]
         [alice_plan, bob_plan], plan_logits = self.workflow.train_step([
-            {'header': ('assistant', 'alice'), 'prefill': 'Strategy: ', 'parent_ids': [alice_sys['id']]},
-            {'header': ('assistant', 'bob'), 'prefill': 'Strategy', 'parent_ids': [bob_sys['id']]},
+            {'header': ('assistant', 'alice'), 'prefill': '', 'parent_ids': [alice_sys['id']]},
+            {'header': ('assistant', 'bob'), 'prefill': '', 'parent_ids': [bob_sys['id']]},
         ], target_plan_ids)
         plan_targets = reorder_targets(target_plan_ids)
         metrics['train/plan_loss'] = F.cross_entropy(plan_logits.squeeze(0), plan_targets)
-        print(metrics['train/plan_loss'])
 
         alice_context = [alice_sys, alice_plan]
         bob_context = [bob_sys, bob_plan]
@@ -189,6 +188,7 @@ class PrisonersTrainer(LoraTrainer):
             alice_context.append(alice_msg)
             bob_context.append(alice_msg)
             metrics['train/alice_loss'] += F.cross_entropy(alice_logits.squeeze(), torch.tensor(alice_targets, device='cuda').squeeze())
+            return alice_logits, alice_targets
 
             bob_targets = [bob_ids + [self.eot_id]]
             [bob_msg], bob_logits = self.workflow.train_step([{
@@ -208,7 +208,7 @@ class PrisonersTrainer(LoraTrainer):
         bob_context.append(bob_ask)
 
         target_decision_ids = [p + [self.eot_id] for p in result['decision_ids']]
-        self.workflow.train_step([
+        _, decision_logits = self.workflow.train_step([
             {
                 'header': ('assistant', 'alice'),
                 'prefill': '{"decision": ',
@@ -221,9 +221,9 @@ class PrisonersTrainer(LoraTrainer):
             }
         ], target_decision_ids)
         decision_targets = reorder_targets(target_decision_ids)
-        metrics['train/decision_loss'] = F.cross_entropy(plan_logits.squeeze(), decision_targets)
+        metrics['train/decision_loss'] = F.cross_entropy(decision_logits.squeeze(), decision_targets)
 
-        return sum(metrics.values(), torch.tensor(0.)), metrics
+        return sum(metrics.values(), torch.tensor(0.)), dict(metrics)
 
 @torch.no_grad()
 def evaluate_tot(trainer: TotTrainer, val_dataset: TotDataset, max_steps=None, max_e2e=100):
