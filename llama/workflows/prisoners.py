@@ -129,6 +129,8 @@ def prisoners_baseline(
     payoff: Tuple[int, int, int, int],
     alice_strategy: Optional[str] = None,
     seed: int = 42,
+    temperature=1.0,
+    top_p=0.95,
 ) -> Dict:
     res = {}
     alice_dialog = [{'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)}, {'role': 'user', 'content': plan_prompt}]
@@ -136,8 +138,8 @@ def prisoners_baseline(
 
     [alice_plan, bob_plan] = llama.chat_completion(
         dialogs=[alice_dialog, bob_dialog],
-        temperature=1.0,
-        top_p=0.95,
+        temperature=temperature,
+        top_p=top_p,
         max_gen_len=512,
         seed=seed,
     )
@@ -150,7 +152,8 @@ def prisoners_baseline(
     for round in range(2):
         [alice_response] = llama.chat_completion(
             dialogs=[alice_dialog],
-            temperature=1.0,
+            temperature=temperature,
+            top_p=top_p,
             content_prefills=['To Bob: '],
             seed=seed,
         )
@@ -161,7 +164,8 @@ def prisoners_baseline(
 
         [bob_response] = llama.chat_completion(
             dialogs=[bob_dialog],
-            temperature=1.0,
+            temperature=temperature,
+            top_p=top_p,
             content_prefills=['To Alice: '],
             seed=seed,
         )
@@ -174,7 +178,8 @@ def prisoners_baseline(
     bob_dialog.append({'role': 'user', 'content': decide_prompt})
     [alice_decision, bob_decision] = llama.chat_completion(
         dialogs=[alice_dialog, bob_dialog],
-        temperature=1.0,
+        temperature=temperature,
+        top_p=top_p,
         content_prefills=['{"decision": ', '{"decision": '],
         seed=seed
     )
@@ -213,6 +218,8 @@ def collect_samples(
                     payoff=payoff,
                     alice_strategy=strategy,
                     seed=seed,
+                    temperature=1.0,
+                    top_p=1.0,
                 )
             }
 
