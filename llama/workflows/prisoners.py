@@ -64,6 +64,8 @@ def prisoners_cached(
     compact: bool = False,
     seed: int = 42,
     track_gradients: bool = False,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
 ) -> Dict:
     alice_sys, bob_sys = workflow.insert([
         {'messages': [
@@ -79,7 +81,7 @@ def prisoners_cached(
     plan_tokens, [alice_plan, bob_plan] = get('tokens', 'nodes')(workflow.step([
         {'header': ('assistant', 'alice'), 'prefill': 'Strategy: ', 'parent_ids': [alice_sys['id']]},
         {'header': ('assistant', 'bob'), 'prefill': 'Strategy', 'parent_ids': [bob_sys['id']]},
-    ], seed=seed, track_gradients=track_gradients))
+    ], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
 
     alice_context = [alice_sys, alice_plan]
     bob_context = [bob_sys, bob_plan]
@@ -90,7 +92,7 @@ def prisoners_cached(
                 'header': ('assistant', 'alice'),
                 'prefill': 'To Bob: ',
                 'parent_ids': [n['id'] for n in alice_context]
-            }], seed=seed, track_gradients=track_gradients))
+            }], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
             alice_context.append(alice_msg)
             bob_context.append(alice_msg)
 
@@ -98,7 +100,7 @@ def prisoners_cached(
                 'header': ('assistant', 'bob'),
                 'prefill': 'To Alice: ',
                 'parent_ids': [n['id'] for n in bob_context]
-            }], seed=seed, track_gradients=track_gradients))
+            }], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
             alice_context.append(bob_msg)
             bob_context.append(bob_msg)
         else:
@@ -106,7 +108,7 @@ def prisoners_cached(
                 'header': ('assistant', 'bob'),
                 'prefill': 'To Alice: ',
                 'parent_ids': [n['id'] for n in bob_context]
-            }], seed=seed, track_gradients=track_gradients))
+            }], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
             alice_context.append(bob_msg)
             bob_context.append(bob_msg)
 
@@ -114,7 +116,7 @@ def prisoners_cached(
                 'header': ('assistant', 'alice'),
                 'prefill': 'To Bob: ',
                 'parent_ids': [n['id'] for n in alice_context]
-            }], seed=seed, track_gradients=track_gradients))
+            }], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
             alice_context.append(alice_msg)
             bob_context.append(alice_msg)
 
@@ -136,7 +138,7 @@ def prisoners_cached(
             'prefill': '{"decision": ',
             'parent_ids': [n['id'] for n in bob_context],
         }
-    ], seed=seed, track_gradients=track_gradients))
+    ], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
     alice_context.append(alice_decision)
     bob_context.append(bob_decision)
 

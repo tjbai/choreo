@@ -38,8 +38,11 @@ for strategy in strategies:
        cached_outputs = prisoners_cached(
            workflow, 
            payoff,
+           alice_first=(seed < 50),
            alice_strategy=strategy,
-           seed=seed
+           seed=seed,
+           temperature=1.0,
+           top_p=1.0,
        )
        
        alice_decision = workflow.tokenizer.decode(cached_outputs['alice_context'][-1]['tokens'])

@@ -33,24 +33,26 @@ for strategy in strategies:
     bob_decisions = []
     
     for seed in tqdm(range(100)):
-        baseline_outputs = prisoners_baseline(
+        result = prisoners_baseline(
             llama, 
             payoff,
+            alice_first=(seed < 50), 
             alice_strategy=strategy, 
-            seed=seed
+            seed=seed,
+            temperature=1.0,
+            top_p=1.0,
         )
         
-        output_data = {
-            'seed': seed,
+        sample = {
+            'payoff': payoff,
             'strategy': strategy,
-            'outputs': baseline_outputs,
-            'alice_final': baseline_outputs['alice_dialog'][-1]['content'],
-            'bob_final': baseline_outputs['bob_dialog'][-1]['content']
+            'alice_first': (seed < 50),
+            'result': result,
         }
-        append_to_jsonl(output_data, output_file)
+        torch.save(sample, '/home/tbai4/llama3/prisoners_data')
         
-        alice_decisions.append(baseline_outputs['alice_dialog'][-1]['content'])
-        bob_decisions.append(baseline_outputs['bob_dialog'][-1]['content'])
+        alice_decisions.append(result['alice_dialog'][-1]['content'])
+        bob_decisions.append(result['bob_dialog'][-1]['content'])
     
     print(
         f"\nStrategy: {strategy if strategy else 'baseline'}",
