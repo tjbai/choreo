@@ -220,22 +220,6 @@ class Workflow:
         with (nullcontext() if track_gradients else torch.inference_mode()):
                 return self._step(*args, **kwargs)
 
-    def step_with_activation_grad(self, *args, **kwargs) -> Tuple[StepResult, List]:
-        gradients = []
-        def hook(mod, in, out):
-            gradients.append(out.detach())
-
-        hooks = []
-        for layer in self.model.layers:
-            hooks.append(layer.register_forward_hook(hook))
-
-        outputs = self._step(*args, **kwargs)
-
-        for hook in hooks:
-            hook.remove()
-
-        return outputs, gradients
-
     def train_step(
         self,
         tasks: List[Task],

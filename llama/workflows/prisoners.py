@@ -1,4 +1,3 @@
-from collections import defaultdict
 from typing import Tuple, Dict, Optional
 from operator import itemgetter as get
 
@@ -119,23 +118,22 @@ def prisoners_cached(
     alice_context.append(alice_ask)
     bob_context.append(bob_ask)
 
-    with HookManager(workflow.model) as hook_manager:
-        [alice_decision, bob_decision] = get('nodes')(workflow.step([
-            {
-                'header': ('assistant', 'alice'),
-                'prefill': '{"decision": ',
-                'parent_ids': [n['id'] for n in alice_context],
-            },
-            {
-                'header': ('assistant', 'bob'),
-                'prefill': '{"decision": ',
-                'parent_ids': [n['id'] for n in alice_context],
-            }
-        ], seed=seed, track_gradients=track_gradients))
-        alice_context.append(alice_decision)
-        bob_context.append(bob_decision)
+    [alice_decision, bob_decision], log_probs = get('nodes', 'log_probs')(workflow.step([
+        {
+            'header': ('assistant', 'alice'),
+            'prefill': '{"decision": ',
+            'parent_ids': [n['id'] for n in alice_context],
+        },
+        {
+            'header': ('assistant', 'bob'),
+            'prefill': '{"decision": ',
+            'parent_ids': [n['id'] for n in alice_context],
+        }
+    ], seed=seed, track_gradients=track_gradients))
+    alice_context.append(alice_decision)
+    bob_context.append(bob_decision)
 
-    return {'alice_context': alice_context, 'bob_context': bob_context, 'hook_manager': hook_manager}
+    return {'alice_context': alice_context, 'bob_context': bob_context}
 
 def prisoners_baseline(
     llama: Llama,
@@ -189,19 +187,3 @@ def prisoners_baseline(
     alice_dialog.append({'role': 'assistant:alice', 'content': alice_decision['generation']['content']})
     bob_dialog.append({'role': 'assistant:bob', 'content': bob_decision['generation']['content']})
     return {'alice_dialog': alice_dialog, 'bob_dialog': bob_dialog}
-
-class HookManager:
-    def __init__(self, model):
-        self.model = model
-        self.hooks = []
-        self.gradients = defaultdict(list)
-
-    def __enter__(self):
-        self.hooks.append(self.model.cache_k.register_hook(lambda grad: self.gradients['k'].append(grad.detach().clone())))
-        self.hooks.append(self.model.cache_v.register_hook(lambda grad: self.gradients['v'].append(grad.detach().clone())))
-        return self
-
-    def __exit__(self, exc_type, exc_val, exc_tb):
-        for hook in self.hooks:
-            hook.remove()
-        self.hooks = []
