@@ -154,7 +154,7 @@ class PrisonersTrainer(LoraTrainer):
 
     def step(self, sample: Dict) -> Tuple[torch.Tensor, Dict]:
         self.workflow.reset()
-        payoff, strategy, result = get('payoff', 'strategy', 'result')(sample)
+        payoff, alice_first, strategy, result = get('payoff', 'alice_first', 'strategy', 'result')(sample)
         metrics = defaultdict(lambda: torch.tensor(0.))
 
         alice_sys, bob_sys = self.workflow.insert([
@@ -179,26 +179,46 @@ class PrisonersTrainer(LoraTrainer):
         alice_context = [alice_sys, alice_plan]
         bob_context = [bob_sys, bob_plan]
         for round, (alice_ids, bob_ids) in enumerate(zip(result['alice_message_ids'], result['bob_message_ids'])):
-            alice_targets = [alice_ids + [self.eot_id]]
-            [alice_msg], alice_logits = self.workflow.train_step([{
-                'header': ('assistant', 'alice'),
-                'prefill': 'To Bob: ',
-                'parent_ids': [n['id'] for n in alice_context]
-            }], alice_targets)
-            alice_context.append(alice_msg)
-            bob_context.append(alice_msg)
-            metrics['train/alice_loss'] += F.cross_entropy(alice_logits.squeeze(), torch.tensor(alice_targets, device='cuda').squeeze())
-            return alice_logits, alice_targets
+            if alice_first:
+                alice_targets = [alice_ids + [self.eot_id]]
+                [alice_msg], alice_logits = self.workflow.train_step([{
+                    'header': ('assistant', 'alice'),
+                    'prefill': 'To Bob: ',
+                    'parent_ids': [n['id'] for n in alice_context]
+                }], alice_targets)
+                alice_context.append(alice_msg)
+                bob_context.append(alice_msg)
+                metrics['train/alice_loss'] += F.cross_entropy(alice_logits.squeeze(), torch.tensor(alice_targets, device='cuda').squeeze())
 
-            bob_targets = [bob_ids + [self.eot_id]]
-            [bob_msg], bob_logits = self.workflow.train_step([{
-                'header': ('assistant', 'bob'),
-                'prefill': 'To Alice: ',
-                'parent_ids': [n['id'] for n in bob_context]
-            }], bob_targets)
-            alice_context.append(bob_msg)
-            bob_context.append(bob_msg)
-            metrics['train/bob_loss'] += F.cross_entropy(bob_logits.squeeze(), torch.tensor(bob_targets, device='cuda').squeeze())
+                bob_targets = [bob_ids + [self.eot_id]]
+                [bob_msg], bob_logits = self.workflow.train_step([{
+                    'header': ('assistant', 'bob'),
+                    'prefill': 'To Alice: ',
+                    'parent_ids': [n['id'] for n in bob_context]
+                }], bob_targets)
+                alice_context.append(bob_msg)
+                bob_context.append(bob_msg)
+                metrics['train/bob_loss'] += F.cross_entropy(bob_logits.squeeze(), torch.tensor(bob_targets, device='cuda').squeeze())
+            else:
+                bob_targets = [bob_ids + [self.eot_id]]
+                [bob_msg], bob_logits = self.workflow.train_step([{
+                    'header': ('assistant', 'bob'),
+                    'prefill': 'To Alice: ',
+                    'parent_ids': [n['id'] for n in bob_context]
+                }], bob_targets)
+                alice_context.append(bob_msg)
+                bob_context.append(bob_msg)
+                metrics['train/bob_loss'] += F.cross_entropy(bob_logits.squeeze(), torch.tensor(bob_targets, device='cuda').squeeze())
+
+                alice_targets = [alice_ids + [self.eot_id]]
+                [alice_msg], alice_logits = self.workflow.train_step([{
+                    'header': ('assistant', 'alice'),
+                    'prefill': 'To Bob: ',
+                    'parent_ids': [n['id'] for n in alice_context]
+                }], alice_targets)
+                alice_context.append(alice_msg)
+                bob_context.append(alice_msg)
+                metrics['train/alice_loss'] += F.cross_entropy(alice_logits.squeeze(), torch.tensor(alice_targets, device='cuda').squeeze())
 
         [alice_ask, bob_ask] = self.workflow.insert([
             {'messages': [{'role': 'user', 'content': decide_prompt}], 'parent_ids': [n['id'] for n in alice_context]},

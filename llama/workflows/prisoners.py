@@ -59,6 +59,7 @@ decide_prompt = 'Now, reflect on the conversation and make a final decision. Res
 def prisoners_cached(
     workflow: Workflow,
     payoff: Tuple[int, int, int, int],
+    alice_first: bool = True,
     alice_strategy: Optional[str] = None,
     compact: bool = False,
     seed: int = 42,
@@ -84,21 +85,38 @@ def prisoners_cached(
     bob_context = [bob_sys, bob_plan]
 
     for round in range(2):
-        [alice_msg] = get('nodes')(workflow.step([{
-            'header': ('assistant', 'alice'),
-            'prefill': 'To Bob: ',
-            'parent_ids': [n['id'] for n in alice_context]
-        }], seed=seed, track_gradients=track_gradients))
-        alice_context.append(alice_msg)
-        bob_context.append(alice_msg)
+        if alice_first:
+            [alice_msg] = get('nodes')(workflow.step([{
+                'header': ('assistant', 'alice'),
+                'prefill': 'To Bob: ',
+                'parent_ids': [n['id'] for n in alice_context]
+            }], seed=seed, track_gradients=track_gradients))
+            alice_context.append(alice_msg)
+            bob_context.append(alice_msg)
 
-        [bob_msg] = get('nodes')(workflow.step([{
-            'header': ('assistant', 'bob'),
-            'prefill': 'To Alice: ',
-            'parent_ids': [n['id'] for n in bob_context]
-        }], seed=seed, track_gradients=track_gradients))
-        alice_context.append(bob_msg)
-        bob_context.append(bob_msg)
+            [bob_msg] = get('nodes')(workflow.step([{
+                'header': ('assistant', 'bob'),
+                'prefill': 'To Alice: ',
+                'parent_ids': [n['id'] for n in bob_context]
+            }], seed=seed, track_gradients=track_gradients))
+            alice_context.append(bob_msg)
+            bob_context.append(bob_msg)
+        else:
+            [bob_msg] = get('nodes')(workflow.step([{
+                'header': ('assistant', 'bob'),
+                'prefill': 'To Alice: ',
+                'parent_ids': [n['id'] for n in bob_context]
+            }], seed=seed, track_gradients=track_gradients))
+            alice_context.append(bob_msg)
+            bob_context.append(bob_msg)
+
+            [alice_msg] = get('nodes')(workflow.step([{
+                'header': ('assistant', 'alice'),
+                'prefill': 'To Bob: ',
+                'parent_ids': [n['id'] for n in alice_context]
+            }], seed=seed, track_gradients=track_gradients))
+            alice_context.append(alice_msg)
+            bob_context.append(alice_msg)
 
     [alice_ask, bob_ask] = workflow.insert([
         {'messages': [{'role': 'user', 'content': decide_prompt}], 'parent_ids': [n['id'] for n in alice_context]},
@@ -127,6 +145,7 @@ def prisoners_cached(
 def prisoners_baseline(
     llama: Llama,
     payoff: Tuple[int, int, int, int],
+    alice_first: bool = True,
     alice_strategy: Optional[str] = None,
     seed: int = 42,
     temperature=1.0,
@@ -150,29 +169,54 @@ def prisoners_baseline(
     res['alice_message_ids'] = []
     res['bob_message_ids'] = []
     for round in range(2):
-        [alice_response] = llama.chat_completion(
-            dialogs=[alice_dialog],
-            temperature=temperature,
-            top_p=top_p,
-            content_prefills=['To Bob: '],
-            seed=seed,
-        )
-        alice_msg = {'role': 'assistant:alice', 'content': alice_response['generation']['content']}
-        alice_dialog.append(alice_msg)
-        bob_dialog.append(alice_msg)
-        res['alice_message_ids'].append(alice_response['tokens'])
+        if alice_first:
+            [alice_response] = llama.chat_completion(
+                dialogs=[alice_dialog],
+                temperature=temperature,
+                top_p=top_p,
+                content_prefills=['To Bob: '],
+                seed=seed,
+            )
+            alice_msg = {'role': 'assistant:alice', 'content': alice_response['generation']['content']}
+            alice_dialog.append(alice_msg)
+            bob_dialog.append(alice_msg)
+            res['alice_message_ids'].append(alice_response['tokens'])
 
-        [bob_response] = llama.chat_completion(
-            dialogs=[bob_dialog],
-            temperature=temperature,
-            top_p=top_p,
-            content_prefills=['To Alice: '],
-            seed=seed,
-        )
-        bob_msg = {'role': 'assistant:bob', 'content': bob_response['generation']['content']}
-        alice_dialog.append(bob_msg)
-        bob_dialog.append(bob_msg)
-        res['bob_message_ids'].append(bob_response['tokens'])
+            [bob_response] = llama.chat_completion(
+                dialogs=[bob_dialog],
+                temperature=temperature,
+                top_p=top_p,
+                content_prefills=['To Alice: '],
+                seed=seed,
+            )
+            bob_msg = {'role': 'assistant:bob', 'content': bob_response['generation']['content']}
+            alice_dialog.append(bob_msg)
+            bob_dialog.append(bob_msg)
+            res['bob_message_ids'].append(bob_response['tokens'])
+        else:
+            [bob_response] = llama.chat_completion(
+                dialogs=[bob_dialog],
+                temperature=temperature,
+                top_p=top_p,
+                content_prefills=['To Alice: '],
+                seed=seed,
+            )
+            bob_msg = {'role': 'assistant:bob', 'content': bob_response['generation']['content']}
+            alice_dialog.append(bob_msg)
+            bob_dialog.append(bob_msg)
+            res['bob_message_ids'].append(bob_response['tokens'])
+
+            [alice_response] = llama.chat_completion(
+                dialogs=[alice_dialog],
+                temperature=temperature,
+                top_p=top_p,
+                content_prefills=['To Bob: '],
+                seed=seed,
+            )
+            alice_msg = {'role': 'assistant:alice', 'content': alice_response['generation']['content']}
+            alice_dialog.append(alice_msg)
+            bob_dialog.append(alice_msg)
+            res['alice_message_ids'].append(alice_response['tokens'])
 
     alice_dialog.append({'role': 'user', 'content': decide_prompt})
     bob_dialog.append({'role': 'user', 'content': decide_prompt})
@@ -209,22 +253,25 @@ def collect_samples(
 
     samples = []
     for strategy in alice_strategies:
-        for seed in tqdm(range(n_samples), desc=f'Generating for {strategy}'):
-            sample = {
-                'payoff': payoff,
-                'strategy': strategy,
-                'result': prisoners_baseline(
-                    llama=llama,
-                    payoff=payoff,
-                    alice_strategy=strategy,
-                    seed=seed,
-                    temperature=1.0,
-                    top_p=1.0,
-                )
-            }
+        for alice_first in [True, False]:
+            for seed in tqdm(range(n_samples), desc=f'Generating for {strategy}'):
+                sample = {
+                    'payoff': payoff,
+                    'strategy': strategy,
+                    'alice_first': alice_first,
+                    'result': prisoners_baseline(
+                        llama=llama,
+                        payoff=payoff,
+                        alice_first=alice_first,
+                        alice_strategy=strategy,
+                        seed=seed,
+                        temperature=1.0,
+                        top_p=1.0,
+                    )
+                }
 
-            torch.save(sample, dir / f'trace_{seed}.pt')
-            samples.append(sample)
+                torch.save(sample, dir / f'trace_{seed}.pt')
+                samples.append(sample)
 
     with open(dir / 'metadata.json', 'w') as f:
         json.dump(metadata, f)
