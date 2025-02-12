@@ -148,7 +148,6 @@ def prisoners_baseline(
     seed: int = 42,
 ) -> Dict:
     res = {}
-
     alice_dialog = [{'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)}, {'role': 'user', 'content': plan_prompt}]
     bob_dialog = [{'role': 'system', 'content': format_system_prompt('Bob', payoff)}, {'role': 'user', 'content': plan_prompt}]
 
@@ -161,8 +160,7 @@ def prisoners_baseline(
     )
     alice_dialog.append({'role': 'assistant:alice', 'content': alice_plan['generation']['content']})
     bob_dialog.append({'role': 'assistant:bob', 'content': bob_plan['generation']['content']})
-    res['alice_plan'] = alice_plan['tokens']
-    res['bob_plan'] = bob_plan['tokens']
+    res['plan_ids'] = [alice_plan['tokens'], bob_plan['tokens']]
 
     res['alice_messages'] = []
     res['bob_messages'] = []
@@ -176,7 +174,7 @@ def prisoners_baseline(
         alice_msg = {'role': 'assistant:alice', 'content': alice_response['generation']['content']}
         alice_dialog.append(alice_msg)
         bob_dialog.append(alice_msg)
-        res['alice_messages'].append(alice_msg['tokens'])
+        res['alice_message_ids'].append(alice_msg['tokens'])
 
         [bob_response] = llama.chat_completion(
             dialogs=[bob_dialog],
@@ -187,7 +185,7 @@ def prisoners_baseline(
         bob_msg = {'role': 'assistant:bob', 'content': bob_response['generation']['content']}
         alice_dialog.append(bob_msg)
         bob_dialog.append(bob_msg)
-        res['bob_messages'].append(bob_msg['tokens'])
+        res['bob_message_ids'].append(bob_msg['tokens'])
 
     alice_dialog.append({'role': 'user', 'content': decide_prompt})
     bob_dialog.append({'role': 'user', 'content': decide_prompt})
@@ -199,8 +197,7 @@ def prisoners_baseline(
     )
     alice_dialog.append({'role': 'assistant:alice', 'content': alice_decision['generation']['content']})
     bob_dialog.append({'role': 'assistant:bob', 'content': bob_decision['generation']['content']})
-    res['alice_decision'] = alice_decision['tokens']
-    res['bob_decision'] = bob_decision['tokens']
+    res['decision_ids'] = [alice_decision['tokens'], bob_decision['tokens']]
 
     res['alice_dialog'] = alice_dialog
     res['bob_dialog'] = bob_dialog
@@ -226,6 +223,7 @@ def collect_samples(
     for strategy in alice_strategies:
         for seed in tqdm(range(n_samples), desc=f'Generating for {strategy}'):
             sample = {
+                'payoff': payoff,
                 'strategy': strategy,
                 'result': prisoners_baseline(
                     llama=llama,

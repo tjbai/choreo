@@ -5,6 +5,7 @@ from pathlib import Path
 from typing import Dict, Any, List, Tuple
 from abc import abstractmethod
 from collections import Counter, defaultdict
+from operator import itemgetter as get
 
 import wandb
 import fire
@@ -24,6 +25,10 @@ from llama.workflows.tot import (
     tot_cached,
     load_math_problems,
     eval_solutions
+)
+from llama.workflows.prisoners import (
+    format_system_prompt as format_prisoners_system_prompt,
+    plan_prompt
 )
 
 class TotDataset(Dataset):
@@ -107,7 +112,7 @@ class TotTrainer(LoraTrainer):
              'parent_ids': [cot['id']]}
             for i in range(self.branching_factor)
         ]
-        proposal_nodes, proposal_logprobs = self.workflow.train_step(proposal_tasks, target_proposal_ids)
+        proposal_nodes, proposal_logits = self.workflow.train_step(proposal_tasks, target_proposal_ids)
 
         vote_tasks = [
             {'header': ('assistant', None),
@@ -115,7 +120,7 @@ class TotTrainer(LoraTrainer):
              'parent_ids': [vote['id']] + [p['id'] for p in proposal_nodes]}
             for i in range(self.voters)
         ]
-        _, vote_logprobs = self.workflow.train_step(vote_tasks, vote_target_ids)
+        _, vote_logits = self.workflow.train_step(vote_tasks, vote_target_ids)
 
         votes = [v for v in sample['result']['votes'] if v is not None]
         best = Counter(votes).most_common(1)[0][0]
@@ -124,11 +129,11 @@ class TotTrainer(LoraTrainer):
             'prefill': None,
             'parent_ids': [finish['id'], proposal_nodes[best - 1]['id']]
         }
-        _, final_logprobs = self.workflow.train_step([final_task], [final_target_ids])
+        _, final_logits = self.workflow.train_step([final_task], [final_target_ids])
 
-        proposal_loss = F.cross_entropy(proposal_logprobs.squeeze(0), proposal_targets)
-        vote_loss = F.cross_entropy(vote_logprobs.squeeze(0), vote_targets)
-        final_loss = F.cross_entropy(final_logprobs.squeeze(0), final_targets)
+        proposal_loss = F.cross_entropy(proposal_logits.squeeze(0), proposal_targets)
+        vote_loss = F.cross_entropy(vote_logits.squeeze(0), vote_targets)
+        final_loss = F.cross_entropy(final_logits.squeeze(0), final_targets)
 
         total_loss = proposal_loss + vote_loss + final_loss
 
@@ -140,6 +145,62 @@ class TotTrainer(LoraTrainer):
         }
 
         return total_loss, metrics
+
+class PrisonersTrainer(LoraTrainer):
+    def __init__(self, workflow: Workflow, output_dir: str,  learning_rate: float):
+        super().__init__(workflow, output_dir, learning_rate)
+        self.eot_id = self.workflow.tokenizer.eot_id
+
+    def step(self, sample: Dict) -> Tuple[torch.Tensor, Dict]:
+        self.workflow.reset()
+        payoff, strategy = get('payoff', 'strategy')(sample)
+        metrics = defaultdict(lambda: torch.tensor(0))
+
+        alice_sys, bob_sys = self.workflow.insert([
+            {'messages': [
+                {'role': 'system', 'content': format_prisoners_system_prompt('Alice', payoff, strategy)},
+                {'role': 'user', 'content': plan_prompt}
+            ], 'parent_ids': []},
+            {'messages': [
+                {'role': 'system', 'content': format_prisoners_system_prompt('Bob', payoff)},
+                {'role': 'user', 'content': plan_prompt},
+            ], 'parent_ids': []},
+        ], track_gradients=True)
+
+        target_plan_ids = [p + [self.eot_id] for p in sample['result']['plan_ids']]
+        [alice_plan, bob_plan], plan_logits = self.workflow.train_step([
+            {'header': ('assistant', 'alice'), 'prefill': 'Strategy: ', 'parent_ids': [alice_sys['id']]},
+            {'header': ('assistant', 'bob'), 'prefill': 'Strategy', 'parent_ids': [bob_sys['id']]},
+        ], target_plan_ids)
+        plan_targets = reorder_targets(target_plan_ids)
+        metrics['train/plan_loss'] = F.cross_entropy(plan_logits.squeeze(0), plan_targets, reduction='sum')
+
+        alice_context = [alice_sys, alice_plan]
+        bob_context = [bob_sys, bob_plan]
+        for round, (alice_ids, bob_ids) in enumerate(zip(sample['alice_message_ids'], sample['bob_message_ids'])):
+            alice_targets = [alice_ids + [self.eot_id]]
+            [alice_msg], alice_logits = self.workflow.train_step([{
+                'header': ('assistant', 'alice'),
+                'prefill': 'To Bob: ',
+                'parent_ids': [n['id'] for n in alice_context]
+            }], alice_targets)
+            alice_context.append(alice_msg)
+            bob_context.append(alice_msg)
+            metrics['train/alice_loss'] += F.cross_entropy(alice_logits.squeeze(), torch.tensor(alice_targets, device='cuda'))
+
+            bob_targets = [alice_ids + [self.eot_id]]
+            [bob_msg], bob_logits = self.workflow.train_step([{
+                'header': ('assistant', 'bob'),
+                'prefill': 'To Alice: ',
+                'parent_ids': [n['id'] for n in bob_context]
+            }], bob_targets)
+            alice_context.append(bob_msg)
+            bob_context.append(bob_msg)
+            metrics['train/bob_loss'] += F.cross_entropy(bob_logits.squeeze(), torch.tensor(bob_targets, device='cuda'))
+
+            # TODO -- finish
+
+        return torch.tensor([]), {}
 
 @torch.no_grad()
 def evaluate_tot(trainer: TotTrainer, val_dataset: TotDataset, max_steps=None, max_e2e=100):
