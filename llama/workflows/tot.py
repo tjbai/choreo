@@ -753,8 +753,8 @@ def collect_samples(
     math_path: str = '../data/MATH',
     split: str = 'train',
 ) -> List[TotResult]:
-    save_dir = Path(save_dir)
-    save_dir.mkdir(parents=True, exist_ok=True)
+    dir = Path(save_dir)
+    dir.mkdir(parents=True, exist_ok=True)
 
     metadata = {
         'timestamp': datetime.now().isoformat(),
@@ -780,23 +780,16 @@ def collect_samples(
             logprobs=True,
         )
 
-        # these are just the logprobs and not actually the full distribution, I realized
-        # so honestly, not worth all the work we juts did, but it's fine
-        tot_result["proposal_logprobs"] = [torch.tensor(l) for l in tot_result["proposal_logprobs"]]
-        tot_result["vote_logprobs"] = [torch.tensor(l) for l in tot_result["vote_logprobs"]]
-        if tot_result["final_logprobs"] is not None:
-            tot_result["final_logprobs"] = torch.tensor(tot_result["final_logprobs"])
-
         example = {
             'problem_idx': i,
             'problem': problem,
             'result': tot_result
         }
 
-        torch.save(example, save_dir / f"problem_{i}.pt")
+        torch.save(example, dir / f"problem_{i}.pt")
         examples.append(example)
 
-    with open(save_dir / 'metadata.json', 'w') as f:
+    with open(dir / 'metadata.json', 'w') as f:
         json.dump(metadata, f)
 
     return examples

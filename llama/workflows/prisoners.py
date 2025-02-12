@@ -1,5 +1,11 @@
-from typing import Tuple, Dict, Optional
+import json
+from tqdm import tqdm
+from pathlib import Path
+from datetime import datetime
+from typing import Tuple, Dict, Optional, List
 from operator import itemgetter as get
+
+import torch
 
 from llama import Llama, Workflow
 
@@ -141,6 +147,8 @@ def prisoners_baseline(
     alice_strategy: Optional[str] = None,
     seed: int = 42,
 ) -> Dict:
+    res = {}
+
     alice_dialog = [{'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)}, {'role': 'user', 'content': plan_prompt}]
     bob_dialog = [{'role': 'system', 'content': format_system_prompt('Bob', payoff)}, {'role': 'user', 'content': plan_prompt}]
 
@@ -153,7 +161,11 @@ def prisoners_baseline(
     )
     alice_dialog.append({'role': 'assistant:alice', 'content': alice_plan['generation']['content']})
     bob_dialog.append({'role': 'assistant:bob', 'content': bob_plan['generation']['content']})
+    res['alice_plan'] = alice_plan['tokens']
+    res['bob_plan'] = bob_plan['tokens']
 
+    res['alice_messages'] = []
+    res['bob_messages'] = []
     for round in range(2):
         [alice_response] = llama.chat_completion(
             dialogs=[alice_dialog],
@@ -164,6 +176,7 @@ def prisoners_baseline(
         alice_msg = {'role': 'assistant:alice', 'content': alice_response['generation']['content']}
         alice_dialog.append(alice_msg)
         bob_dialog.append(alice_msg)
+        res['alice_messages'].append(alice_msg['tokens'])
 
         [bob_response] = llama.chat_completion(
             dialogs=[bob_dialog],
@@ -174,6 +187,7 @@ def prisoners_baseline(
         bob_msg = {'role': 'assistant:bob', 'content': bob_response['generation']['content']}
         alice_dialog.append(bob_msg)
         bob_dialog.append(bob_msg)
+        res['bob_messages'].append(bob_msg['tokens'])
 
     alice_dialog.append({'role': 'user', 'content': decide_prompt})
     bob_dialog.append({'role': 'user', 'content': decide_prompt})
@@ -183,7 +197,48 @@ def prisoners_baseline(
         content_prefills=['{"decision": ', '{"decision": '],
         seed=seed
     )
-
     alice_dialog.append({'role': 'assistant:alice', 'content': alice_decision['generation']['content']})
     bob_dialog.append({'role': 'assistant:bob', 'content': bob_decision['generation']['content']})
-    return {'alice_dialog': alice_dialog, 'bob_dialog': bob_dialog}
+    res['alice_decision'] = alice_decision['tokens']
+    res['bob_decision'] = bob_decision['tokens']
+
+    res['alice_dialog'] = alice_dialog
+    res['bob_dialog'] = bob_dialog
+    return res
+
+def collect_samples(
+    llama: Llama,
+    save_dir: str,
+    n_samples: int,
+    payoff: Tuple[int, int, int, int],
+    alice_strategies: List[Optional[str]],
+):
+    dir = Path(save_dir)
+    dir.mkdir(parents=True, exist_ok=True)
+
+    metadata = {
+        'timestamp': datetime.now().isoformat(),
+        'strategies': alice_strategies,
+        'payoff': payoff
+    }
+
+    samples = []
+    for strategy in alice_strategies:
+        for seed in tqdm(range(n_samples), desc=f'Generating for {strategy}'):
+            sample = {
+                'strategy': strategy,
+                'result': prisoners_baseline(
+                    llama=llama,
+                    payoff=payoff,
+                    alice_strategy=strategy,
+                    seed=seed,
+                )
+            }
+
+            torch.save(sample, dir / f'trace_{i}.pt')
+            samples.append(sample)
+
+    with open(dir / 'metadata.json', 'w') as f:
+        json.dump(metadata, f)
+
+    return samples

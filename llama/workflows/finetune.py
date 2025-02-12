@@ -68,7 +68,7 @@ class LoraTrainer:
         pass
 
 class TotTrainer(LoraTrainer):
-    def __init__(self, workflow: Workflow, output_dir: str, branching_factor: int, voters: int, learning_rate: float):
+    def __init__(self, workflow: Workflow, output_dir: str,  learning_rate: float, branching_factor: int, voters: int):
         super().__init__(workflow, output_dir, learning_rate)
         self.branching_factor = branching_factor
         self.voters = voters
@@ -142,7 +142,7 @@ class TotTrainer(LoraTrainer):
         return total_loss, metrics
 
 @torch.no_grad()
-def evaluate(trainer: TotTrainer, val_dataset: TotDataset, max_steps=None, max_e2e=100):
+def evaluate_tot(trainer: TotTrainer, val_dataset: TotDataset, max_steps=None, max_e2e=100):
     trainer.workflow.model.eval()
 
     total_loss = 0
@@ -197,6 +197,7 @@ def finetune(
     data_path: str,
     ckpt_dir: str,
     tokenizer_path: str,
+    task: str,
     output_dir: str = "checkpoints",
     log_to_wandb: bool = True,
     epochs: int = 2,
@@ -235,22 +236,26 @@ def finetune(
         lora_dropout=lora_dropout,
     )
 
-    trainer = TotTrainer(
-        workflow,
-        output_dir=output_dir,
-        branching_factor=branching_factor,
-        voters=voters,
-        learning_rate=learning_rate,
-    )
+    if task == 'tot':
+        trainer = TotTrainer(
+            workflow,
+            output_dir=output_dir,
+            learning_rate=learning_rate,
+            branching_factor=branching_factor,
+            voters=voters,
+        )
+        dataset = TotDataset(data_path)
+        eval_fn = evaluate_tot
+    else:
+        raise NotImplementedError()
 
-    dataset = TotDataset(data_path)
     generator = torch.Generator(device="cuda").manual_seed(42)
     train_dataset, val_dataset = random_split(dataset, [0.9, 0.1], generator=generator)
     print(f"Train Dataset: {len(train_dataset)} samples")
     print(f"Val Dataset: {len(val_dataset)} samples")
 
     print("Sanity check:")
-    evaluate(trainer, val_dataset, max_steps=1, max_e2e=1)
+    eval_fn(trainer, val_dataset, max_steps=1, max_e2e=1)
     print("Passed!")
 
     if log_to_wandb:
@@ -286,7 +291,7 @@ def finetune(
                 trainer.optimizer.zero_grad()
                 global_step += 1
                 if (global_step + 1) % validation_freq == 0:
-                    val_metrics = evaluate(trainer, val_dataset)
+                    val_metrics = eval_fn(trainer, val_dataset)
                     if log_to_wandb:
                         wandb.log(val_metrics)
                 if log_to_wandb:
