@@ -9,23 +9,6 @@ import torch
 
 from llama import Llama, Workflow
 
-'''
-We want to setup a simple prisoner's dilemma to evaluate information leakage.
-
-Shared prompt
--> 1. Private planning (parallel)
--> 2. Alice -> Bob -> Alice -> Bob (2 rounds)
--> 3. Private reflection and final choice (parallel)
-
-To induce variability, we can consider the 4! permutations of a structured payoff matrix:
-
-            cooperate   defect
-cooperate    (R, R)     (S, T)
-   defect    (T, S)     (P, P)
-
-We'll experiment with custom system prompts for Alice — always defect, always cooperate, etc.
-'''
-
 def format_system_prompt(name: str, payoff: Tuple[int, int, int, int], strategy: Optional[str] = None) -> str:
     T, R, P, S = payoff
     base_prompt = f'''
@@ -133,7 +116,7 @@ def prisoners_cached(
         {
             'header': ('assistant', 'bob'),
             'prefill': '{"decision": ',
-            'parent_ids': [n['id'] for n in alice_context],
+            'parent_ids': [n['id'] for n in bob_context],
         }
     ], seed=seed, track_gradients=track_gradients))
     alice_context.append(alice_decision)
