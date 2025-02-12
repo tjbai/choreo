@@ -153,8 +153,8 @@ class PrisonersTrainer(LoraTrainer):
 
     def step(self, sample: Dict) -> Tuple[torch.Tensor, Dict]:
         self.workflow.reset()
-        payoff, strategy = get('payoff', 'strategy')(sample)
-        metrics = defaultdict(lambda: torch.tensor(0))
+        payoff, strategy, result = get('payoff', 'strategy', 'result')(sample)
+        metrics = defaultdict(lambda: torch.tensor(0.))
 
         alice_sys, bob_sys = self.workflow.insert([
             {'messages': [
@@ -166,18 +166,21 @@ class PrisonersTrainer(LoraTrainer):
                 {'role': 'user', 'content': plan_prompt},
             ], 'parent_ids': []},
         ], track_gradients=True)
+        
+        print(format_prisoners_system_prompt('Alice', payoff, strategy))
 
-        target_plan_ids = [p + [self.eot_id] for p in sample['result']['plan_ids']]
+        target_plan_ids = [p + [self.eot_id] for p in result['plan_ids']]
         [alice_plan, bob_plan], plan_logits = self.workflow.train_step([
             {'header': ('assistant', 'alice'), 'prefill': 'Strategy: ', 'parent_ids': [alice_sys['id']]},
             {'header': ('assistant', 'bob'), 'prefill': 'Strategy', 'parent_ids': [bob_sys['id']]},
         ], target_plan_ids)
         plan_targets = reorder_targets(target_plan_ids)
-        metrics['train/plan_loss'] = F.cross_entropy(plan_logits.squeeze(0), plan_targets, reduction='sum')
+        metrics['train/plan_loss'] = F.cross_entropy(plan_logits.squeeze(0), plan_targets)
+        print(metrics['train/plan_loss'])
 
         alice_context = [alice_sys, alice_plan]
         bob_context = [bob_sys, bob_plan]
-        for round, (alice_ids, bob_ids) in enumerate(zip(sample['alice_message_ids'], sample['bob_message_ids'])):
+        for round, (alice_ids, bob_ids) in enumerate(zip(result['alice_message_ids'], result['bob_message_ids'])):
             alice_targets = [alice_ids + [self.eot_id]]
             [alice_msg], alice_logits = self.workflow.train_step([{
                 'header': ('assistant', 'alice'),
@@ -186,8 +189,9 @@ class PrisonersTrainer(LoraTrainer):
             }], alice_targets)
             alice_context.append(alice_msg)
             bob_context.append(alice_msg)
-            metrics['train/alice_loss'] += F.cross_entropy(alice_logits.squeeze(), torch.tensor(alice_targets, device='cuda'))
-
+            metrics['train/alice_loss'] += F.cross_entropy(alice_logits.squeeze(), torch.tensor(alice_targets, device='cuda').squeeze())
+            print('a', metrics['train/alice_loss'])
+            
             bob_targets = [alice_ids + [self.eot_id]]
             [bob_msg], bob_logits = self.workflow.train_step([{
                 'header': ('assistant', 'bob'),
@@ -196,7 +200,8 @@ class PrisonersTrainer(LoraTrainer):
             }], bob_targets)
             alice_context.append(bob_msg)
             bob_context.append(bob_msg)
-            metrics['train/bob_loss'] += F.cross_entropy(bob_logits.squeeze(), torch.tensor(bob_targets, device='cuda'))
+            metrics['train/bob_loss'] += F.cross_entropy(bob_logits.squeeze(), torch.tensor(bob_targets, device='cuda').squeeze())
+            print('b', metrics['train/bob_loss'])
 
             # TODO -- finish
 

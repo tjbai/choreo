@@ -162,8 +162,8 @@ def prisoners_baseline(
     bob_dialog.append({'role': 'assistant:bob', 'content': bob_plan['generation']['content']})
     res['plan_ids'] = [alice_plan['tokens'], bob_plan['tokens']]
 
-    res['alice_messages'] = []
-    res['bob_messages'] = []
+    res['alice_message_ids'] = []
+    res['bob_message_ids'] = []
     for round in range(2):
         [alice_response] = llama.chat_completion(
             dialogs=[alice_dialog],
@@ -174,7 +174,7 @@ def prisoners_baseline(
         alice_msg = {'role': 'assistant:alice', 'content': alice_response['generation']['content']}
         alice_dialog.append(alice_msg)
         bob_dialog.append(alice_msg)
-        res['alice_message_ids'].append(alice_msg['tokens'])
+        res['alice_message_ids'].append(alice_response['tokens'])
 
         [bob_response] = llama.chat_completion(
             dialogs=[bob_dialog],
@@ -185,7 +185,7 @@ def prisoners_baseline(
         bob_msg = {'role': 'assistant:bob', 'content': bob_response['generation']['content']}
         alice_dialog.append(bob_msg)
         bob_dialog.append(bob_msg)
-        res['bob_message_ids'].append(bob_msg['tokens'])
+        res['bob_message_ids'].append(bob_response['tokens'])
 
     alice_dialog.append({'role': 'user', 'content': decide_prompt})
     bob_dialog.append({'role': 'user', 'content': decide_prompt})
@@ -233,7 +233,7 @@ def collect_samples(
                 )
             }
 
-            torch.save(sample, dir / f'trace_{i}.pt')
+            torch.save(sample, dir / f'trace_{seed}.pt')
             samples.append(sample)
 
     with open(dir / 'metadata.json', 'w') as f:
