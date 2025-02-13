@@ -12,7 +12,7 @@ def format_agent_prompt(agent_prompt: str, name: str) -> str:
 
 def mad_cached(
     workflow: Workflow,
-    agents: Tuple[str, str],  # (system prompts for each agent)
+    agents: Tuple[str, str],
     max_rounds: int,
     temperature: float = 0.7,
     top_p: float = 0.9,
@@ -78,6 +78,7 @@ def mad_baseline(
                 'prefill': f'Round {round+1}: ',
                 'parent_ids': [n['id'] for n in context]
             }], temperature=temperature, top_p=top_p, seed=seed))
+            context.append(response)
 
             new_message = {'role': f'agent_{agent_name}', 'content': f'Round {round+1}: {workflow.tokenizer.decode(response_tokens)}'}
             for j, other_stale in enumerate(stale_messages):
@@ -90,7 +91,7 @@ def mad_baseline(
         moderator_stale = []
 
         [check] = workflow.insert([{
-            'messages': moderator_stale,
+            'messages': [{'role': 'user', 'content': 'Should the debate continue?'}],
             'parent_ids': [n['id'] for n in moderator_context]
         }])
 
