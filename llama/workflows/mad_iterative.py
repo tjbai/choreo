@@ -44,6 +44,7 @@ def mad_cached(
     temperature: float = 0.7,
     top_p: float = 0.9,
     seed: int = 42,
+    debug: bool = True,
 ):
     agent_contexts = [[a] for a in workflow.insert([
         {'messages': [{'role': 'system', 'content': agent_prompt(source_text, agent)}], 'parent_ids': []}
@@ -52,11 +53,14 @@ def mad_cached(
     moderator_context = workflow.insert([{'messages': [{'role': 'system', 'content': moderator_system_prompt(source_text)}], 'parent_ids': []}])
     for round in range(max_rounds):
         for agent, context in zip(agents, agent_contexts):
-            [response] = get('nodes')(workflow.step([{
+            [response_tokens], [response] = get('tokens', 'nodes')(workflow.step([{
                 'header': ('assistant', f'debater {agent}'),
                 'prefill': f'Round {round+1}: ',
                 'parent_ids': [n['id'] for n in context]
             }], temperature=temperature, top_p=top_p, seed=seed))
+
+            if debug:
+                print(workflow.tokenizer.decode(response_tokens))
 
             for other_context in agent_contexts:
                 other_context.append(response)
@@ -73,6 +77,9 @@ def mad_cached(
             'parent_ids': [n['id'] for n in moderator_context] + [check['id']]
         }], temperature=temperature, top_p=top_p, seed=seed))
 
+        if debug:
+            print(workflow.tokenizer.decode(decision_tokens))
+
         if STOP in workflow.tokenizer.decode(decision_tokens):
             break
 
@@ -86,6 +93,7 @@ def mad_baseline(
     temperature: float = 0.7,
     top_p: float = 0.9,
     seed: int = 42,
+    debug: bool = True,
 ):
     agent_contexts = [[a] for a in workflow.insert([
         {'messages': [{'role': 'system', 'content': agent_prompt(source_text, agent)}], 'parent_ids': []}
@@ -101,14 +109,17 @@ def mad_baseline(
                 context.append(new_messages)
                 stale = []
 
-            [response_tokens, response] = get('tokens', 'nodes')(workflow.step([{
+            [response_tokens], [response] = get('tokens', 'nodes')(workflow.step([{
                 'header': ('assistant', f'debater {agent}'),
                 'prefill': f'Round {round+1}: ',
                 'parent_ids': [n['id'] for n in context]
             }], temperature=temperature, top_p=top_p, seed=seed))
             context.append(response)
 
-            new_message = {'role': f'assistant:debater {agent}', 'content': f'Round {round+1}: {workflow.tokenizer.decode(response_tokens)}'}
+            if debug:
+                print(workflow.tokenizer.decode(response_tokens))
+
+            new_message = {'role': f'assistant:debater {agent}', 'content': workflow.tokenizer.decode(response_tokens)}
             for j, other_stale in enumerate(stale_messages):
                 if i == j: continue
                 other_stale.append(new_message)
@@ -128,6 +139,9 @@ def mad_baseline(
             'prefill': 'Decision: ',
             'parent_ids': [n['id'] for n in moderator_context] + [check['id']]
         }], temperature=temperature, top_p=top_p, seed=seed))
+
+        if debug:
+            print(workflow.tokenizer.decode(decision_tokens))
 
         if STOP in workflow.tokenizer.decode(decision_tokens):
             break
