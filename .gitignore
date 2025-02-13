@@ -29,13 +29,18 @@
 !uv.lock
 !pyproject.toml
 
-# misc
-!tokenizer.model
+# data
 !dumps/
 !dumps/**/
 !dumps/**/*.json*
 !dumps/**/*.md
 !dumps/**/*.pt
+!data/
+!data/**
+!data/**/*
+
+# misc
+!tokenizer.model
 !slurm/
 !slurm/*.py
 !slurm/*.sh
