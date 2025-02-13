@@ -160,3 +160,19 @@ With new checkpoints (rank=64, alpha=32, dropout=0.05)
 | 400                 | 31.4 (88)              | 0.002             |
 | 800                 | 38.5 (108)             | 0.416             |
 | 1200                | 39.6 (111)             | 0.630             |
+
+## 2/12: ed87ee400105646c23f60d8b16717249cb7c095e
+
+Reran cached after fixing the decision bug:
+
+Baseline:
+alice: 82 14
+bob: 62 32
+
+Always cooperate:
+alice: 95 1
+bob: 72 23 <- Want to try a new prompt so that Bob defects here instead...
+
+Always defect:
+alice: 6 92
+bob: 37 55
