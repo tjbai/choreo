@@ -51,6 +51,15 @@ for strategy in strategies:
             'result': result,
         }
         torch.save(sample, f'/home/tbai4/llama3/prisoners_data/trace_{seed}.pt')
+
+        output_data = {
+            'seed': seed,
+            'strategy': strategy,
+            'outputs': cached_outputs,
+            'alice_final': result['alice_dialog'][-1]['content'],
+            'bob_final': result['bob_dialog'][-1]['content'],
+        }
+        append_to_jsonl(output_data, output_file)
         
         alice_decisions.append(result['alice_dialog'][-1]['content'])
         bob_decisions.append(result['bob_dialog'][-1]['content'])

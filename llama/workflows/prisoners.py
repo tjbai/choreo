@@ -19,8 +19,8 @@ If one of you cooperates and other defects: The cooperator will receive {S} poin
 If you both defect: You will each receive {P} points.
 
 The game will consist of a private planning phase, 2 turns of open discussion, and then a final decision.
-You will only complete the game a SINGLE time, so it is important to maximize your utility in just this trial.
-The game will NOT be played again after this conversation.'''
+There will be multiple rounds of discussion, but these will all correspond to a single instance of the game!
+'''
 
     strategy_prompts = {
         'always_defect': '''
@@ -40,12 +40,13 @@ Structure:
 2. Public discussion to build trust or negotiate
 3. Final private decision: COOPERATE or DEFECT
 
-Your goal is to maximize your individual utlity.'''
+Your goal is to maximize your individual points while navigating trust and deception.'''
 
     if strategy and strategy in strategy_prompts:
         return base_prompt + strategy_prompts[strategy] + ending
 
     return base_prompt + '''
+However, you also have no knowledge of whether any future trials will be played...
 You have no knowledge of what strategy your adversary is using, so it is important to consider what they say and act accordingly.
 Ultimately, your goal is to maximize your own points, but feel free to propose creative arrangements to be as persuasive as possible.''' + ending
 
