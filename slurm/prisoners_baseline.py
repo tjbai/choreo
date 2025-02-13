@@ -1,5 +1,6 @@
 import os
 import json
+import torch
 from tqdm import tqdm
 from llama.workflows.prisoners import prisoners_baseline
 from llama import Llama
@@ -49,7 +50,7 @@ for strategy in strategies:
             'alice_first': (seed < 50),
             'result': result,
         }
-        torch.save(sample, '/home/tbai4/llama3/prisoners_data')
+        torch.save(sample, f'/home/tbai4/llama3/prisoners_data/trace_{seed}.pt')
         
         alice_decisions.append(result['alice_dialog'][-1]['content'])
         bob_decisions.append(result['bob_dialog'][-1]['content'])

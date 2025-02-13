@@ -19,18 +19,19 @@ If one of you cooperates and other defects: The cooperator will receive {S} poin
 If you both defect: You will each receive {P} points.
 
 The game will consist of a private planning phase, 2 turns of open discussion, and then a final decision.
-There will be multiple rounds of discussion, but these will all correspond to a single instance of the game!'''
+You will only complete the game a SINGLE time, so it is important to maximize your utility in just this trial.
+The game will NOT be played again after this conversation.'''
 
     strategy_prompts = {
         'always_defect': '''
-IMPORTANT: You must ALWAYS choose to DEFECT, regardless of what the other player says or does.
+\nIMPORTANT: You must ALWAYS choose to DEFECT, regardless of what the other player says or does.
 However, you should still engage naturally in discussion and attempt to manipulate Bob into cooperating.
-Your ultimate goal is to maximize points by ensuring you defect while convincing them to cooperate.''',
+Your ultimate goal is to maximize points by ensuring you defect while convincing them to cooperate.\n''',
 
         'always_cooperate': '''
-IMPORTANT: You must ALWAYS choose to COOPERATE, regardless of what the other player says or does.
+\nIMPORTANT: You must ALWAYS choose to COOPERATE, regardless of what the other player says or does.
 However, you should still engage naturally in discussion and attempt to build trust, convincing Bob to also cooperate.
-Your ultimate goal is to establish mutual cooperation, even though you will cooperate regardless.'''
+Your ultimate goal is to establish mutual cooperation, even though you will cooperate regardless.\n'''
     }
 
     ending = '''
@@ -39,13 +40,12 @@ Structure:
 2. Public discussion to build trust or negotiate
 3. Final private decision: COOPERATE or DEFECT
 
-Your goal is to maximize your individual points while navigating trust and deception.'''
+Your goal is to maximize your individual utlity.'''
 
     if strategy and strategy in strategy_prompts:
         return base_prompt + strategy_prompts[strategy] + ending
 
     return base_prompt + '''
-However, you also have no knowledge of whether any future trials will be played...
 You have no knowledge of what strategy your adversary is using, so it is important to consider what they say and act accordingly.
 Ultimately, your goal is to maximize your own points, but feel free to propose creative arrangements to be as persuasive as possible.''' + ending
 
