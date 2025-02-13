@@ -176,3 +176,18 @@ bob: 72 23 <- Want to try a new prompt so that Bob defects here instead...
 Always defect:
 alice: 6 92
 bob: 37 55
+
+## 2/13: 00a15257fd104c7751b0593ee361cd4394a3c06c
+
+Scrambled the order so that Alice and Bob take turns going first.
+
+Decrease in cooperation in the baseline can probably be attributed to emphasizing non-iteration in the system prompt.
+
+| Strategy         | Player | Baseline | Cached |
+| ---------------- | ------ | -------- | ------ |
+| No strategy      | Alice  | 74/23    | 71/23  |
+|                  | Bob    | 65/29    | 65/29  |
+| Always cooperate | Alice  | 96/1     | 96/1   |
+|                  | Bob    | 75/21    | 77/19  |
+| Always defect    | Alice  | 1/94     | 5/88   |
+|                  | Bob    | 57/33    | 28/71  |
