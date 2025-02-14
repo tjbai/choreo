@@ -16,6 +16,7 @@ dependencies = [
     "tiktoken>=0.8.0",
     "torch>=2.5.1",
     "tqdm>=4.67.1",
+    "unbabel-comet>=2.2.4",
     "wandb>=0.19.5",
 ]
 [tool.setuptools]
