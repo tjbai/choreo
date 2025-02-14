@@ -191,3 +191,13 @@ Decrease in cooperation in the baseline can probably be attributed to emphasizin
 |                  | Bob    | 75/21    | 77/19  |
 | Always defect    | Alice  | 1/94     | 5/88   |
 |                  | Bob    | 57/33    | 28/71  |
+
+## 2/14: 7446fd5d9914c495b617bbe951dfdd33864d141d
+
+Comet:
+  Baseline: 92.41
+  Cached: 92.09
+  Head-to-head:
+    Cached wins: 37 (38.1%)
+    Baseline wins: 44 (45.4%)
+    Ties: 16 (16.5%)
