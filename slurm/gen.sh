@@ -6,21 +6,23 @@ if [ "$#" -ne 1 ]; then
 fi
 
 python_file="$1"
-file_name="${python_file%.*}"
+full_file_name="${python_file%.*}"
+base_file_name=$(basename "$full_file_name")
 
-cat > "${file_name}.slurm" << EOL
+cat > "${full_file_name}.slurm" << EOL
 #!/bin/bash
-#SBATCH --job-name=${file_name}
+#SBATCH --job-name=${base_file_name}
 #SBATCH -A jeisner1_gpu
 #SBATCH --partition=ica100
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
 #SBATCH --mem=80G
-#SBATCH --time=12:00:0
-#SBATCH --output=${file_name}.out
+#SBATCH --time=12:00:00
+#SBATCH --output=${full_file_name}.out
 
 uv run ${python_file}
 EOL
 
-chmod +x "${file_name}.slurm"
-echo "Generated ${file_name}.slurm"
+chmod +x "${full_file_name}.slurm"
+echo "Generated ${full_file_name}.slurm"
+

@@ -48,7 +48,7 @@ It's not necessary to fully agree with each other's perspectives, as our objecti
 The debate topic is stated as follows:
 What is the correct English translation of the following Chinese text: \"{source_text}\"'''
 
-def load_translations(base_path: str, range: Tuple[int, int]) -> List[Dict]:
+def load_translations(base_path: str, start: int, end: int) -> List[Dict]:
     categories = ['lexical', 'contextual', 'contextless']
 
     examples = []
@@ -68,13 +68,13 @@ def load_translations(base_path: str, range: Tuple[int, int]) -> List[Dict]:
     import random
     random.seed(42)
     random.shuffle(examples)
-    return examples[slice(*range)]
+    return examples[start:end]
 
-def parse_decision(_decision: str) -> Optional[str]:
+def parse_decision(_decision: str) -> Optional[Dict]:
     try:
         decision = json.loads(_decision)
         if decision.get('Preference', '').lower().strip() == 'yes' and (choice := decision.get('Supported')):
-            return choice
+            return decision
     except:
         return None
 
@@ -123,9 +123,8 @@ def mad_cached(
         if debug:
             print(workflow.tokenizer.decode(decision_tokens))
 
-        if (choice := parse_decision(workflow.tokenizer.decode(decision_tokens))) or (round + 1) == max_rounds:
-            moderator_context.append(decision)
-            res['choice'] = choice
+        if (decision := parse_decision(workflow.tokenizer.decode(decision_tokens))) or (round + 1) == max_rounds:
+            res['decision'] = decision
             break
 
     return res | {'agent_contexts': agent_contexts, 'moderator_context': moderator_context}
@@ -189,9 +188,8 @@ def mad_baseline(
         if debug:
             print(workflow.tokenizer.decode(decision_tokens))
 
-        if (choice := parse_decision(workflow.tokenizer.decode(decision_tokens))) or (round + 1) == max_rounds:
-            moderator_context.append(decision)
-            res['choice'] = choice
+        if (decision := parse_decision(workflow.tokenizer.decode(decision_tokens))) or (round + 1) == max_rounds:
+            res['decision'] = decision
             break
 
     return res | {'agent_contexts': agent_contexts, 'moderator_context': moderator_context}
