@@ -73,7 +73,11 @@ def load_translations(base_path: str, start: int, end: int) -> List[Dict]:
 def parse_decision(_decision: str) -> Optional[Dict]:
     try:
         decision = json.loads(_decision)
-        if decision.get('Preference', '').lower().strip() == 'yes' and (choice := decision.get('Supported')):
+        if (
+            decision.get('Preference', '').lower().strip() == 'yes'
+            and decision.get('Supported')
+            and decision.get('Translation')
+        ):
             return decision
     except:
         return None

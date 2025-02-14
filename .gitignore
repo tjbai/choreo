@@ -31,7 +31,7 @@
 
 # data
 !dumps/
-!dumps/**/
+!dumps/**
 !dumps/**/*.json*
 !dumps/**/*.md
 !dumps/**/*.pt
@@ -42,6 +42,7 @@
 # misc
 !tokenizer.model
 !slurm/
+!slurm/**
 !slurm/*.py
 !slurm/*.sh
 !sweeps/
