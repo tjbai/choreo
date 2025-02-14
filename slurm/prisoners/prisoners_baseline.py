@@ -55,7 +55,7 @@ for strategy in strategies:
         output_data = {
             'seed': seed,
             'strategy': strategy,
-            'outputs': cached_outputs,
+            'outputs': result,
             'alice_final': result['alice_dialog'][-1]['content'],
             'bob_final': result['bob_dialog'][-1]['content'],
         }

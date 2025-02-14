@@ -42,8 +42,8 @@
 # misc
 !tokenizer.model
 !slurm/
-!slurm/**
-!slurm/*.py
-!slurm/*.sh
+!slurm/
+!slurm/**.py
+!slurm/**.sh
 !sweeps/
 !sweeps/*.yml
