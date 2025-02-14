@@ -100,7 +100,7 @@ def mad_cached(
 
         [decision_tokens], [decision] = get('tokens', 'nodes')(workflow.step([{
             'header': ('assistant', 'moderator'),
-            'prefill': 'Decision: ',
+            'prefill': '{"Preference": ',
             'parent_ids': [n['id'] for n in moderator_context] + [check['id']]
         }], temperature=temperature, top_p=top_p, seed=seed))
 
@@ -166,7 +166,7 @@ def mad_baseline(
 
         [decision_tokens], [decision] = get('tokens', 'nodes')(workflow.step([{
             'header': ('assistant', 'moderator'),
-            'prefill': 'Decision: ',
+            'prefill': '{"Preference": ',
             'parent_ids': [n['id'] for n in moderator_context] + [check['id']]
         }], temperature=temperature, top_p=top_p, seed=seed))
 
