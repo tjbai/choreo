@@ -195,6 +195,8 @@ Decrease in cooperation in the baseline can probably be attributed to emphasizin
 ## 2/14: 7446fd5d9914c495b617bbe951dfdd33864d141d
 
 Comet:
+  Simple Baseline: 92.26
+    + CoT: 91.68
   Baseline: 92.41
   Cached: 92.09
   Head-to-head:
