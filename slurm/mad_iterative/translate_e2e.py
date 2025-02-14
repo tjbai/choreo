@@ -29,6 +29,7 @@ results = {
 for i, ex in enumerate(tqdm(examples)):
     ex.update({'index': i})
 
+    workflow.reset()
     results['cached'].append(mad_cached(
         workflow,
         ex['chinese'],
@@ -37,6 +38,7 @@ for i, ex in enumerate(tqdm(examples)):
         debug=False
     ))
 
+    workflow.reset()
     results['baseline'].append(mad_baseline(
         workflow,
         ex['chinese'],
