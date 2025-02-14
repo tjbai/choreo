@@ -1,11 +1,10 @@
-from typing import List, Tuple
+import json
+from typing import List, Tuple, Optional
 from operator import itemgetter as get
 
 from llama import Workflow
 
 # prompts adapted from https://github.com/Skytliang/Multi-Agents-Debate
-
-STOP = ''
 
 def moderator_system_prompt(source_text: str) -> str:
    return f'''
@@ -15,12 +14,31 @@ At the end of each round, you will evaluate the translation candidates based on 
 1. Accuracy: The degree to which the translation captures the original meaning of the source text.
 2. Fluency: The readability and naturalness of the translation in English.'''
 
-def moderator_user_prompt(round: int, agents: List[str]) -> str:
-    return f'''
-Now round {round+1} of debate for both sides has ended. You, as the moderator, will evaluate both sides' translations and determine if there is a clear preference for a translation candidate.
-If so, please summarize your reasons for supporting {' or '.join(agents)} side and give the final translation that you think is correct, and the debate will conclude.
-If not, the debate will continue to the next round. Now please output your answer in json format, with the format as follows: {{\"Preference\": \"Yes or No\", \"Supported\": \"{' or '.join(agents)}\", \"Reason\": \"\"}}.
-Please strictly output in JSON format, do not output irrelevant content.'''
+def moderator_user_prompt(round: int, max_rounds: int, agents: List[str]) -> str:
+    is_final_round = (round + 1) == max_rounds
+    agents_str = " or ".join(agents)
+
+    if is_final_round:
+        inner = (
+            f"If so, please summarize your reasons for supporting {agents_str}'s side and give "
+            "the final translation that you think is correct, and the debate will conclude. "
+            "If not, the debate will continue to the next round."
+        )
+    else:
+        inner = (
+            "Because all rounds of debate have ended, you must decide on a "
+            "final translation that you think is correct."
+        )
+
+    return (
+        f"Now round {round + 1}/{max_rounds} of debate for both sides has ended. "
+        "You, as the moderator, will evaluate both sides' translations "
+        "and determine if there is a clear preference for a translation candidate. "
+        f"\n{inner}\n"
+        "Now please output your answer in JSON format, with the format as follows: "
+        f'{{"Preference": "Yes or No", "Supported": "{agents_str}", "Reason": ""}}. '
+        "Please strictly output in JSON format, do not output irrelevant content."
+    )
 
 def agent_prompt(source_text: str, name: str) -> str:
     return f'''
@@ -36,6 +54,14 @@ def load_translations(path: str, range: Tuple[int, int]) -> List[Tuple[str, str]
         dest_texts = [line.strip() for line in f]
     return list(zip(source_texts, dest_texts))[range[0]:range[1]]
 
+def parse_decision(_decision: str) -> Optional[str]:
+    try:
+        decision = json.loads(_decision)
+        if decision.get('Preference', '').lower().strip() == 'yes' and (choice := decision.get('Supported')):
+            return choice
+    except:
+        return None
+
 def mad_cached(
     workflow: Workflow,
     source_text: str,
@@ -46,6 +72,7 @@ def mad_cached(
     seed: int = 42,
     debug: bool = True,
 ):
+    res = {}
     agent_contexts = [[a] for a in workflow.insert([
         {'messages': [{'role': 'system', 'content': agent_prompt(source_text, agent)}], 'parent_ids': []}
         for agent in agents
@@ -67,7 +94,7 @@ def mad_cached(
             moderator_context.append(response)
 
         [check] = workflow.insert([{
-            'messages': [{'role': 'user', 'content': moderator_user_prompt(round, agents)}],
+            'messages': [{'role': 'user', 'content': moderator_user_prompt(round, max_rounds, agents)}],
             'parent_ids': [n['id'] for n in moderator_context]
         }])
 
@@ -80,10 +107,12 @@ def mad_cached(
         if debug:
             print(workflow.tokenizer.decode(decision_tokens))
 
-        if STOP in workflow.tokenizer.decode(decision_tokens):
+        if (choice := parse_decision(workflow.tokenizer.decode(decision_tokens))) or (round + 1) == max_rounds:
+            moderator_context.append(decision)
+            res['choice'] = choice
             break
 
-    return {'agent_contexts': agent_contexts, 'moderator_context': moderator_context}
+    return res | {'agent_contexts': agent_contexts, 'moderator_context': moderator_context}
 
 def mad_baseline(
     workflow: Workflow,
@@ -95,6 +124,7 @@ def mad_baseline(
     seed: int = 42,
     debug: bool = True,
 ):
+    res = {}
     agent_contexts = [[a] for a in workflow.insert([
         {'messages': [{'role': 'system', 'content': agent_prompt(source_text, agent)}], 'parent_ids': []}
         for agent in agents
@@ -130,7 +160,7 @@ def mad_baseline(
         moderator_stale = []
 
         [check] = workflow.insert([{
-            'messages': [{'role': 'user', 'content': moderator_user_prompt(round, agents)}],
+            'messages': [{'role': 'user', 'content': moderator_user_prompt(round, max_rounds, agents)}],
             'parent_ids': [n['id'] for n in moderator_context]
         }])
 
@@ -143,7 +173,9 @@ def mad_baseline(
         if debug:
             print(workflow.tokenizer.decode(decision_tokens))
 
-        if STOP in workflow.tokenizer.decode(decision_tokens):
+        if (choice := parse_decision(workflow.tokenizer.decode(decision_tokens))) or (round + 1) == max_rounds:
+            moderator_context.append(decision)
+            res['choice'] = choice
             break
 
-    return {'agent_contexts': agent_contexts, 'moderator_context': moderator_context}
+    return res | {'agent_contexts': agent_contexts, 'moderator_context': moderator_context}
