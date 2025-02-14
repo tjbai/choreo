@@ -36,7 +36,7 @@ def moderator_user_prompt(round: int, max_rounds: int, agents: List[str]) -> str
         "and determine if there is a clear preference for a translation candidate. "
         f"\n{inner}\n"
         "Now please output your answer in JSON format, with the format as follows: "
-        f'{{"Preference": "Yes or No", "Supported": "{agents_str}", "Reason": ""}}. '
+        f'{{"Preference": "Yes or No", "Supported": "{agents_str}", "Translation": "", "Reason": ""}}. '
         "Please strictly output in JSON format, do not output irrelevant content."
     )
 
