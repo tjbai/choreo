@@ -1,5 +1,6 @@
+import csv
 import json
-from typing import List, Tuple, Optional
+from typing import List, Tuple, Optional, Dict
 from operator import itemgetter as get
 
 from llama import Workflow
@@ -47,12 +48,27 @@ It's not necessary to fully agree with each other's perspectives, as our objecti
 The debate topic is stated as follows:
 What is the correct English translation of the following Chinese text: \"{source_text}\"'''
 
-def load_translations(path: str, range: Tuple[int, int]) -> List[Tuple[str, str]]:
-    with open(f'{path}/lexical.zh-en.zh') as f:
-        source_texts = [line.strip() for line in f]
-    with open(f'{path}/lexical.zh-en.en') as f:
-        dest_texts = [line.strip() for line in f]
-    return list(zip(source_texts, dest_texts))[range[0]:range[1]]
+def load_translations(base_path: str, range: Tuple[int, int]) -> List[Dict]:
+    categories = ['lexical', 'contextual', 'contextless']
+
+    examples = []
+    for category in categories:
+        with open(f'{base_path}/{category}.csv') as f:
+            reader = csv.reader(f)
+            next(reader)
+            for row in reader:
+                chinese, correct, wrong = row
+                examples.append({
+                    'category': category,
+                    'chinese': chinese,
+                    'correct': correct,
+                    'wrong': wrong
+                })
+
+    import random
+    random.seed(42)
+    random.shuffle(examples)
+    return examples[slice(*range)]
 
 def parse_decision(_decision: str) -> Optional[str]:
     try:
