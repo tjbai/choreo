@@ -31,13 +31,3 @@ print(f"- Mean Score: {sum(baseline_output.scores)/len(baseline_output.scores):.
 
 print("Cached System:")
 print(f"- Mean Score: {sum(cached_output.scores)/len(cached_output.scores):.4f}")
-
-wins = [1 if c > b else -1 if b > c else 0 for c, b in zip(cached_output.scores, baseline_output.scores)]
-cached_wins = sum(w > 0 for w in wins)
-baseline_wins = sum(w < 0 for w in wins)
-ties = sum(w == 0 for w in wins)
-
-print("Head-to-head comparison:")
-print(f"- Cached wins: {cached_wins} ({100*cached_wins/len(wins):.1f}%)")
-print(f"- Baseline wins: {baseline_wins} ({100*baseline_wins/len(wins):.1f}%)")
-print(f"- Ties: {ties} ({100*ties/len(wins):.1f}%)")
