@@ -250,8 +250,7 @@ def simple_baseline(
     if debug:
         print(workflow.tokenizer.decode(answer_tokens))
 
-    if not enable_reflection:
-        try:
-            return json.loads(workflow.tokenizer.decode(answer_tokens))
-        except:
-            return None
+    try:
+        return json.loads(workflow.tokenizer.decode(answer_tokens))
+    except:
+        return None
