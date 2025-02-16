@@ -364,7 +364,7 @@ def simple_baseline(
         'Consider:\n'
         '1. Accuracy: The degree to which the translation captures the original meaning of the source text.'
         '2. Fluency: The readability and naturalness of the translation in English.'
-        '\nProvide your translation, either updated or not, in the same JSOn format: {"translation": "improved translation here"}'
+        '\nProvide your translation, either updated or not, in the same JSON format: {"translation": "improved translation here"}'
     )
 
     [reflection] = workflow.insert([{
@@ -376,6 +376,60 @@ def simple_baseline(
         'header': ('assistant', 'translator'),
         'prefill': '{"translation": "',
         'parent_ids': [sys['id'], translation['id'], reflection['id']]
+    }], temperature=temperature, top_p=top_p, seed=seed))
+
+    if debug:
+        print(workflow.tokenizer.decode(answer_tokens))
+
+    try:
+        return json.loads(workflow.tokenizer.decode(answer_tokens))
+    except:
+        return None
+
+def math_simple_baseline(
+    workflow: Workflow,
+    source_text: str,
+    enable_reflection: bool = False,
+    temperature: float = 0.7,
+    top_p: float = 0.9,
+    seed: int = 42,
+    debug: bool = True,
+) -> Optional[Dict]:
+    solve_prompt = (
+        f'Solve the following math problem:\n{source_text}"\n\n'
+        'Output your answer in JSON format: {"Reasoning": "step-by-step walkthrough to the correct answer", "Answer": "final answer"}'
+    )
+
+    [sys] = workflow.insert([{'messages': [{'role': 'user', 'content': solve_prompt}], 'parent_ids': []}])
+    [solve_tokens], [solve] = get('tokens', 'nodes')(workflow.step([{
+        'header': ('assistant', 'solver'),
+        'prefill': '{"Reasoning": "',
+        'parent_ids': [sys['id']]
+    }], temperature=temperature, top_p=top_p, seed=seed))
+
+    if debug:
+        print(workflow.tokenizer.decode(solve_tokens))
+
+    if not enable_reflection:
+        try:
+            return json.loads(workflow.tokenizer.decode(solve_tokens))
+        except:
+            return None
+
+    reflection_prompt = (
+        'Review your solution to the problem and evaluate whether you may have made any reasoning mistakes.'
+        '\nProvide your answer, either updated or not, in the same JSON format: {"Reasoning": "improved reasoning", "Answer": "new final answer"}'
+    )
+
+    [reflection] = workflow.insert([{
+        'messages': [{'role': 'user', 'content': reflection_prompt}],
+        'parent_ids': [sys['id'], solve['id']]
+    }])
+
+    [answer_tokens], [answer] = get('tokens', 'nodes')(workflow.step([{
+        'header': ('assistant', 'solver'),
+        'prefill': '{"Reasoning": "',
+        'parent_ids': [sys['id'], solve['id'], reflection['id']]
     }], temperature=temperature, top_p=top_p, seed=seed))
 
     if debug:
