@@ -2,7 +2,7 @@ import os
 import math
 import json
 from pathlib import Path
-from typing import Dict, Any, List, Tuple
+from typing import Dict, Any, List, Tuple, Optional, Callable
 from abc import abstractmethod
 from collections import Counter, defaultdict
 from operator import itemgetter as get
@@ -44,6 +44,16 @@ class TotDataset(Dataset):
 
     def __getitem__(self, idx) -> Dict:
         return torch.load(self.problem_paths[idx], weights_only=True)
+
+class PrisonersDataset(Dataset):
+    def __init__(self, data_dir: str | Path, data_mix: Tuple[int, int, int]):
+        self.data_dir = Path(data_dir)
+
+    def __len__(self):
+        pass
+
+    def __getitem__(self, idx) -> Dict:
+        return {}
 
 # this is a hack to match the header prefill -> content prefill setup we have
 # a more principled way would be to just do one big prefill step and mask out the irrelevant header tokens
@@ -290,6 +300,11 @@ def evaluate_tot(trainer: TotTrainer, val_dataset: TotDataset, max_steps=None, m
     trainer.workflow.model.train()
     return metrics
 
+@torch.no_grad()
+def evaluate_prisoners(trainer: PrisonersTrainer, val_dataset: PrisonersDataset, max_steps=None, max_e2e=100):
+    trainer.workflow.model.eval()
+    trainer.workflow.model.train()
+
 def get_lr_factor(step, warmup_steps=10, total_steps=100):
     # steps = number of updates != number of samples
     if step < warmup_steps:
@@ -297,61 +312,129 @@ def get_lr_factor(step, warmup_steps=10, total_steps=100):
     progress = (step - warmup_steps) / (total_steps - warmup_steps)
     return 0.5 * (1 + math.cos(math.pi * progress))
 
+def set_model_env():
+    os.environ["RANK"] = "0"
+    os.environ["WORLD_SIZE"] = "1"
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = str(find_free_port())
+
+def init_task(
+    task: str,
+    workflow: Workflow,
+    data_path: str,
+    output_dir: str,
+    learning_rate: float,
+    **task_params
+) -> Tuple[LoraTrainer, Dataset, Callable]:
+    if task == 'tot':
+        trainer = TotTrainer(
+            workflow,
+            output_dir=output_dir,
+            learning_rate=learning_rate,
+            branching_factor=task_params['branching_factor'],
+            voters=task_params['voters']
+        )
+        dataset = TotDataset(data_path)
+        wandb.init(
+            project="tot",
+            config={
+                "epochs": task_params['epochs'],
+                "checkpoint_freq": task_params['checkpoint_freq'],
+                "branching_factor": task_params['branching_factor'],
+                "voters": task_params['voters'],
+                "lora_rank": task_params['lora_rank'],
+                "lora_alpha": task_params['lora_alpha'],
+                "lora_dropout": task_params['lora_dropout'],
+            }
+        )
+        return trainer, dataset, evaluate_tot
+    elif task == 'prisoners':
+        trainer = PrisonersTrainer(
+            workflow=workflow,
+            output_dir=output_dir,
+            learning_rate=learning_rate
+        )
+        dataset = PrisonersDataset(data_path, task_params['data_mix'])
+        wandb.init(
+            project="prisoners",
+            config={
+                "steps": task_params['steps'],
+                "checkpoint_freq": task_params['checkpoint_freq'],
+                "data_mix": task_params['data_mix'],
+                "lora_rank": task_params['lora_rank'],
+                "lora_alpha": task_params['lora_alpha'],
+                "lora_dropout": task_params['lora_dropout'],
+            }
+        )
+        return trainer, dataset, evaluate_prisoners
+    raise NotImplementedError()
+
+def training_schedule(
+    epochs: Optional[int],
+    steps: Optional[int],
+    dataset_size: int,
+    gradient_accumulation_steps: int
+) -> Tuple[int, int, int]:
+    if epochs is not None:
+        total_steps = epochs * dataset_size // gradient_accumulation_steps
+        warmup_steps = total_steps // 10
+        return epochs, total_steps, warmup_steps
+
+    assert steps is not None
+    epochs = math.ceil(steps * gradient_accumulation_steps / dataset_size)
+    warmup_steps = steps // 10
+    return epochs, steps, warmup_steps
+
 def finetune(
     data_path: str,
     ckpt_dir: str,
     tokenizer_path: str,
     task: str,
     output_dir: str = "checkpoints",
-    log_to_wandb: bool = True,
-    epochs: int = 2,
-    checkpoint_freq: int = 25,
-    validation_freq: int = 25,
-    branching_factor: int = 8,
-    voters: int = 4,
     max_seq_len: int = 4096,
-    max_batch_size: int = 1,
-    model_parallel_size: int = 1,
-    max_nodes: int = 20,
+    # training
+    epochs: Optional[int] = 2,
+    steps: Optional[int] = None,
     learning_rate: float = 2e-4,
     gradient_accumulation_steps: int = 4,
+    # please set these wisely
+    checkpoint_freq: int = 25,
+    validation_freq: int = 25,
+    # lora
     use_lora: bool = True,
     lora_rank: int = 8,
     lora_alpha: int = 16,
     lora_dropout: float = 0.1,
-    master_addr: str = "localhost",
-    master_port: str = "29500"
+    # tot
+    branching_factor: int = 8,
+    voters: int = 4,
+    # prisoners
+    data_mix: Tuple[int, int, int] = (1, 1, 1),
 ):
-    os.environ["RANK"] = "0"
-    os.environ["WORLD_SIZE"] = "1"
-    os.environ["MASTER_ADDR"] = master_addr
-    os.environ["MASTER_PORT"] = str(find_free_port())
-
+    set_model_env()
     workflow = Workflow.build(
         ckpt_dir=ckpt_dir,
         tokenizer_path=tokenizer_path,
         max_seq_len=max_seq_len,
-        max_batch_size=max_batch_size,
-        model_parallel_size=model_parallel_size,
-        max_nodes=max_nodes,
+        max_batch_size=1,
+        model_parallel_size=1,
+        max_nodes=100,
         use_lora=use_lora,
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
     )
 
-    if task == 'tot':
-        trainer = TotTrainer(
-            workflow,
-            output_dir=output_dir,
-            learning_rate=learning_rate,
-            branching_factor=branching_factor,
-            voters=voters,
-        )
-        dataset = TotDataset(data_path)
-        eval_fn = evaluate_tot
-    else:
-        raise NotImplementedError()
+    trainer, dataset, eval_fn = init_task(
+        task=task,
+        workflow=workflow,
+        data_path=data_path,
+        output_dir=output_dir,
+        learning_rate=learning_rate,
+        branching_factor=branching_factor,
+        voters=voters,
+        data_mix=data_mix
+    )
 
     generator = torch.Generator(device="cuda").manual_seed(42)
     train_dataset, val_dataset = random_split(dataset, [0.9, 0.1], generator=generator)
@@ -359,25 +442,15 @@ def finetune(
     print(f"Val Dataset: {len(val_dataset)} samples")
 
     print("Sanity check:")
-    eval_fn(trainer, val_dataset, max_steps=1, max_e2e=1)
+    eval_fn(trainer, val_dataset, max_steps=1, max_e2e=1) # type: ignore
     print("Passed!")
 
-    if log_to_wandb:
-        wandb.init(
-            project="tot",
-            config={
-                "epochs": epochs,
-                "checkpoint_freq": checkpoint_freq,
-                "branching_factor": branching_factor,
-                "voters": voters,
-                "lora_rank": lora_rank,
-                "lora_alpha": lora_alpha,
-                "lora_dropout": lora_dropout,
-            }
-        )
-
-    total_steps = epochs * len(train_dataset) // gradient_accumulation_steps
-    warmup_steps = total_steps // 10
+    epochs, steps, warmup_steps = training_schedule(
+        epochs=epochs,
+        steps=steps,
+        dataset_size=len(train_dataset),
+        gradient_accumulation_steps=gradient_accumulation_steps
+    )
 
     global_step = 0
     for epoch in range(epochs):
@@ -396,18 +469,16 @@ def finetune(
                 global_step += 1
                 if (global_step + 1) % validation_freq == 0:
                     val_metrics = eval_fn(trainer, val_dataset)
-                    if log_to_wandb:
-                        wandb.log(val_metrics)
-                if log_to_wandb:
-                    metrics.update({'lr': lr_factor})
-                    wandb.log(metrics)
+                    wandb.log(val_metrics)
+                metrics.update({'lr': lr_factor})
+                wandb.log(metrics)
                 if (global_step + 1) % checkpoint_freq == 0:
                     trainer.save_checkpoint(epoch, step)
+                if steps is not None and global_step == steps:
+                    break
 
     trainer.save_checkpoint(epochs - 1, len(train_dataset) - 1)
-
-    if log_to_wandb:
-        wandb.finish()
+    wandb.finish()
 
 if __name__ == '__main__':
     fire.Fire(finetune)
