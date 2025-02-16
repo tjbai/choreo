@@ -171,7 +171,7 @@ bob: 62 32
 
 Always cooperate:
 alice: 95 1
-bob: 72 23 <- Want to try a new prompt so that Bob defects here instead...
+bob: 72 23 <- Want to try a new prompt so that Bob defects here instead
 
 Always defect:
 alice: 6 92
@@ -192,14 +192,41 @@ Decrease in cooperation in the baseline can probably be attributed to emphasizin
 | Always defect    | Alice  | 1/94     | 5/88   |
 |                  | Bob    | 57/33    | 28/71  |
 
-## 2/14: 7446fd5d9914c495b617bbe951dfdd33864d141d
+## 2/14-15: 7446fd5d9914c495b617bbe951dfdd33864d141d
 
-Comet:
+COMET:
   Simple Baseline: 92.26
-    + CoT: 91.68
-  Baseline: 92.41
-  Cached: 92.09
-  Head-to-head:
-    Cached wins: 37 (38.1%)
-    Baseline wins: 44 (45.4%)
-    Ties: 16 (16.5%)
+    + Self-Reflect: 91.68
+  MAD Baseline: 92.41
+  MAD Cached: 92.09
+
+BLEURT:
+  Simple Baseline: 69.24
+    + Self-Reflect: 68.91
+  MAD Baseline: 65.97
+  MAD Cached: 66.19
+
+## 2/16: 6491e6191d05e853cbe2b4de52bfd7304f04dd05
+
+Full prisoner's results with scrambled order and old system prompts:
+
+| Strategy         | Player | Baseline | Cached |
+| ---------------- | ------ | -------- | ------ |
+| No strategy      | Alice  | 76/14    | 77/17  |
+|                  | Bob    | 77/18    | 72/20  |
+| Always cooperate | Alice  | 99/0     | 97/2   |
+|                  | Bob    | 83/16    | 72/25  |
+| Always defect    | Alice  | 0/96     | 1/98   |
+|                  | Bob    | 69/29    | 45/51  |
+
+E2E wall-clock time (hours), 200 CommonMT translations:
+  MAD Baseline: 2:16
+  MAD Cached: 1:53
+    Speedup: ~17%
+
+E2E wall-clock time (minutes), 50 CIAR problems:
+  Simple Baseline: 10:01
+    + Self-Reflect: 20:23
+  MAD Baseline: 31:51
+  MAD Cached: 29:44
+    Speedup: ~6.7%
