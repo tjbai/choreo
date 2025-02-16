@@ -442,7 +442,7 @@ def finetune(
     print(f"Val Dataset: {len(val_dataset)} samples")
 
     print("Sanity check:")
-    eval_fn(trainer, val_dataset, max_steps=1, max_e2e=1) # type: ignore
+    eval_fn(trainer, val_dataset, max_steps=1, max_e2e=1)
     print("Passed!")
 
     epochs, steps, warmup_steps = training_schedule(
