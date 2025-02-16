@@ -388,7 +388,7 @@ def simple_baseline(
 
 def math_simple_baseline(
     workflow: Workflow,
-    source_text: str,
+    problem: str,
     enable_reflection: bool = False,
     temperature: float = 0.7,
     top_p: float = 0.9,
@@ -396,7 +396,7 @@ def math_simple_baseline(
     debug: bool = True,
 ) -> Optional[Dict]:
     solve_prompt = (
-        f'Solve the following math problem:\n{source_text}"\n\n'
+        f'Solve the following math problem:\n{problem}"\n\n'
         'Output your answer in JSON format: {"Reasoning": "step-by-step walkthrough to the correct answer", "Answer": "final answer"}'
     )
 
