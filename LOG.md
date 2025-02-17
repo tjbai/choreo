@@ -194,6 +194,8 @@ Decrease in cooperation in the baseline can probably be attributed to emphasizin
 
 ## 2/14-15: 7446fd5d9914c495b617bbe951dfdd33864d141d
 
+All on CommonMT 200...
+
 COMET:
   Simple Baseline: 92.26
     + Self-Reflect: 91.68
@@ -219,14 +221,32 @@ Full prisoner's results with scrambled order and old system prompts:
 | Always defect    | Alice  | 0/96     | 1/98   |
 |                  | Bob    | 69/29    | 45/51  |
 
-E2E wall-clock time (hours), 200 CommonMT translations:
-  MAD Baseline: 2:16
-  MAD Cached: 1:53
-    Speedup: ~17%
-
-E2E wall-clock time (minutes), 50 CIAR problems:
+E2E wall-clock time (minutes), CIAR 50:
   Simple Baseline: 10:01
     + Self-Reflect: 20:23
   MAD Baseline: 31:51
   MAD Cached: 29:44
     Speedup: ~6.7%
+
+E2E TPS (minutes), CIAR 50:
+  MAD Baseline: 25.22
+  MAD Cached: 25.07
+
+Correctness, CIAR 50:
+  Simple Baseline: 6
+    + Self-Reflect: 6
+  MAD Baseline: 7
+  MAD Cached: 5
+
+## 2/16: 607290ba8e02eb365bc01e0c42428f69f99705b0
+
+Re-ran on the same GPU, possible some noise from different scripts due to separate environments?
+
+E2E wall-clock time (hours), CommonMT 200:
+  MAD Baseline: 2.2
+  MAD Cached: 2.39
+
+E2E TPS, CommonMT 200:
+  MAD Baseline: 20.8
+  MAD Cached: 19.4
+    Speedup: ~7%

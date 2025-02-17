@@ -424,7 +424,7 @@ def math_simple_baseline(
     [reflection] = workflow.insert([{
         'messages': [{'role': 'user', 'content': reflection_prompt}],
         'parent_ids': [sys['id'], solve['id']]
-    }])
+
 
     [answer_tokens], [answer] = get('tokens', 'nodes')(workflow.step([{
         'header': ('assistant', 'solver'),
