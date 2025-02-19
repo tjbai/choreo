@@ -70,6 +70,7 @@ def prisoners_cached(
     top_p: float = 1.0,
     only_leak_plan: bool = False,
     only_leak_sys: bool = False,
+    plan_force: Optional[torch.Tensor] = None, # (2, N)
 ) -> Dict:
     res = {'alice_message_ids': [], 'bob_message_ids': []}
     if only_leak_plan and only_leak_sys:
@@ -89,7 +90,7 @@ def prisoners_cached(
     plan_tokens, [alice_plan, bob_plan] = get('tokens', 'nodes')(workflow.step([
         {'header': ('assistant', 'alice'), 'prefill': '', 'parent_ids': [alice_sys['id']]},
         {'header': ('assistant', 'bob'), 'prefill': '', 'parent_ids': [bob_sys['id']]},
-    ], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
+    ], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p, teacher_force=plan_force))
     res['plan_ids'] = [alice_plan['output_tokens'], bob_plan['output_tokens']]
 
     alice_context = [alice_sys, alice_plan]

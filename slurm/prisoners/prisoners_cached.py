@@ -1,5 +1,6 @@
 import os
 import json
+import torch
 from tqdm import tqdm
 from llama.workflows.prisoners import prisoners_cached
 from llama import Workflow
@@ -27,6 +28,9 @@ workflow.model.eval()
 payoff = (5, 3, 1, 0)
 output_file = 'prisoners_cached.jsonl'
 
+with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline.jsonl'):
+    baseline_data = [json.loads(line) for line in f]
+
 strategies = [None, 'always_cooperate', 'always_defect']
 leak_settings = [(False, False), (True, False), (False, True)]
 
@@ -34,7 +38,12 @@ for only_leak_sys, only_leak_plan in leak_settings:
     for strategy in strategies:
         alice_decisions = []
         bob_decisions = []
-        for seed in tqdm(range(100)):
+        for seed, baseline in tqdm(enumerate(baseline_data)):
+            alice_plan_ids, bob_plan_ids = baseline['outputs']['plan_ids']
+            plan_force = torch.full((2, 512), workflow.tokenizer.eot_id, device=workflow.device)
+            plan_force[0, :len(alice_plan_ids)] = torch.tensor(alice_plan_ids, device=workflow.device)
+            plan_force[1, :len(bob_plan_ids)] = torch.tensor(bob_plan_ids, device=workflow.device)
+
             workflow.reset()
             cached_outputs = prisoners_cached(
                 workflow,
@@ -46,6 +55,7 @@ for only_leak_sys, only_leak_plan in leak_settings:
                 top_p=1.0,
                 only_leak_sys=only_leak_sys,
                 only_leak_plan=only_leak_plan,
+                plan_force=plan_force,
             )
 
             alice_decision = workflow.tokenizer.decode(cached_outputs['alice_context'][-1]['output_tokens'])
