@@ -27,7 +27,7 @@ llama.model.eval()
 payoff = (5, 3, 1, 0)
 
 strategies = [None, 'always_cooperate', 'always_defect']
-output_file = 'prisoners_baseline.jsonl'
+output_file = 'prisoners_baseline_lowtemp.jsonl'
 
 for strategy in strategies:
     alice_decisions = []
@@ -40,8 +40,8 @@ for strategy in strategies:
             alice_first=(seed < 50),
             alice_strategy=strategy,
             seed=seed,
-            temperature=1.0,
-            top_p=1.0,
+            temperature=0.6,
+            top_p=0.95,
         )
 
         sample = {

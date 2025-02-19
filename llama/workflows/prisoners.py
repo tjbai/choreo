@@ -313,6 +313,7 @@ def cached_nll(
     alice_first: bool = True,
     alice_strategy: Optional[str] = None,
 ):
+    workflow.reset()
     alice_sys, bob_sys = workflow.insert([
         {'messages': [
             {'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)},
@@ -399,8 +400,8 @@ def baseline_nll(
 
     res = {'alice_nll': [], 'bob_nll': []}
     for round in range(2):
-        alice_msg = {'role': 'assistant:alice', 'content': f'To Bob: {llama.tokenizer.decode(outputs['alice_message_ids'][round])}'}
-        bob_msg = {'role': 'assistant:bob', 'content': f'To Alice: {llama.tokenizer.decode(outputs['bob_message_ids'][round])}'}
+        alice_msg = {'role': 'assistant:alice', 'content': f'To Bob:{llama.tokenizer.decode(outputs['alice_message_ids'][round])}'}
+        bob_msg = {'role': 'assistant:bob', 'content': f'To Alice:{llama.tokenizer.decode(outputs['bob_message_ids'][round])}'}
 
         def alice_step():
             alice_dialog.append(alice_msg)
@@ -413,7 +414,7 @@ def baseline_nll(
                 reduction="none",
                 ignore_index=llama.tokenizer.pad_id,
             )
-            msg_len = len(llama.formatter.encode_message(alice_msg)) - len(llama.formatter.encode_header(alice_msg))
+            msg_len = len(outputs['alice_message_ids'][round]) + 1
             res['alice_nll'].append(token_logprobs[0, -msg_len:].cpu().tolist())
 
         def bob_step():
@@ -427,7 +428,7 @@ def baseline_nll(
                 reduction="none",
                 ignore_index=llama.tokenizer.pad_id,
             )
-            msg_len = len(llama.formatter.encode_message(bob_msg)) - len(llama.formatter.encode_header(bob_msg))
+            msg_len = len(outputs['bob_message_ids'][round]) + 1
             res['bob_nll'].append(token_logprobs[0, -msg_len:].cpu().tolist())
 
         if alice_first:
