@@ -306,7 +306,7 @@ def collect_samples(
     return samples
 
 @torch.no_grad()
-def baseline_nll(
+def cached_nll(
     workflow: Workflow,
     outputs: Dict,
     payoff: Tuple[int, int, int, int] = (5, 3, 1, 0),
@@ -367,7 +367,8 @@ def baseline_nll(
             bob_step()
             alice_step()
 
-def cached_nll(
+@torch.no_grad()
+def baseline_nll(
     llama: Llama,
     outputs: Dict,
     payoff: Tuple[int, int, int, int] = (5, 3, 1, 0),
@@ -394,22 +395,30 @@ def cached_nll(
         def alice_step():
             alice_dialog.append(alice_msg)
             bob_dialog.append(alice_msg)
-            [gen] = llama.chat_completion(
-                dialogs=[alice_dialog],
-                max_gen_len=0,
-                logprobs=True
+            tokens = torch.tensor(llama.formatter.encode_dialog_prompt(alice_dialog, prefill=False), device='cuda').unsqueeze(0)
+            logits = llama.model.forward(tokens, start_pos=0)
+            token_logprobs = F.cross_entropy(
+                input=logits[:,:-1].transpose(1, 2),
+                target=tokens[:,1:],
+                reduction="none",
+                ignore_index=llama.tokenizer.pad_id,
             )
-            res['alice_nll'].append(gen['logprobs'][-len(outputs['alice_message_ids'][round]):])
+            msg_len = len(llama.formatter.encode_message(alice_msg)) - len(llama.formatter.encode_header(alice_msg))
+            res['alice_nll'].append(token_logprobs[0, -msg_len:].cpu().tolist())
 
         def bob_step():
             alice_dialog.append(bob_msg)
             bob_dialog.append(bob_msg)
-            [gen] = llama.chat_completion(
-                dialogs=[bob_dialog],
-                max_gen_len=0,
-                logprobs=True
+            tokens = torch.tensor(llama.formatter.encode_dialog_prompt(bob_dialog, prefill=False), device='cuda').unsqueeze(0)
+            logits = llama.model.forward(tokens, start_pos=0)
+            token_logprobs = F.cross_entropy(
+                input=logits[:,:-1].transpose(1, 2),
+                target=tokens[:,1:],
+                reduction="none",
+                ignore_index=llama.tokenizer.pad_id,
             )
-            res['bob_nll'].append(gen['logprobs'][-len(outputs['alice_message_ids'][round]):])
+            msg_len = len(llama.formatter.encode_message(bob_msg)) - len(llama.formatter.encode_header(bob_msg))
+            res['bob_nll'].append(token_logprobs[0, -msg_len:].cpu().tolist())
 
         if alice_first:
             alice_step()
