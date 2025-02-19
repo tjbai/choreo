@@ -48,8 +48,8 @@ for strategy in strategies:
                 only_leak_plan=only_leak_plan,
             )
 
-            alice_decision = workflow.tokenizer.decode(cached_outputs['alice_context'][-1]['tokens'])
-            bob_decision = workflow.tokenizer.decode(cached_outputs['bob_context'][-1]['tokens'])
+            alice_decision = workflow.tokenizer.decode(cached_outputs['alice_context'][-1]['output_tokens'])
+            bob_decision = workflow.tokenizer.decode(cached_outputs['bob_context'][-1]['output_tokens'])
             alice_decisions.append(alice_decision)
             bob_decisions.append(bob_decision)
 
