@@ -28,45 +28,49 @@ payoff = (5, 3, 1, 0)
 output_file = 'prisoners_cached.jsonl'
 
 strategies = [None, 'always_cooperate', 'always_defect']
+leak_settings = [(False, False), (True, False), (False, True)]
 
 for strategy in strategies:
-   alice_decisions = []
-   bob_decisions = []
-   
-   for seed in tqdm(range(100)):
-       workflow.reset()
-       cached_outputs = prisoners_cached(
-           workflow, 
-           payoff,
-           alice_first=(seed < 50),
-           alice_strategy=strategy,
-           seed=seed,
-           temperature=1.0,
-           top_p=1.0,
-       )
-       
-       alice_decision = workflow.tokenizer.decode(cached_outputs['alice_context'][-1]['tokens'])
-       bob_decision = workflow.tokenizer.decode(cached_outputs['bob_context'][-1]['tokens'])
-       
-       output_data = {
-           'seed': seed,
-           'strategy': strategy,
-           'outputs': cached_outputs,
-           'alice_final': alice_decision,
-           'bob_final': bob_decision
-       }
-       append_to_jsonl(output_data, output_file)
-       
-       alice_decisions.append(alice_decision)
-       bob_decisions.append(bob_decision)
-   
-   print(
-       f"\nStrategy: {strategy if strategy else 'baseline'}",
-       '\nalice:',
-       sum(1 for d in alice_decisions if 'COOPERATE' in d),
-       sum(1 for d in alice_decisions if 'DEFECT' in d),
-       '\nbob:',
-       sum(1 for d in bob_decisions if 'COOPERATE' in d),
-       sum(1 for d in bob_decisions if 'DEFECT' in d),
-   )
+    for only_leak_sys, only_leak_plan in leak_settings:
+        alice_decisions = []
+        bob_decisions = []
+        for seed in tqdm(range(100)):
+            workflow.reset()
+            cached_outputs = prisoners_cached(
+                workflow,
+                payoff,
+                alice_first=(seed < 50),
+                alice_strategy=strategy,
+                seed=seed,
+                temperature=1.0,
+                top_p=1.0,
+                only_leak_sys=only_leak_sys,
+                only_leak_plan=only_leak_plan,
+            )
 
+            alice_decision = workflow.tokenizer.decode(cached_outputs['alice_context'][-1]['tokens'])
+            bob_decision = workflow.tokenizer.decode(cached_outputs['bob_context'][-1]['tokens'])
+            alice_decisions.append(alice_decision)
+            bob_decisions.append(bob_decision)
+
+            output_data = {
+                'seed': seed,
+                'strategy': strategy,
+                'leak_setting': (only_leak_sys, only_leak_plan),
+                'outputs': cached_outputs,
+                'alice_final': alice_decision,
+                'bob_final': bob_decision,
+            }
+            append_to_jsonl(output_data, output_file)
+
+        print(
+            f"\nStrategy: {strategy if strategy else 'baseline'}",
+            f"\nOnly leak sys: {only_leak_sys}"
+            f"\nOnly leak plan: {only_leak_plan}"
+            '\nalice:',
+            sum(1 for d in alice_decisions if 'COOPERATE' in d),
+            sum(1 for d in alice_decisions if 'DEFECT' in d),
+            '\nbob:',
+            sum(1 for d in bob_decisions if 'COOPERATE' in d),
+            sum(1 for d in bob_decisions if 'DEFECT' in d),
+        )

@@ -32,18 +32,18 @@ output_file = 'prisoners_baseline.jsonl'
 for strategy in strategies:
     alice_decisions = []
     bob_decisions = []
-    
+
     for seed in tqdm(range(100)):
         result = prisoners_baseline(
-            llama, 
+            llama,
             payoff,
-            alice_first=(seed < 50), 
-            alice_strategy=strategy, 
+            alice_first=(seed < 50),
+            alice_strategy=strategy,
             seed=seed,
             temperature=1.0,
             top_p=1.0,
         )
-        
+
         sample = {
             'payoff': payoff,
             'strategy': strategy,
@@ -60,10 +60,10 @@ for strategy in strategies:
             'bob_final': result['bob_dialog'][-1]['content'],
         }
         append_to_jsonl(output_data, output_file)
-        
+
         alice_decisions.append(result['alice_dialog'][-1]['content'])
         bob_decisions.append(result['bob_dialog'][-1]['content'])
-    
+
     print(
         f"\nStrategy: {strategy if strategy else 'baseline'}",
         '\nalice:',
@@ -73,4 +73,3 @@ for strategy in strategies:
         sum(1 for d in bob_decisions if 'COOPERATE' in d),
         sum(1 for d in bob_decisions if 'DEFECT' in d),
     )
-
