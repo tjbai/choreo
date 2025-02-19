@@ -345,7 +345,7 @@ def cached_nll(
         bob_context.append(alice_msg)
         res['alice_nll'].append(F.cross_entropy(
             alice_logits.squeeze(),
-            torch.tensor(alice_targets, device='cuda'),
+            torch.tensor(alice_targets, device='cuda').squeeze(),
             reduction='none',
         ).cpu().tolist())
 
@@ -360,7 +360,7 @@ def cached_nll(
         bob_context.append(bob_msg)
         res['bob_nll'].append(F.cross_entropy(
             bob_logits.squeeze(),
-            torch.tensor(bob_targets, device='cuda'),
+            torch.tensor(bob_targets, device='cuda').squeeze(),
             reduction='none',
         ).cpu().tolist())
 

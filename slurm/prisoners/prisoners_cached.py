@@ -26,9 +26,9 @@ def append_to_jsonl(data, filename):
 workflow.model.reshape_cache(1)
 workflow.model.eval()
 payoff = (5, 3, 1, 0)
-output_file = 'prisoners_cached.jsonl'
+output_file = 'prisoners_cached_paired.jsonl'
 
-with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline.jsonl'):
+with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline.jsonl') as f:
     baseline_data = [json.loads(line) for line in f]
 
 strategies = [None, 'always_cooperate', 'always_defect']
