@@ -30,8 +30,8 @@ output_file = 'prisoners_cached.jsonl'
 strategies = [None, 'always_cooperate', 'always_defect']
 leak_settings = [(False, False), (True, False), (False, True)]
 
-for strategy in strategies:
-    for only_leak_sys, only_leak_plan in leak_settings:
+for only_leak_sys, only_leak_plan in leak_settings:
+    for strategy in strategies:
         alice_decisions = []
         bob_decisions = []
         for seed in tqdm(range(100)):
@@ -57,6 +57,8 @@ for strategy in strategies:
                 'seed': seed,
                 'strategy': strategy,
                 'leak_setting': (only_leak_sys, only_leak_plan),
+                'payoff': payoff,
+                'alice_first': (seed < 50),
                 'outputs': cached_outputs,
                 'alice_final': alice_decision,
                 'bob_final': bob_decision,
