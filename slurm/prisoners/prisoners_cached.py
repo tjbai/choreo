@@ -30,16 +30,28 @@ output_file = 'prisoners_cached_paired.jsonl'
 
 with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline.jsonl') as f:
     baseline_data = [json.loads(line) for line in f]
+    assert len(baseline_data) == 300
+    baseline = baseline_data[:100]
+    coop = baseline_data[100:200]
+    defect = baseline_data[200:]
 
 strategies = [None, 'always_cooperate', 'always_defect']
 leak_settings = [(False, False), (True, False), (False, True)]
 
 for only_leak_sys, only_leak_plan in leak_settings:
     for strategy in strategies:
+        if strategy is None:
+            data = baseline
+        elif strategy == 'always_cooperate':
+            data = coop
+        else:
+            data = defect
+        assert len(data) == 100
+
         alice_decisions = []
         bob_decisions = []
-        for seed, baseline in tqdm(enumerate(baseline_data)):
-            alice_plan_ids, bob_plan_ids = baseline['outputs']['plan_ids']
+        for seed, example in enumerate(tqdm(data, total=100)):
+            alice_plan_ids, bob_plan_ids = example['outputs']['plan_ids']
             plan_force = torch.full((2, 512), workflow.tokenizer.eot_id, device=workflow.device)
             plan_force[0, :len(alice_plan_ids)] = torch.tensor(alice_plan_ids, device=workflow.device)
             plan_force[1, :len(bob_plan_ids)] = torch.tensor(bob_plan_ids, device=workflow.device)
