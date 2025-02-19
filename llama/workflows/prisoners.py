@@ -343,7 +343,11 @@ def cached_nll(
         }], alice_targets)
         alice_context.append(alice_msg)
         bob_context.append(alice_msg)
-        res['alice_nll'].append(F.cross_entropy(alice_logits.squeeze(), torch.tensor(alice_targets, device='cuda').squeeze()))
+        res['alice_nll'].append(F.cross_entropy(
+            alice_logits.squeeze(),
+            torch.tensor(alice_targets, device='cuda'),
+            reduction='none',
+        ).cpu().tolist())
 
     def bob_step():
         bob_targets = [bob_ids + [workflow.tokenizer.eot_id]]
@@ -354,7 +358,11 @@ def cached_nll(
         }], bob_targets)
         alice_context.append(bob_msg)
         bob_context.append(bob_msg)
-        res['bob_nll'].append(F.cross_entropy(bob_logits.squeeze(), torch.tensor(bob_targets, device='cuda').squeeze()))
+        res['bob_nll'].append(F.cross_entropy(
+            bob_logits.squeeze(),
+            torch.tensor(bob_targets, device='cuda'),
+            reduction='none',
+        ).cpu().tolist())
 
     for round, (alice_ids, bob_ids) in enumerate(zip(
         outputs['alice_message_ids'],
@@ -366,6 +374,8 @@ def cached_nll(
         else:
             bob_step()
             alice_step()
+
+    return res
 
 @torch.no_grad()
 def baseline_nll(
