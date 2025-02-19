@@ -6,6 +6,7 @@ from typing import Tuple, Dict, Optional, List
 from operator import itemgetter as get
 
 import torch
+import torch.nn.functional as F
 
 from llama import Llama, Workflow
 
@@ -209,7 +210,6 @@ def prisoners_baseline(
             alice_dialog.append(alice_msg)
             bob_dialog.append(alice_msg)
             res['alice_message_ids'].append(alice_response['tokens'])
-
             [bob_response] = llama.chat_completion(
                 dialogs=[bob_dialog],
                 temperature=temperature,
@@ -303,3 +303,71 @@ def collect_samples(
         json.dump(metadata, f)
 
     return samples
+
+@torch.no_grad()
+def baseline_nll(
+    workflow: Workflow,
+    baseline_outputs: Dict,
+    payoff: Tuple[int, int, int, int] = (5, 3, 1, 0),
+    alice_first: bool = True,
+    alice_strategy: Optional[str] = None,
+):
+    '''
+    Log-likelihood of baseline utterances under choreographed implementation.
+    '''
+    alice_sys, bob_sys = workflow.insert([
+        {'messages': [
+            {'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)},
+            {'role': 'user', 'content': plan_prompt}
+        ], 'parent_ids': []},
+        {'messages': [
+            {'role': 'system', 'content': format_system_prompt('Bob', payoff)},
+            {'role': 'user', 'content': plan_prompt},
+        ], 'parent_ids': []},
+    ])
+
+    target_plan_ids = [p + [workflow.tokenizer.eot_id] for p in baseline_outputs['plan_ids']]
+    [alice_plan, bob_plan], plan_logits = workflow.train_step([
+        {'header': ('assistant', 'alice'), 'prefill': '', 'parent_ids': [alice_sys['id']]},
+        {'header': ('assistant', 'bob'), 'prefill': '', 'parent_ids': [bob_sys['id']]},
+    ], target_plan_ids)
+
+    res = {'alice_nll': [], 'bob_nll': []}
+    alice_context = [alice_sys, alice_plan]
+    bob_context = [bob_sys, bob_plan]
+
+    def alice_step():
+        alice_targets = [alice_ids + [workflow.tokenizer.eot_id]]
+        [alice_msg], alice_logits = workflow.train_step([{
+            'header': ('assistant', 'alice'),
+            'prefill': 'To Bob: ',
+            'parent_ids': [n['id'] for n in alice_context]
+        }], alice_targets)
+        alice_context.append(alice_msg)
+        bob_context.append(alice_msg)
+        res['alice_nll'].append(F.cross_entropy(alice_logits.squeeze(), torch.tensor(alice_targets, device='cuda').squeeze()))
+
+    def bob_step():
+        bob_targets = [bob_ids + [workflow.tokenizer.eot_id]]
+        [bob_msg], bob_logits = workflow.train_step([{
+            'header': ('assistant', 'bob'),
+            'prefill': 'To Alice: ',
+            'parent_ids': [n['id'] for n in bob_context]
+        }], bob_targets)
+        alice_context.append(bob_msg)
+        bob_context.append(bob_msg)
+        res['bob_nll'].append(F.cross_entropy(bob_logits.squeeze(), torch.tensor(bob_targets, device='cuda').squeeze()))
+
+    for round, (alice_ids, bob_ids) in enumerate(zip(
+        baseline_outputs['alice_message_ids'],
+        baseline_outputs['bob_message_ids']
+    )):
+        if alice_first:
+            alice_step()
+            bob_step()
+        else:
+            bob_step()
+            alice_step()
+
+def cached_likelihood(llama: Llama, baseline_outputs: Dict):
+    pass
