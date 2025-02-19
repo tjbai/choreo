@@ -21,8 +21,8 @@ class Prompt(Node):
 
 class Cached(Node):
     id: int
-    tokens: List[int]
-    length: int
+    output_tokens: List[int]
+    output_length: int
 
 class StepResult(TypedDict):
     tokens: List[List[int]]
@@ -271,8 +271,8 @@ class Workflow:
             out_nodes.append(Cached({
                 'id': self.cur_id + i,
                 'parent_ids': task['parent_ids'],
-                'tokens': header + toks,
-                'length': len(header) + len(toks)
+                'output_tokens': toks,
+                'output_length': len(toks),
             }))
 
         return StepResult({

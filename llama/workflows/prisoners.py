@@ -67,7 +67,13 @@ def prisoners_cached(
     track_gradients: bool = False,
     temperature: float = 1.0,
     top_p: float = 1.0,
+    only_leak_plan: bool = False,
+    only_leak_sys: bool = False,
 ) -> Dict:
+    res = {'alice_message_ids': [], 'bob_message_ids': []}
+    if only_leak_plan and only_leak_sys:
+        raise Exception('only_leak_plan and only_leak_sys are mutually exclusive')
+
     alice_sys, bob_sys = workflow.insert([
         {'messages': [
             {'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)},
@@ -83,43 +89,63 @@ def prisoners_cached(
         {'header': ('assistant', 'alice'), 'prefill': 'Strategy: ', 'parent_ids': [alice_sys['id']]},
         {'header': ('assistant', 'bob'), 'prefill': 'Strategy', 'parent_ids': [bob_sys['id']]},
     ], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
+    res['plan_ids'] = [alice_plan['output_tokens'], bob_plan['output_tokens']]
 
     alice_context = [alice_sys, alice_plan]
     bob_context = [bob_sys, bob_plan]
+    def alice_move():
+        [alice_tokens], [alice_msg] = get('tokens', 'nodes')(workflow.step([{
+            'header': ('assistant', 'alice'),
+            'prefill': 'To Bob: ',
+            'parent_ids': [n['id'] for n in alice_context]
+        }], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
+        alice_context.append(alice_msg)
+        leaked_msg = alice_msg
+        if only_leak_plan:
+            [leaked_msg] = workflow.insert([
+                {'messages': [
+                    {'role': 'assistant:alice', 'content': workflow.tokenizer.decode(alice_tokens)}
+                ], 'parent_ids': [n['id'] for i, n in enumerate(alice_context) if i != 0]}
+            ])
+        elif only_leak_sys:
+            [leaked_msg] = workflow.insert([
+                {'messages': [
+                    {'role': 'assistant:alice', 'content': workflow.tokenizer.decode(alice_tokens)}
+                ], 'parent_ids': [n['id'] for i, n in enumerate(alice_context) if i != 1]}
+            ])
+        bob_context.append(leaked_msg)
+        res['alice_message_ids'].append(alice_msg['output_tokens'])
+
+    def bob_move():
+        [bob_tokens], [bob_msg] = get('tokens', 'nodes')(workflow.step([{
+            'header': ('assistant', 'bob'),
+            'prefill': 'To Alice: ',
+            'parent_ids': [n['id'] for n in bob_context]
+        }], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
+        bob_context.append(bob_msg)
+        leaked_msg = bob_msg
+        if only_leak_plan:
+            [leaked_msg] = workflow.insert([
+                {'messages': [
+                    {'role': 'assistant:bob', 'content': workflow.tokenizer.decode(bob_tokens)}
+                ], 'parent_ids': [n['id'] for i, n in enumerate(bob_context) if i != 0]}
+            ])
+        elif only_leak_sys:
+            [leaked_msg] = workflow.insert([
+                {'messages': [
+                    {'role': 'assistant:bob', 'content': workflow.tokenizer.decode(bob_tokens)}
+                ], 'parent_ids': [n['id'] for i, n in enumerate(bob_context) if i != 1]}
+            ])
+        alice_context.append(leaked_msg)
+        res['bob_message_ids'].append(bob_msg['output_tokens'])
 
     for round in range(2):
         if alice_first:
-            [alice_msg] = get('nodes')(workflow.step([{
-                'header': ('assistant', 'alice'),
-                'prefill': 'To Bob: ',
-                'parent_ids': [n['id'] for n in alice_context]
-            }], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
-            alice_context.append(alice_msg)
-            bob_context.append(alice_msg)
-
-            [bob_msg] = get('nodes')(workflow.step([{
-                'header': ('assistant', 'bob'),
-                'prefill': 'To Alice: ',
-                'parent_ids': [n['id'] for n in bob_context]
-            }], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
-            alice_context.append(bob_msg)
-            bob_context.append(bob_msg)
+            alice_move()
+            bob_move()
         else:
-            [bob_msg] = get('nodes')(workflow.step([{
-                'header': ('assistant', 'bob'),
-                'prefill': 'To Alice: ',
-                'parent_ids': [n['id'] for n in bob_context]
-            }], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
-            alice_context.append(bob_msg)
-            bob_context.append(bob_msg)
-
-            [alice_msg] = get('nodes')(workflow.step([{
-                'header': ('assistant', 'alice'),
-                'prefill': 'To Bob: ',
-                'parent_ids': [n['id'] for n in alice_context]
-            }], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
-            alice_context.append(alice_msg)
-            bob_context.append(alice_msg)
+            bob_move()
+            alice_move()
 
     [alice_ask, bob_ask] = workflow.insert([
         {'messages': [{'role': 'user', 'content': decide_prompt}], 'parent_ids': [n['id'] for n in alice_context]},
@@ -142,8 +168,9 @@ def prisoners_cached(
     ], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
     alice_context.append(alice_decision)
     bob_context.append(bob_decision)
+    res['decision_ids'] = [alice_decision['output_tokens'], bob_decision['output_tokens']]
 
-    return {'alice_context': alice_context, 'bob_context': bob_context}
+    return res | {'alice_context': alice_context, 'bob_context': bob_context}
 
 def prisoners_baseline(
     llama: Llama,
@@ -151,10 +178,10 @@ def prisoners_baseline(
     alice_first: bool = True,
     alice_strategy: Optional[str] = None,
     seed: int = 42,
-    temperature=1.0,
-    top_p=0.95,
+    temperature: float = 1.0,
+    top_p: float = 0.95,
 ) -> Dict:
-    res = {}
+    res = {'alice_message_ids': [], 'bob_message_ids': []}
     alice_dialog = [{'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)}, {'role': 'user', 'content': plan_prompt}]
     bob_dialog = [{'role': 'system', 'content': format_system_prompt('Bob', payoff)}, {'role': 'user', 'content': plan_prompt}]
 
@@ -169,8 +196,6 @@ def prisoners_baseline(
     bob_dialog.append({'role': 'assistant:bob', 'content': bob_plan['generation']['content']})
     res['plan_ids'] = [alice_plan['tokens'], bob_plan['tokens']]
 
-    res['alice_message_ids'] = []
-    res['bob_message_ids'] = []
     for round in range(2):
         if alice_first:
             [alice_response] = llama.chat_completion(
@@ -234,9 +259,7 @@ def prisoners_baseline(
     bob_dialog.append({'role': 'assistant:bob', 'content': bob_decision['generation']['content']})
     res['decision_ids'] = [alice_decision['tokens'], bob_decision['tokens']]
 
-    res['alice_dialog'] = alice_dialog
-    res['bob_dialog'] = bob_dialog
-    return res
+    return res | {'alice_dialog': alice_dialog, 'bob_dialog': bob_dialog}
 
 def collect_samples(
     llama: Llama,

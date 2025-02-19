@@ -37,7 +37,7 @@ class TotDataset(Dataset):
         self.data_dir = Path(data_dir)
         with open(self.data_dir / 'metadata.json') as f:
             self.metadata = json.load(f)
-        self.problem_paths = sorted(self.data_dir.glob("problem_*.pt"))
+        self.problem_paths = sorted(self.data_dir.glob('problem_*.pt'))
 
     def __len__(self):
         return len(self.problem_paths)
@@ -48,12 +48,15 @@ class TotDataset(Dataset):
 class PrisonersDataset(Dataset):
     def __init__(self, data_dir: str | Path, data_mix: Tuple[int, int, int]):
         self.data_dir = Path(data_dir)
+        strategies = [None, 'always_cooperate', 'always_defect']
+        paths = (sorted(self.data_dir.glob(f'trace_{s}_*.pt')) for s in strategies)
+        self.paths = [p for path_list, w in zip(paths, data_mix) for p in path_list * w]
 
     def __len__(self):
-        pass
+        return len(self.paths)
 
     def __getitem__(self, idx) -> Dict:
-        return {}
+        return torch.load(self.paths[idx], weights_only=True)
 
 # this is a hack to match the header prefill -> content prefill setup we have
 # a more principled way would be to just do one big prefill step and mask out the irrelevant header tokens
