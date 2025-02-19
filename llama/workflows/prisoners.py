@@ -308,14 +308,11 @@ def collect_samples(
 @torch.no_grad()
 def baseline_nll(
     workflow: Workflow,
-    baseline_outputs: Dict,
+    outputs: Dict,
     payoff: Tuple[int, int, int, int] = (5, 3, 1, 0),
     alice_first: bool = True,
     alice_strategy: Optional[str] = None,
 ):
-    '''
-    Log-likelihood of baseline utterances under choreographed implementation.
-    '''
     alice_sys, bob_sys = workflow.insert([
         {'messages': [
             {'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)},
@@ -327,7 +324,7 @@ def baseline_nll(
         ], 'parent_ids': []},
     ])
 
-    target_plan_ids = [p + [workflow.tokenizer.eot_id] for p in baseline_outputs['plan_ids']]
+    target_plan_ids = [p + [workflow.tokenizer.eot_id] for p in outputs['plan_ids']]
     [alice_plan, bob_plan], plan_logits = workflow.train_step([
         {'header': ('assistant', 'alice'), 'prefill': '', 'parent_ids': [alice_sys['id']]},
         {'header': ('assistant', 'bob'), 'prefill': '', 'parent_ids': [bob_sys['id']]},
@@ -360,8 +357,8 @@ def baseline_nll(
         res['bob_nll'].append(F.cross_entropy(bob_logits.squeeze(), torch.tensor(bob_targets, device='cuda').squeeze()))
 
     for round, (alice_ids, bob_ids) in enumerate(zip(
-        baseline_outputs['alice_message_ids'],
-        baseline_outputs['bob_message_ids']
+        outputs['alice_message_ids'],
+        outputs['bob_message_ids']
     )):
         if alice_first:
             alice_step()
@@ -370,5 +367,55 @@ def baseline_nll(
             bob_step()
             alice_step()
 
-def cached_likelihood(llama: Llama, baseline_outputs: Dict):
-    pass
+def cached_nll(
+    llama: Llama,
+    outputs: Dict,
+    payoff: Tuple[int, int, int, int] = (5, 3, 1, 0),
+    alice_first: bool = True,
+    alice_strategy: Optional[str] = None
+) -> Dict:
+    alice_dialog = [
+        {'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)},
+        {'role': 'user', 'content': plan_prompt},
+        {'role': 'assistant:alice', 'content': llama.tokenizer.decode(outputs['plan_ids'][0])}
+    ]
+
+    bob_dialog = [
+        {'role': 'system', 'content': format_system_prompt('Bob', payoff)},
+        {'role': 'user', 'content': plan_prompt},
+        {'role': 'assistant:bob', 'content': llama.tokenizer.decode(outputs['plan_ids'][1])}
+    ]
+
+    res = {'alice_nll': [], 'bob_nll': []}
+    for round in range(2):
+        alice_msg = {'role': 'assistant:alice', 'content': f'To Bob: {llama.tokenizer.decode(outputs['alice_message_ids'][round])}'}
+        bob_msg = {'role': 'assistant:bob', 'content': f'To Alice: {llama.tokenizer.decode(outputs['bob_message_ids'][round])}'}
+
+        def alice_step():
+            alice_dialog.append(alice_msg)
+            bob_dialog.append(alice_msg)
+            [gen] = llama.chat_completion(
+                dialogs=[alice_dialog],
+                max_gen_len=0,
+                logprobs=True
+            )
+            res['alice_nll'].append(gen['logprobs'][-len(outputs['alice_message_ids'][round]):])
+
+        def bob_step():
+            alice_dialog.append(bob_msg)
+            bob_dialog.append(bob_msg)
+            [gen] = llama.chat_completion(
+                dialogs=[bob_dialog],
+                max_gen_len=0,
+                logprobs=True
+            )
+            res['bob_nll'].append(gen['logprobs'][-len(outputs['alice_message_ids'][round]):])
+
+        if alice_first:
+            alice_step()
+            bob_step()
+        else:
+            bob_step()
+            alice_step()
+
+    return res
