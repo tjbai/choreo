@@ -88,8 +88,8 @@ class Workflow:
                 outputs.append(Cached({
                     'id': self.cur_id + i,
                     'parent_ids': prompt['parent_ids'],
-                    'tokens': tokens,
-                    'length': len(tokens)
+                    'output_tokens': tokens,
+                    'output_length': len(tokens)
                 }))
                 prompt_length.append(len(tokens))
                 prompt_tokens.extend(tokens)
