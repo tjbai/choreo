@@ -86,8 +86,8 @@ def prisoners_cached(
     ], track_gradients=track_gradients)
 
     plan_tokens, [alice_plan, bob_plan] = get('tokens', 'nodes')(workflow.step([
-        {'header': ('assistant', 'alice'), 'prefill': 'Strategy: ', 'parent_ids': [alice_sys['id']]},
-        {'header': ('assistant', 'bob'), 'prefill': 'Strategy', 'parent_ids': [bob_sys['id']]},
+        {'header': ('assistant', 'alice'), 'prefill': '', 'parent_ids': [alice_sys['id']]},
+        {'header': ('assistant', 'bob'), 'prefill': '', 'parent_ids': [bob_sys['id']]},
     ], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
     res['plan_ids'] = [alice_plan['output_tokens'], bob_plan['output_tokens']]
 
