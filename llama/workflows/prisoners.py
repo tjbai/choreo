@@ -408,28 +408,28 @@ def baseline_nll(
             bob_dialog.append(alice_msg)
             tokens = torch.tensor(llama.formatter.encode_dialog_prompt(alice_dialog, prefill=False), device='cuda').unsqueeze(0)
             logits = llama.model.forward(tokens, start_pos=0)
-            token_logprobs = F.cross_entropy(
+            token_log_probs = F.cross_entropy(
                 input=logits[:,:-1].transpose(1, 2),
                 target=tokens[:,1:],
                 reduction="none",
                 ignore_index=llama.tokenizer.pad_id,
             )
             msg_len = len(outputs['alice_message_ids'][round]) + 1
-            res['alice_nll'].append(token_logprobs[0, -msg_len:].cpu().tolist())
+            res['alice_nll'].append(token_log_probs[0, -msg_len:].cpu().tolist())
 
         def bob_step():
             alice_dialog.append(bob_msg)
             bob_dialog.append(bob_msg)
             tokens = torch.tensor(llama.formatter.encode_dialog_prompt(bob_dialog, prefill=False), device='cuda').unsqueeze(0)
             logits = llama.model.forward(tokens, start_pos=0)
-            token_logprobs = F.cross_entropy(
+            token_log_probs = F.cross_entropy(
                 input=logits[:,:-1].transpose(1, 2),
                 target=tokens[:,1:],
                 reduction="none",
                 ignore_index=llama.tokenizer.pad_id,
             )
             msg_len = len(outputs['bob_message_ids'][round]) + 1
-            res['bob_nll'].append(token_logprobs[0, -msg_len:].cpu().tolist())
+            res['bob_nll'].append(token_log_probs[0, -msg_len:].cpu().tolist())
 
         if alice_first:
             alice_step()

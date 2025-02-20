@@ -14,13 +14,13 @@ from llama.util import load_model_and_tokenizer
 class CompletionPrediction(TypedDict, total=False):
     generation: Required[str]
     tokens: List[str]
-    logprobs: List[float]
+    log_probs: List[float]
 
 
 class ChatPrediction(TypedDict, total=False):
     generation: Required[Message]
     tokens: Required[List[int]]
-    logprobs: List[float]
+    log_probs: List[float]
 
 
 class Llama:
@@ -63,7 +63,7 @@ class Llama:
         max_gen_len: int,
         temperature: float = 0.6,
         top_p: float = 0.9,
-        logprobs: bool = False,
+        log_probs: bool = False,
         echo: bool = False,
         seed: Optional[int] = 42
     ) -> Tuple[List[List[int]], Optional[List[List[float]]]]:
@@ -75,15 +75,15 @@ class Llama:
             max_gen_len (int): Maximum length of the generated text sequence.
             temperature (float, optional): Temperature value for controlling randomness in sampling. Defaults to 0.6.
             top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
-            logprobs (bool, optional): Flag indicating whether to compute token log probabilities. Defaults to False.
+            log_probs (bool, optional): Flag indicating whether to compute token log probabilities. Defaults to False.
             echo (bool, optional): Flag indicating whether to include prompt tokens in the generated output. Defaults to False.
 
         Returns:
-            Tuple[List[List[int]], Optional[List[List[float]]]]: A tuple containing generated token sequences and, if logprobs is True, corresponding token log probabilities.
+            Tuple[List[List[int]], Optional[List[List[float]]]]: A tuple containing generated token sequences and, if log_probs is True, corresponding token log probabilities.
 
         Note:
             This method uses the provided prompts as a basis for generating text. It employs nucleus sampling to produce text with controlled randomness.
-            If logprobs is True, token log probabilities are computed for each generated token.
+            If log_probs is True, token log probabilities are computed for each generated token.
 
         """
         params = self.model.params
@@ -99,15 +99,15 @@ class Llama:
         tokens = torch.full((bsz, total_len), pad_id, dtype=torch.long, device="cuda")
         for k, t in enumerate(prompt_tokens):
             tokens[k, : len(t)] = torch.tensor(t, dtype=torch.long, device="cuda")
-        if logprobs:
-            token_logprobs = torch.zeros_like(tokens, dtype=torch.float)
+        if log_probs:
+            token_log_probs = torch.zeros_like(tokens, dtype=torch.float)
 
         prev_pos = 0
         eos_reached = torch.tensor([False] * bsz, device="cuda")
         input_text_mask = tokens != pad_id
         if min_prompt_len == total_len:
             logits = self.model.forward(tokens, prev_pos)
-            token_logprobs = -F.cross_entropy(
+            token_log_probs = -F.cross_entropy(
                 input=logits.transpose(1, 2),
                 target=tokens,
                 reduction="none",
@@ -131,8 +131,8 @@ class Llama:
                 input_text_mask[:, cur_pos], tokens[:, cur_pos], next_token
             )
             tokens[:, cur_pos] = next_token
-            if logprobs:
-                token_logprobs[:, prev_pos + 1 : cur_pos + 1] = -F.cross_entropy(
+            if log_probs:
+                token_log_probs[:, prev_pos + 1 : cur_pos + 1] = -F.cross_entropy(
                     input=logits.transpose(1, 2),
                     target=tokens[:, prev_pos + 1 : cur_pos + 1],
                     reduction="none",
@@ -145,28 +145,28 @@ class Llama:
             if all(eos_reached):
                 break
 
-        if logprobs:
-            token_logprobs = token_logprobs.tolist()
-        out_tokens, out_logprobs = [], []
+        if log_probs:
+            token_log_probs = token_log_probs.tolist()
+        out_tokens, out_log_probs = [], []
         for i, toks in enumerate(tokens.tolist()):
             # cut to max gen len
             start = 0 if echo else len(prompt_tokens[i])
             toks = toks[start : len(prompt_tokens[i]) + max_gen_len]
             probs = None
-            if logprobs:
-                probs = token_logprobs[i][start : len(prompt_tokens[i]) + max_gen_len]
+            if log_probs:
+                probs = token_log_probs[i][start : len(prompt_tokens[i]) + max_gen_len]
             # cut to after eos tok if any
             for stop_token in self.tokenizer.stop_tokens:
                 try:
                     eos_idx = toks.index(stop_token)
                     toks = toks[:eos_idx]
-                    probs = probs[:eos_idx+1] if logprobs else None
+                    probs = probs[:eos_idx+1] if log_probs else None
                 except ValueError:
                     pass
             out_tokens.append(toks)
-            out_logprobs.append(probs)
+            out_log_probs.append(probs)
 
-        return (out_tokens, out_logprobs if logprobs else None)
+        return (out_tokens, out_log_probs if log_probs else None)
 
     def text_completion(
         self,
@@ -174,7 +174,7 @@ class Llama:
         temperature: float = 0.6,
         top_p: float = 0.9,
         max_gen_len: Optional[int] = None,
-        logprobs: bool = False,
+        log_probs: bool = False,
         echo: bool = False,
     ) -> List[CompletionPrediction]:
         """
@@ -186,7 +186,7 @@ class Llama:
             top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
             max_gen_len (Optional[int], optional): Maximum length of the generated completion sequence.
                 If not provided, it's set to the model's maximum sequence length minus 1.
-            logprobs (bool, optional): Flag indicating whether to compute token log probabilities. Defaults to False.
+            log_probs (bool, optional): Flag indicating whether to compute token log probabilities. Defaults to False.
             echo (bool, optional): Flag indicating whether to include prompt tokens in the generated output. Defaults to False.
 
         Returns:
@@ -194,28 +194,28 @@ class Llama:
 
         Note:
             This method generates text completions for the provided prompts, employing nucleus sampling to introduce controlled randomness.
-            If logprobs is True, token log probabilities are computed for each generated token.
+            If log_probs is True, token log probabilities are computed for each generated token.
 
         """
         if max_gen_len is None:
             max_gen_len = self.model.params.max_seq_len - 1
         prompt_tokens = [self.tokenizer.encode(x, bos=True, eos=False) for x in prompts]
-        generation_tokens, generation_logprobs = self.generate(
+        generation_tokens, generation_log_probs = self.generate(
             prompt_tokens=prompt_tokens,
             max_gen_len=max_gen_len,
             temperature=temperature,
             top_p=top_p,
-            logprobs=logprobs,
+            log_probs=log_probs,
             echo=echo,
         )
-        if logprobs:
+        if log_probs:
             return [
                 {
                     "generation": self.tokenizer.decode(t),
                     "tokens": [self.tokenizer.decode([x]) for x in t],
-                    "logprobs": logprobs_i,
+                    "log_probs": log_probs_i,
                 }
-                for t, logprobs_i in zip(generation_tokens, generation_logprobs)
+                for t, log_probs_i in zip(generation_tokens, generation_log_probs)
             ]
         return [{"generation": self.tokenizer.decode(t)} for t in generation_tokens]
 
@@ -226,7 +226,7 @@ class Llama:
         temperature: float = 0.6,
         top_p: float = 0.9,
         max_gen_len: Optional[int] = None,
-        logprobs: bool = False,
+        log_probs: bool = False,
         seed: Optional[int] = 42
     ) -> List[ChatPrediction]:
         """
@@ -238,7 +238,7 @@ class Llama:
             top_p (float, optional): Top-p probability threshold for nucleus sampling. Defaults to 0.9.
             max_gen_len (Optional[int], optional): Maximum length of the generated response sequence.
                 If not provided, it's set to the model's maximum sequence length minus 1.
-                logprobs (bool, optional): Flag indicating whether to compute token log probabilities. Defaults to False.
+                log_probs (bool, optional): Flag indicating whether to compute token log probabilities. Defaults to False.
 
         Returns:
             List[ChatPrediction]: List of chat predictions, each containing the assistant's generated response.
@@ -246,7 +246,7 @@ class Llama:
         Note:
             This method generates assistant responses for the provided conversational dialogs.
             It employs nucleus sampling to introduce controlled randomness in text generation.
-            If logprobs is True, token log probabilities are computed for each generated token.
+            If log_probs is True, token log probabilities are computed for each generated token.
         """
         if max_gen_len is None:
             max_gen_len = self.model.params.max_seq_len - 1
@@ -262,15 +262,15 @@ class Llama:
         else:
             content_prefills = ['' for _ in dialogs]
 
-        generation_tokens, generation_logprobs = self.generate(
+        generation_tokens, generation_log_probs = self.generate(
             prompt_tokens=prompt_tokens,
             max_gen_len=max_gen_len,
             temperature=temperature,
             top_p=top_p,
-            logprobs=logprobs,
+            log_probs=log_probs,
             seed=seed
         )
-        if logprobs:
+        if log_probs:
             return [
                 {
                     "generation": {
@@ -278,12 +278,12 @@ class Llama:
                         "content": prefill + self.tokenizer.decode(tokens),
                     },
                     "tokens": tokens,
-                    "logprobs": logprobs,
+                    "log_probs": log_probs,
                 }
-                for tokens, prefill, logprobs in zip(
+                for tokens, prefill, log_probs in zip(
                     generation_tokens,
                     content_prefills,
-                    generation_logprobs
+                    generationlog_probs_
                 )
             ]
         return [

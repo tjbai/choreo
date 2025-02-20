@@ -236,8 +236,8 @@ class Workflow:
         outputs = [Cached({
             'id': self.cur_id + i,
             'parent_ids': task['parent_ids'],
-            'tokens': target,
-            'length': len(target)
+            'output_tokens': target,
+            'output_length': len(target)
         }) for i, (task, target) in enumerate(zip(tasks, target_ids))]
         self.cur_id += bsz
         combined_logits = torch.cat([first_logits, target_logits], dim=1)
@@ -248,7 +248,7 @@ class Workflow:
         tokens: torch.Tensor,
         tasks: List[Task],
         headers: List[List[int]],
-        content_prefills: List[List[int]]
+        content_prefills: List[List[int]],
     ) -> StepResult:
         out_tokens: List[List[int]] = []
         out_nodes: List[Cached] = []

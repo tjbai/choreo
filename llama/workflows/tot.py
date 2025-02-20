@@ -104,9 +104,9 @@ class TotResult(TypedDict, total=False):
     chose_trickster: Optional[bool]
 
     # serializing logits for distillation
-    proposal_logprobs: List[Optional[List[float]]]
-    vote_logprobs: List[Optional[List[float]]]
-    final_logprobs: Optional[List[float]]
+    proposal_log_probs: List[Optional[List[float]]]
+    vote_log_probs: List[Optional[List[float]]]
+    final_log_probs: Optional[List[float]]
 
 def tot_cached(
     workflow: Workflow,
@@ -290,7 +290,7 @@ def tot_baseline(
     problem: str,
     branching_factor: int,
     voters: int,
-    logprobs: bool = False
+    log_probs: bool = False
 ) -> TotResult:
     proposal_dialogs: List[Dialog] = [
         [
@@ -305,7 +305,7 @@ def tot_baseline(
         temperature=0.7,
         top_p=0.9,
         seed=42,
-        logprobs=logprobs,
+        log_probs=log_probs,
     )
 
     vote_user_prompt = f"{format_problem(problem)}\n\nHere are the proposals:"
@@ -326,7 +326,7 @@ def tot_baseline(
         temperature=0.7,
         top_p=0.9,
         seed=42,
-        logprobs=logprobs,
+        log_probs=log_probs,
     )
     votes = [
         choice for resp in vote_results if
@@ -346,19 +346,19 @@ def tot_baseline(
             temperature=0.7,
             top_p=0.9,
             max_gen_len=256,
-            logprobs=logprobs,
+            log_probs=log_probs,
         )
 
     return {
         "proposal_content": [p["generation"]["content"] for p in proposal_results],
         "proposal_tokens": [p["tokens"] for p in proposal_results],
-        "proposal_logprobs": [p.get("logprobs", None) for p in proposal_results],
+        "proposal_log_probs": [p.get("log_probs", None) for p in proposal_results],
         "vote_content": [v["generation"]["content"] for v in vote_results],
         "vote_tokens": [v["tokens"] for v in vote_results],
-        "vote_logprobs": [v.get("logprobs", None) for v in vote_results],
+        "vote_log_probs": [v.get("log_probs", None) for v in vote_results],
         "final_content": final_result["generation"]["content"] if final_result else None,
         "final_tokens": final_result["tokens"] if final_result else None,
-        "final_logprobs": final_result.get("logprobs", None),
+        "final_log_probs": final_result.get("log_probs", None),
         "votes": votes,
     }
 
@@ -777,7 +777,7 @@ def collect_samples(
             problem=problem,
             branching_factor=branching_factor,
             voters=voters,
-            logprobs=True,
+            log_probs=True,
         )
 
         example = {
