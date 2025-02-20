@@ -154,11 +154,10 @@ class Workflow:
             if temperature > 0:
                 probs = torch.softmax(logits[:, -bsz:] / temperature, dim=-1)
                 next_token = sample_top_p_parallel(probs, top_p, generator=generator).squeeze(0)
+                if log_probs:
+                    log_probs_out.append(torch.log(probs.gather(dim=-1, index=next_token.view(1, -1, 1))))
             else:
                 next_token = torch.argmax(logits[:, -bsz:], dim=-1).squeeze(0)
-
-            if log_probs:
-                log_probs_out.append(logits.gather(dim=-1, index=next_token.view(1, -1, 1)))
 
             if teacher_force is not None:
                 next_token = teacher_force[:, cur_pos // bsz]

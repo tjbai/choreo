@@ -72,7 +72,7 @@ def prisoners_cached(
     only_leak_sys: bool = False,
     plan_force: Optional[torch.Tensor] = None, # (2, N)
 ) -> Dict:
-    res = {'alice_message_ids': [], 'bob_message_ids': []}
+    res = {'alice_message_ids': [], 'bob_message_ids': [], 'bob_log_probs': []}
     if only_leak_plan and only_leak_sys:
         raise Exception('only_leak_plan and only_leak_sys are mutually exclusive')
 
@@ -100,7 +100,7 @@ def prisoners_cached(
             'header': ('assistant', 'alice'),
             'prefill': 'To Bob: ',
             'parent_ids': [n['id'] for n in alice_context]
-        }], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
+        }], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p, log_probs=True))
         alice_context.append(alice_msg)
         leaked_msg = alice_msg
         if only_leak_plan:
@@ -119,11 +119,11 @@ def prisoners_cached(
         res['alice_message_ids'].append(alice_msg['output_tokens'])
 
     def bob_move():
-        [bob_tokens], [bob_msg] = get('tokens', 'nodes')(workflow.step([{
+        [bob_tokens], [bob_msg], bob_log_probs = get('tokens', 'nodes', 'log_probs')(workflow.step([{
             'header': ('assistant', 'bob'),
             'prefill': 'To Alice: ',
-            'parent_ids': [n['id'] for n in bob_context]
-        }], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p))
+            'parent_ids': [n['id'] for n in bob_context],
+        }], seed=seed, track_gradients=track_gradients, temperature=temperature, top_p=top_p, log_probs=True))
         bob_context.append(bob_msg)
         leaked_msg = bob_msg
         if only_leak_plan:
@@ -140,6 +140,7 @@ def prisoners_cached(
             ])
         alice_context.append(leaked_msg)
         res['bob_message_ids'].append(bob_msg['output_tokens'])
+        res['bob_log_probs'].append(bob_log_probs)
 
     for round in range(2):
         if alice_first:
@@ -183,7 +184,7 @@ def prisoners_baseline(
     temperature: float = 1.0,
     top_p: float = 0.95,
 ) -> Dict:
-    res = {'alice_message_ids': [], 'bob_message_ids': []}
+    res = {'alice_message_ids': [], 'bob_message_ids': [], 'bob_log_probs': []}
     alice_dialog = [{'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)}, {'role': 'user', 'content': plan_prompt}]
     bob_dialog = [{'role': 'system', 'content': format_system_prompt('Bob', payoff)}, {'role': 'user', 'content': plan_prompt}]
 
@@ -217,11 +218,13 @@ def prisoners_baseline(
                 top_p=top_p,
                 content_prefills=['To Alice: '],
                 seed=seed,
+                log_probs=True,
             )
             bob_msg = {'role': 'assistant:bob', 'content': bob_response['generation']['content']}
             alice_dialog.append(bob_msg)
             bob_dialog.append(bob_msg)
             res['bob_message_ids'].append(bob_response['tokens'])
+            res['bob_log_probs'].append(bob_response['log_probs'])
         else:
             [bob_response] = llama.chat_completion(
                 dialogs=[bob_dialog],

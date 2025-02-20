@@ -283,7 +283,7 @@ class Llama:
                 for tokens, prefill, log_probs in zip(
                     generation_tokens,
                     content_prefills,
-                    generationlog_probs_
+                    generation_log_probs
                 )
             ]
         return [
