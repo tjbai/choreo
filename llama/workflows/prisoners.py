@@ -317,6 +317,8 @@ def cached_nll(
     alice_strategy: Optional[str] = None,
 ):
     workflow.reset()
+    eot_id = workflow.tokenizer.eot_id
+    
     alice_sys, bob_sys = workflow.insert([
         {'messages': [
             {'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)},
@@ -328,7 +330,7 @@ def cached_nll(
         ], 'parent_ids': []},
     ])
 
-    target_plan_ids = [p + [workflow.tokenizer.eot_id] for p in outputs['plan_ids']]
+    target_plan_ids = [p + ([eot_id] if p[-1] != eot_id else []) for p in outputs['plan_ids']]
     [alice_plan, bob_plan], plan_logits = workflow.train_step([
         {'header': ('assistant', 'alice'), 'prefill': '', 'parent_ids': [alice_sys['id']]},
         {'header': ('assistant', 'bob'), 'prefill': '', 'parent_ids': [bob_sys['id']]},
@@ -339,7 +341,7 @@ def cached_nll(
     bob_context = [bob_sys, bob_plan]
 
     def alice_step():
-        alice_targets = [alice_ids + [workflow.tokenizer.eot_id]]
+        alice_targets = [alice_ids + ([eot_id] if alice_ids[-1] != eot_id else [])]
         [alice_msg], alice_logits = workflow.train_step([{
             'header': ('assistant', 'alice'),
             'prefill': 'To Bob: ',
@@ -354,7 +356,8 @@ def cached_nll(
         ).cpu().tolist())
 
     def bob_step():
-        bob_targets = [bob_ids + [workflow.tokenizer.eot_id]]
+        bob_targets = [bob_ids + ([eot_id] if bob_ids[-1] != eot_id else [])]
+        print(bob_targets)
         [bob_msg], bob_logits = workflow.train_step([{
             'header': ('assistant', 'bob'),
             'prefill': 'To Alice: ',
@@ -389,6 +392,7 @@ def baseline_nll(
     alice_first: bool = True,
     alice_strategy: Optional[str] = None
 ) -> Dict:
+    eot_id = workflow.tokenizer.eot_id
     alice_dialog = [
         {'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)},
         {'role': 'user', 'content': plan_prompt},
@@ -403,6 +407,11 @@ def baseline_nll(
 
     res = {'alice_nll': [], 'bob_nll': []}
     for round in range(2):
+        if outputs['alice_message_ids'][round][-1] == eot_id:
+            outputs['alice_message_ids'][round] = outputs['alice_message_ids'][round][:-1]
+        if outputs['bob_message_ids'][round][-1] == eot_id:
+            outputs['bob_message_ids'][round] = outputs['bob_message_ids'][round][:-1]
+        
         alice_msg = {'role': 'assistant:alice', 'content': f'To Bob:{llama.tokenizer.decode(outputs['alice_message_ids'][round])}'}
         bob_msg = {'role': 'assistant:bob', 'content': f'To Alice:{llama.tokenizer.decode(outputs['bob_message_ids'][round])}'}
 
