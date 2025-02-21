@@ -250,3 +250,18 @@ E2E TPS, CommonMT 200:
   MAD Baseline: 20.8
   MAD Cached: 19.4
     Speedup: ~7%
+
+## 2:19: 1ed3f671b32063428c20f884dd37bcc1bb61311a
+
+Did a little manual inspection of the baseline outputs, and there's high rates of degeneration.
+
+Going to redo some runs with t=0.6, p=0.95 to get rid of this "noise."
+
+| Strategy         | Player | Baseline | Leak Everything | Leak System | Leak Plan |
+| ---------------- | ------ | -------- | --------------- | ----------- | --------- |
+| Baseline         | Alice  | 76/14    | 71/22           | 68/29       | 78/18     |
+|                  | Bob    | 77/18    | 66/28           | 68/26       | 67/31     |
+| Always cooperate | Alice  | 99/0     | 99/0            | 98/0        | 99/1      |
+|                  | Bob    | 83/16    | 71/25           | 88/9        | 78/22     |
+| Always defect    | Alice  | 0/96     | 1/95            | 1/97        | 3/95      |
+|                  | Bob    | 69/29    | 39/56           | 21/75       | 34/62     |
