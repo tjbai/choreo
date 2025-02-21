@@ -217,7 +217,8 @@ class ChatFormat:
         tokens.extend(
             self.tokenizer.encode(message["content"].strip(), bos=False, eos=False)
         )
-        tokens.append(self.tokenizer.special_tokens["<|eot_id|>"])
+        if tokens[-1] != self.tokenizer.special_tokens["<|eot_id|>"]:
+            tokens.append(self.tokenizer.special_tokens["<|eot_id|>"])
         return tokens
 
     def encode_dialog(self, dialog: Dialog) -> List[int]:

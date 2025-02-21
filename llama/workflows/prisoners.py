@@ -318,27 +318,28 @@ def cached_nll(
 ):
     workflow.reset()
     eot_id = workflow.tokenizer.eot_id
+
+    if outputs['plan_ids'][0][-1] == eot_id:
+        outputs['plan_ids'][0] = outputs['plan_ids'][0][:-1]
+    if outputs['plan_ids'][1][-1] == eot_id:
+        outputs['plan_ids'][1] = outputs['plan_ids'][1][:-1]
     
     alice_sys, bob_sys = workflow.insert([
         {'messages': [
             {'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)},
-            {'role': 'user', 'content': plan_prompt}
+            {'role': 'user', 'content': plan_prompt},
+            {'role': 'assistant:alice', 'content': workflow.tokenizer.decode(outputs['plan_ids'][0])},
         ], 'parent_ids': []},
         {'messages': [
             {'role': 'system', 'content': format_system_prompt('Bob', payoff)},
             {'role': 'user', 'content': plan_prompt},
+            {'role': 'assistant:bob', 'content': workflow.tokenizer.decode(outputs['plan_ids'][1])},
         ], 'parent_ids': []},
     ])
 
-    target_plan_ids = [p + ([eot_id] if p[-1] != eot_id else []) for p in outputs['plan_ids']]
-    [alice_plan, bob_plan], plan_logits = workflow.train_step([
-        {'header': ('assistant', 'alice'), 'prefill': '', 'parent_ids': [alice_sys['id']]},
-        {'header': ('assistant', 'bob'), 'prefill': '', 'parent_ids': [bob_sys['id']]},
-    ], target_plan_ids)
-
     res = {'alice_nll': [], 'bob_nll': []}
-    alice_context = [alice_sys, alice_plan]
-    bob_context = [bob_sys, bob_plan]
+    alice_context = [alice_sys]
+    bob_context = [bob_sys]
 
     def alice_step():
         alice_targets = [alice_ids + ([eot_id] if alice_ids[-1] != eot_id else [])]
@@ -357,7 +358,6 @@ def cached_nll(
 
     def bob_step():
         bob_targets = [bob_ids + ([eot_id] if bob_ids[-1] != eot_id else [])]
-        print(bob_targets)
         [bob_msg], bob_logits = workflow.train_step([{
             'header': ('assistant', 'bob'),
             'prefill': 'To Alice: ',
@@ -392,13 +392,18 @@ def baseline_nll(
     alice_first: bool = True,
     alice_strategy: Optional[str] = None
 ) -> Dict:
-    eot_id = workflow.tokenizer.eot_id
+    eot_id = llama.tokenizer.eot_id
+
+    if outputs['plan_ids'][0][-1] == eot_id:
+        outputs['plan_ids'][0] = outputs['plan_ids'][0][:-1]
+    if outputs['plan_ids'][1][-1] == eot_id:
+        outputs['plan_ids'][1] = outputs['plan_ids'][1][:-1]
+
     alice_dialog = [
         {'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)},
         {'role': 'user', 'content': plan_prompt},
         {'role': 'assistant:alice', 'content': llama.tokenizer.decode(outputs['plan_ids'][0])}
     ]
-
     bob_dialog = [
         {'role': 'system', 'content': format_system_prompt('Bob', payoff)},
         {'role': 'user', 'content': plan_prompt},
