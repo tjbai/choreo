@@ -51,9 +51,8 @@ class TotDataset(Dataset):
 class PrisonersDataset(Dataset):
     def __init__(self, data_dir: str | Path, strategy: Optional[str] = None):
         self.data_dir = Path(data_dir)
-        self.strategy = strategy
-        assert self.strategy in (None, 'always_cooperate', 'always_defect')
-        self.paths = sorted(self.data_dir.glob(f'trace_{self.strategy}_*.pt'))
+        assert strategy in (None, 'always_cooperate', 'always_defect')
+        self.paths = sorted(self.data_dir.glob(f'trace_{strategy}_*.pt'))
 
     def __len__(self):
         return len(self.paths)
@@ -314,6 +313,7 @@ def evaluate_prisoners(
     max_e2e=50,
 ) -> Dict:
     trainer.workflow.model.eval()
+    
 
     total_loss = 0
     for step, sample in enumerate(tqdm(val_dataset, desc='Validating')):
@@ -336,13 +336,13 @@ def evaluate_prisoners(
             workflow=trainer.workflow,
             payoff=(5,3,1,0),
             alice_first=(seed < (max_e2e // 2)),
-            alice_strategy=val_dataset.strategy,
+            alice_strategy=val_dataset[0]['strategy'],
             temperature=1.0,
             top_p=1.0,
             seed=seed+420,
         )
-        e2e['bob_decisions'].append(result['bob_dialog'][-1]['content'])
-        e2e['alice_decisions'].append(result['alice_dialog'][-1]['content'])
+        e2e['bob_decisions'].append(trainer.workflow.tokenizer.decode(result['bob_context'][-1]['output_tokens']))
+        e2e['alice_decisions'].append(trainer.workflow.tokenizer.decode(result['alice_context'][-1]['output_tokens']))
 
     metrics['val/bob_cooperate'] = sum(1 for d in e2e['bob_decisions'] if 'COOPERATE' in d) / max_e2e
     metrics['val/alice_cooperate'] = sum(1 for d in e2e['alice_decisions'] if 'COOPERATE' in d) / max_e2e
@@ -383,13 +383,12 @@ def init_task(
         wandb.init(
             project="tot",
             config={
-                "epochs": task_params['epochs'],
-                "checkpoint_freq": task_params['checkpoint_freq'],
                 "branching_factor": task_params['branching_factor'],
                 "voters": task_params['voters'],
                 "lora_rank": task_params['lora_rank'],
                 "lora_alpha": task_params['lora_alpha'],
                 "lora_dropout": task_params['lora_dropout'],
+                "learning_rate": learning_rate,
             }
         )
         return trainer, dataset, evaluate_tot
@@ -403,12 +402,11 @@ def init_task(
         wandb.init(
             project="prisoners",
             config={
-                "steps": task_params['steps'],
-                "checkpoint_freq": task_params['checkpoint_freq'],
                 "strategy": task_params['strategy'],
                 "lora_rank": task_params['lora_rank'],
                 "lora_alpha": task_params['lora_alpha'],
                 "lora_dropout": task_params['lora_dropout'],
+                "learning_rate": learning_rate,
             }
         )
         return trainer, dataset, evaluate_prisoners
@@ -446,7 +444,6 @@ def finetune(
     checkpoint_freq: int = 25,
     validation_freq: int = 25,
     # lora
-    use_lora: bool = True,
     lora_rank: int = 8,
     lora_alpha: int = 16,
     lora_dropout: float = 0.1,
@@ -464,7 +461,7 @@ def finetune(
         max_batch_size=1,
         model_parallel_size=1,
         max_nodes=100,
-        use_lora=use_lora,
+        use_lora=True,
         lora_rank=lora_rank,
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
@@ -476,6 +473,9 @@ def finetune(
         data_path=data_path,
         output_dir=output_dir,
         learning_rate=learning_rate,
+        lora_rank=lora_rank,
+        lora_alpha=lora_alpha,
+        lora_dropout=lora_dropout,
         branching_factor=branching_factor,
         voters=voters,
         strategy=strategy,
@@ -483,6 +483,7 @@ def finetune(
 
     generator = torch.Generator(device="cuda").manual_seed(42)
     train_dataset, val_dataset = random_split(dataset, [0.9, 0.1], generator=generator)
+    assert len(train_dataset) > 0 and len(val_dataset) > 0
     print(f"Train Dataset: {len(train_dataset)} samples")
     print(f"Val Dataset: {len(val_dataset)} samples")
 
@@ -496,6 +497,8 @@ def finetune(
         dataset_size=len(train_dataset),
         gradient_accumulation_steps=gradient_accumulation_steps
     )
+
+    print(f'Epochs: {epochs}, Steps: {steps}, Warmup: {warmup_steps}')
 
     global_step = 0
     for epoch in range(epochs):
