@@ -270,8 +270,8 @@ class Workflow:
             out_nodes.append(Cached({
                 'id': self.cur_id + i,
                 'parent_ids': task['parent_ids'],
-                'output_tokens': toks,
-                'output_length': len(toks),
+                'output_tokens': toks[:-1],
+                'output_length': len(toks) - 1,
             }))
 
         return StepResult({
