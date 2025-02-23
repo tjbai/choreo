@@ -34,6 +34,8 @@ for strategy in strategies:
     bob_decisions = []
 
     for seed in tqdm(range(300)):
+        if os.path.exists(f'/home/tbai4/llama3/prisoners_data/trace_{strategy}_{seed}.pt'):
+            continue
         try:
             result = prisoners_baseline(
                 llama,
