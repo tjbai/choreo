@@ -12,12 +12,13 @@ import fire
 import torch
 import torch.nn.functional as F
 from torch.optim import AdamW
-from torch.utils.data import Dataset, random_split
+from torch.utils.data import Dataset, Subset, random_split
 import numpy as np
 from tqdm import tqdm
 
 from llama import Workflow, Llama
 from llama.util import find_free_port
+from llama.workflow import Cached
 from llama.workflows.tot import (
     cot_prompt,
     finish_prompt,
@@ -32,6 +33,7 @@ from llama.workflows.prisoners import (
     plan_prompt,
     decide_prompt,
     cached_nll,
+    baseline_nll,
     prisoners_cached,
 )
 
@@ -59,6 +61,17 @@ class PrisonersDataset(Dataset):
 
     def __getitem__(self, idx) -> Dict:
         return torch.load(self.paths[idx], weights_only=True)
+
+class QaDataset(Dataset):
+    def __init__(self, data_path: str | Path):
+        with open(data_path) as f:
+            self.data: List[Cached] = json.load(f)
+
+    def __len__(self):
+        return len(self.data)
+
+    def __getitem__(self, idx) -> Dict:
+        return self.data[idx]
 
 # this is a hack to match the header prefill -> content prefill setup we have
 # a more principled way would be to just do one big prefill step and mask out the irrelevant header tokens
@@ -260,6 +273,10 @@ class PrisonersTrainer(LoraTrainer):
             else:
                 raise e
 
+class QaTrainer(LoraTrainer):
+    def step(self, sample: Cached) -> Tuple[torch.Tensor, Dict]:
+        pass
+
 @torch.no_grad()
 def evaluate_tot(trainer: TotTrainer, val_dataset: TotDataset, max_steps=None, max_e2e=100):
     trainer.workflow.model.eval()
@@ -368,6 +385,9 @@ def init_task(
     workflow: Workflow,
     data_path: str,
     output_dir: str,
+    lora_rank: int,
+    lora_alpha: int,
+    lora_dropout: float,
     learning_rate: float,
     **task_params
 ) -> Tuple[LoraTrainer, Dataset, Callable]:
@@ -385,9 +405,9 @@ def init_task(
             config={
                 "branching_factor": task_params['branching_factor'],
                 "voters": task_params['voters'],
-                "lora_rank": task_params['lora_rank'],
-                "lora_alpha": task_params['lora_alpha'],
-                "lora_dropout": task_params['lora_dropout'],
+                "lora_rank": lora_rank,
+                "lora_alpha": lora_alpha,
+                "lora_dropout": lora_dropout,
                 "learning_rate": learning_rate,
             }
         )
@@ -399,17 +419,44 @@ def init_task(
             learning_rate=learning_rate
         )
         dataset = PrisonersDataset(data_path, task_params['strategy'])
+
+        indices = []
+        for i in tqdm(range(len(dataset)), desc='Filtering'):
+            nll = baseline_nll(
+                workflow,
+                dataset[i]['result'],
+                payoff=dataset[i]['payoff'],
+                alice_first=dataset[i]['alice_first'],
+                alice_strategy=dataset[i]['strategy'],
+            )
+            if (np.mean(nll['bob_nll'][0] + nll['bob_nll'][1]) < 4 and
+                np.mean(nll['alice_nll'][0] + nll['alice_nll'][1]) < 4):
+                indices.append(i)
+        dataset = Subset(dataset, indices)
+
         wandb.init(
             project="prisoners",
             config={
                 "strategy": task_params['strategy'],
-                "lora_rank": task_params['lora_rank'],
-                "lora_alpha": task_params['lora_alpha'],
-                "lora_dropout": task_params['lora_dropout'],
+                "lora_rank": lora_rank,
+                "lora_alpha": lora_alpha,
+                "lora_dropout": lora_dropout,
                 "learning_rate": learning_rate,
             }
         )
         return trainer, dataset, evaluate_prisoners
+    elif task == 'qa':
+        trainer = QaTrainer()
+        dataset = QaDataset(data_path)
+        wandb.init(
+            project='triviaqa',
+            config={
+                "lora_rank": lora_rank,
+                "lora_alpha": lora_alpha,
+                "lora_dropout": lora_dropout,
+                "learning_rate": learning_rate,
+            }
+        )
     raise NotImplementedError()
 
 def training_schedule(
@@ -466,6 +513,9 @@ def finetune(
         lora_alpha=lora_alpha,
         lora_dropout=lora_dropout,
     )
+
+    # always reshape just in case
+    workflow.model.reshape_cache(1)
 
     trainer, dataset, eval_fn = init_task(
         task=task,
