@@ -251,7 +251,7 @@ E2E TPS, CommonMT 200:
   MAD Cached: 19.4
     Speedup: ~7%
 
-## 2:19: 1ed3f671b32063428c20f884dd37bcc1bb61311a
+## 2/19: 1ed3f671b32063428c20f884dd37bcc1bb61311a
 
 Did a little manual inspection of the baseline outputs, and there's high rates of degeneration.
 

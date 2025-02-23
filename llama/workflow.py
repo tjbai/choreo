@@ -123,7 +123,7 @@ class Workflow:
         generator = torch.Generator(device=self.device).manual_seed(seed) if seed else None
 
         if compact:
-            if len(tasks) > 0:
+            if len(tasks) > 1:
                 warnings.warn("Multi-node compaction not fully implemented. Use caution.")
             self.compact(tasks[0]['parent_ids'], mask[0]) # use the ordering from just the first task, for now
 
