@@ -167,98 +167,98 @@ class PrisonersTrainer(LoraTrainer):
         super().__init__(workflow, output_dir, learning_rate)
         self.eot_id = self.workflow.tokenizer.eot_id
 
-    def step(self, sample: Dict) -> Tuple[torch.Tensor, Dict]:
-        self.workflow.reset()
-        payoff, alice_first, strategy, result = get('payoff', 'alice_first', 'strategy', 'result')(sample)
-        metrics = defaultdict(lambda: torch.tensor(0.))
+    def step(self, sample: Dict) -> Optional[Tuple[torch.Tensor, Dict]]:
+        try:
+            self.workflow.reset()
+            payoff, alice_first, strategy, result = get('payoff', 'alice_first', 'strategy', 'result')(sample)
+            metrics = defaultdict(lambda: torch.tensor(0.))
 
-        alice_sys, bob_sys = self.workflow.insert([
-            {'messages': [
-                {'role': 'system', 'content': format_prisoners_system_prompt('Alice', payoff, strategy)},
-                {'role': 'user', 'content': plan_prompt}
-            ], 'parent_ids': []},
-            {'messages': [
-                {'role': 'system', 'content': format_prisoners_system_prompt('Bob', payoff)},
-                {'role': 'user', 'content': plan_prompt},
-            ], 'parent_ids': []},
-        ], track_gradients=True)
+            alice_sys, bob_sys = self.workflow.insert([
+                {'messages': [
+                    {'role': 'system', 'content': format_prisoners_system_prompt('Alice', payoff, strategy)},
+                    {'role': 'user', 'content': plan_prompt}
+                ], 'parent_ids': []},
+                {'messages': [
+                    {'role': 'system', 'content': format_prisoners_system_prompt('Bob', payoff)},
+                    {'role': 'user', 'content': plan_prompt},
+                ], 'parent_ids': []},
+            ], track_gradients=True)
 
-        target_plan_ids = [p + [self.eot_id] for p in result['plan_ids']]
-        [alice_plan, bob_plan], plan_logits = self.workflow.ckpt_train_step([
-            {'header': ('assistant', 'alice'), 'prefill': '', 'parent_ids': [alice_sys['id']]},
-            {'header': ('assistant', 'bob'), 'prefill': '', 'parent_ids': [bob_sys['id']]},
-        ], target_plan_ids)
-        plan_targets = reorder_targets(target_plan_ids)
-        metrics['train/plan_loss'] = F.cross_entropy(plan_logits.squeeze(0), plan_targets)
+            target_plan_ids = [p + [self.eot_id] for p in result['plan_ids']]
+            [alice_plan, bob_plan], plan_logits = self.workflow.train_step([
+                {'header': ('assistant', 'alice'), 'prefill': '', 'parent_ids': [alice_sys['id']]},
+                {'header': ('assistant', 'bob'), 'prefill': '', 'parent_ids': [bob_sys['id']]},
+            ], target_plan_ids)
+            plan_targets = reorder_targets(target_plan_ids)
+            metrics['train/plan_loss'] = F.cross_entropy(plan_logits.squeeze(0), plan_targets)
 
-        alice_context = [alice_sys, alice_plan]
-        bob_context = [bob_sys, bob_plan]
-        for round, (alice_ids, bob_ids) in enumerate(zip(result['alice_message_ids'], result['bob_message_ids'])):
-            if alice_first:
-                alice_targets = [alice_ids + [self.eot_id]]
-                [alice_msg], alice_logits = self.workflow.ckpt_train_step([{
+            alice_context = [alice_sys, alice_plan]
+            bob_context = [bob_sys, bob_plan]
+            for round, (alice_ids, bob_ids) in enumerate(zip(result['alice_message_ids'], result['bob_message_ids'])):
+                def alice_step():
+                    alice_targets = [alice_ids + [self.eot_id]]
+                    [alice_msg], alice_logits = self.workflow.train_step([{
+                        'header': ('assistant', 'alice'),
+                        'prefill': 'To Bob: ',
+                        'parent_ids': [n['id'] for n in alice_context]
+                    }], alice_targets)
+                    alice_context.append(alice_msg)
+                    bob_context.append(alice_msg)
+                    metrics['train/alice_loss'] += F.cross_entropy(alice_logits.squeeze(), torch.tensor(alice_targets, device='cuda').squeeze())
+
+                def bob_step():
+                    bob_targets = [bob_ids + [self.eot_id]]
+                    [bob_msg], bob_logits = self.workflow.train_step([{
+                        'header': ('assistant', 'bob'),
+                        'prefill': 'To Alice: ',
+                        'parent_ids': [n['id'] for n in bob_context]
+                    }], bob_targets)
+                    alice_context.append(bob_msg)
+                    bob_context.append(bob_msg)
+                    metrics['train/bob_loss'] += F.cross_entropy(bob_logits.squeeze(), torch.tensor(bob_targets, device='cuda').squeeze())
+
+                if alice_first:
+                    alice_step()
+                    bob_step()
+                else:
+                    bob_step()
+                    alice_step()
+
+            [alice_ask, bob_ask] = self.workflow.insert([
+                {'messages': [{'role': 'user', 'content': decide_prompt}], 'parent_ids': [n['id'] for n in alice_context]},
+                {'messages': [{'role': 'user', 'content': decide_prompt}], 'parent_ids': [n['id'] for n in bob_context]},
+            ], track_gradients=True)
+            alice_context.append(alice_ask)
+            bob_context.append(bob_ask)
+
+            target_decision_ids = [p + [self.eot_id] for p in result['decision_ids']]
+            _, decision_logits = self.workflow.train_step([
+                {
                     'header': ('assistant', 'alice'),
-                    'prefill': 'To Bob: ',
-                    'parent_ids': [n['id'] for n in alice_context]
-                }], alice_targets)
-                alice_context.append(alice_msg)
-                bob_context.append(alice_msg)
-                metrics['train/alice_loss'] += F.cross_entropy(alice_logits.squeeze(), torch.tensor(alice_targets, device='cuda').squeeze())
-
-                bob_targets = [bob_ids + [self.eot_id]]
-                [bob_msg], bob_logits = self.workflow.ckpt_train_step([{
+                    'prefill': '{"decision": ',
+                    'parent_ids': [n['id'] for n in alice_context],
+                },
+                {
                     'header': ('assistant', 'bob'),
-                    'prefill': 'To Alice: ',
-                    'parent_ids': [n['id'] for n in bob_context]
-                }], bob_targets)
-                alice_context.append(bob_msg)
-                bob_context.append(bob_msg)
-                metrics['train/bob_loss'] += F.cross_entropy(bob_logits.squeeze(), torch.tensor(bob_targets, device='cuda').squeeze())
+                    'prefill': '{"decision": ',
+                    'parent_ids': [n['id'] for n in bob_context],
+                }
+            ], target_decision_ids)
+            decision_targets = reorder_targets(target_decision_ids)
+            metrics['train/decision_loss'] = F.cross_entropy(decision_logits.squeeze(), decision_targets)
+
+            return sum(metrics.values(), torch.tensor(0.)), dict(metrics)
+        except RuntimeError as e:
+            if 'out of memory' in str(e):
+                print('Ran out of memory, skipping batch')
+                wandb.log({'train/oom': 1})
+                for p in self.workflow.model.parameters():
+                    if p.grad is not None:
+                        del p.grad
+                torch.cuda.empty_cache()
+                return None
             else:
-                bob_targets = [bob_ids + [self.eot_id]]
-                [bob_msg], bob_logits = self.workflow.ckpt_train_step([{
-                    'header': ('assistant', 'bob'),
-                    'prefill': 'To Alice: ',
-                    'parent_ids': [n['id'] for n in bob_context]
-                }], bob_targets)
-                alice_context.append(bob_msg)
-                bob_context.append(bob_msg)
-                metrics['train/bob_loss'] += F.cross_entropy(bob_logits.squeeze(), torch.tensor(bob_targets, device='cuda').squeeze())
-
-                alice_targets = [alice_ids + [self.eot_id]]
-                [alice_msg], alice_logits = self.workflow.ckpt_train_step([{
-                    'header': ('assistant', 'alice'),
-                    'prefill': 'To Bob: ',
-                    'parent_ids': [n['id'] for n in alice_context]
-                }], alice_targets)
-                alice_context.append(alice_msg)
-                bob_context.append(alice_msg)
-                metrics['train/alice_loss'] += F.cross_entropy(alice_logits.squeeze(), torch.tensor(alice_targets, device='cuda').squeeze())
-
-        [alice_ask, bob_ask] = self.workflow.insert([
-            {'messages': [{'role': 'user', 'content': decide_prompt}], 'parent_ids': [n['id'] for n in alice_context]},
-            {'messages': [{'role': 'user', 'content': decide_prompt}], 'parent_ids': [n['id'] for n in bob_context]},
-        ], track_gradients=True)
-        alice_context.append(alice_ask)
-        bob_context.append(bob_ask)
-
-        target_decision_ids = [p + [self.eot_id] for p in result['decision_ids']]
-        _, decision_logits = self.workflow.ckpt_train_step([
-            {
-                'header': ('assistant', 'alice'),
-                'prefill': '{"decision": ',
-                'parent_ids': [n['id'] for n in alice_context],
-            },
-            {
-                'header': ('assistant', 'bob'),
-                'prefill': '{"decision": ',
-                'parent_ids': [n['id'] for n in bob_context],
-            }
-        ], target_decision_ids)
-        decision_targets = reorder_targets(target_decision_ids)
-        metrics['train/decision_loss'] = F.cross_entropy(decision_logits.squeeze(), decision_targets)
-
-        return sum(metrics.values(), torch.tensor(0.)), dict(metrics)
+                raise e
 
 @torch.no_grad()
 def evaluate_tot(trainer: TotTrainer, val_dataset: TotDataset, max_steps=None, max_e2e=100):
@@ -507,8 +507,10 @@ def finetune(
             lr_factor = get_lr_factor(global_step, warmup_steps, steps)
             for param_group in trainer.optimizer.param_groups:
                 param_group['lr'] = learning_rate * lr_factor
-            sample = dataset[idx]
-            loss, metrics = trainer.step(sample)
+            step_result = trainer.step(dataset[idx])
+            if step_result is None:
+                continue # will create jagged batches
+            loss, metrics = step_result
             loss.backward()
             if (step + 1) % gradient_accumulation_steps == 0:
                 torch.nn.utils.clip_grad_norm_(trainer.workflow.model.parameters(), max_norm=1.0)
