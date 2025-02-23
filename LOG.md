@@ -265,3 +265,21 @@ Going to redo some runs with t=0.6, p=0.95 to get rid of this "noise."
 |                  | Bob    | 83/16    | 71/25           | 88/9        | 78/22     |
 | Always defect    | Alice  | 0/96     | 1/95            | 1/97        | 3/95      |
 |                  | Bob    | 69/29    | 39/56           | 21/75       | 34/62     |
+
+## 2/20: c122b1226aeedfe65a28f86f4b9bab454804c092
+
+See Slack for figures comparing Bob's message distributions.
+
+## 2/22: b665c13e392fe1be258c9181f0bda40bd401a838
+
+TriviaQA, N=2 questions, 30 samples:
+
+| Condition            | Both | Q1 | Q2 | None |
+|----------------------|------|----|----|------|
+| Baseline             | 20   | 7  | 1  | 2    |
+| Parallel             | 0    | 11 | 10 | 9    |
+| Parallel, Linearized | 0    | 0  | 22 | 8    |
+
+Parallel generation will often generate the _same_ outputs as baseline.
+
+Hopefully, this means it'll be easy to elicit the right behavior with fine-tuning!
