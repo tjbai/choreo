@@ -26,43 +26,46 @@ llama.model.reshape_cache(2)
 llama.model.eval()
 payoff = (5, 3, 1, 0)
 
-strategies = [None, 'always_cooperate', 'always_defect']
-output_file = 'prisoners_baseline_lowtemp.jsonl'
+strategies = ['always_cooperate', 'always_defect']
+output_file = 'prisoners_baseline_train.jsonl'
 
 for strategy in strategies:
     alice_decisions = []
     bob_decisions = []
 
-    for seed in tqdm(range(100)):
-        result = prisoners_baseline(
-            llama,
-            payoff,
-            alice_first=(seed < 50),
-            alice_strategy=strategy,
-            seed=seed,
-            temperature=0.6,
-            top_p=0.95,
-        )
+    for seed in tqdm(range(300)):
+        try:
+            result = prisoners_baseline(
+                llama,
+                payoff,
+                alice_first=(seed < 50),
+                alice_strategy=strategy,
+                seed=seed+100,
+                temperature=1.0,
+                top_p=1.0,
+            )
 
-        sample = {
-            'payoff': payoff,
-            'strategy': strategy,
-            'alice_first': (seed < 50),
-            'result': result,
-        }
-        torch.save(sample, f'/home/tbai4/llama3/prisoners_data/trace_{strategy}_{seed}.pt')
+            sample = {
+                'payoff': payoff,
+                'strategy': strategy,
+                'alice_first': (seed < 50),
+                'result': result,
+            }
+            torch.save(sample, f'/home/tbai4/llama3/prisoners_data/trace_{strategy}_{seed}.pt')
 
-        output_data = {
-            'seed': seed,
-            'strategy': strategy,
-            'outputs': result,
-            'alice_final': result['alice_dialog'][-1]['content'],
-            'bob_final': result['bob_dialog'][-1]['content'],
-        }
-        append_to_jsonl(output_data, output_file)
+            output_data = {
+                'seed': seed,
+                'strategy': strategy,
+                'outputs': result,
+                'alice_final': result['alice_dialog'][-1]['content'],
+                'bob_final': result['bob_dialog'][-1]['content'],
+            }
+            append_to_jsonl(output_data, output_file)
 
-        alice_decisions.append(result['alice_dialog'][-1]['content'])
-        bob_decisions.append(result['bob_dialog'][-1]['content'])
+            alice_decisions.append(result['alice_dialog'][-1]['content'])
+            bob_decisions.append(result['bob_dialog'][-1]['content'])
+        except:
+            continue
 
     print(
         f"\nStrategy: {strategy if strategy else 'baseline'}",
