@@ -184,7 +184,7 @@ class PrisonersTrainer(LoraTrainer):
         ], track_gradients=True)
 
         target_plan_ids = [p + [self.eot_id] for p in result['plan_ids']]
-        [alice_plan, bob_plan], plan_logits = self.workflow.train_step([
+        [alice_plan, bob_plan], plan_logits = self.workflow.ckpt_train_step([
             {'header': ('assistant', 'alice'), 'prefill': '', 'parent_ids': [alice_sys['id']]},
             {'header': ('assistant', 'bob'), 'prefill': '', 'parent_ids': [bob_sys['id']]},
         ], target_plan_ids)
@@ -196,7 +196,7 @@ class PrisonersTrainer(LoraTrainer):
         for round, (alice_ids, bob_ids) in enumerate(zip(result['alice_message_ids'], result['bob_message_ids'])):
             if alice_first:
                 alice_targets = [alice_ids + [self.eot_id]]
-                [alice_msg], alice_logits = self.workflow.train_step([{
+                [alice_msg], alice_logits = self.workflow.ckpt_train_step([{
                     'header': ('assistant', 'alice'),
                     'prefill': 'To Bob: ',
                     'parent_ids': [n['id'] for n in alice_context]
@@ -206,7 +206,7 @@ class PrisonersTrainer(LoraTrainer):
                 metrics['train/alice_loss'] += F.cross_entropy(alice_logits.squeeze(), torch.tensor(alice_targets, device='cuda').squeeze())
 
                 bob_targets = [bob_ids + [self.eot_id]]
-                [bob_msg], bob_logits = self.workflow.train_step([{
+                [bob_msg], bob_logits = self.workflow.ckpt_train_step([{
                     'header': ('assistant', 'bob'),
                     'prefill': 'To Alice: ',
                     'parent_ids': [n['id'] for n in bob_context]
@@ -216,7 +216,7 @@ class PrisonersTrainer(LoraTrainer):
                 metrics['train/bob_loss'] += F.cross_entropy(bob_logits.squeeze(), torch.tensor(bob_targets, device='cuda').squeeze())
             else:
                 bob_targets = [bob_ids + [self.eot_id]]
-                [bob_msg], bob_logits = self.workflow.train_step([{
+                [bob_msg], bob_logits = self.workflow.ckpt_train_step([{
                     'header': ('assistant', 'bob'),
                     'prefill': 'To Alice: ',
                     'parent_ids': [n['id'] for n in bob_context]
@@ -226,7 +226,7 @@ class PrisonersTrainer(LoraTrainer):
                 metrics['train/bob_loss'] += F.cross_entropy(bob_logits.squeeze(), torch.tensor(bob_targets, device='cuda').squeeze())
 
                 alice_targets = [alice_ids + [self.eot_id]]
-                [alice_msg], alice_logits = self.workflow.train_step([{
+                [alice_msg], alice_logits = self.workflow.ckpt_train_step([{
                     'header': ('assistant', 'alice'),
                     'prefill': 'To Bob: ',
                     'parent_ids': [n['id'] for n in alice_context]
@@ -243,7 +243,7 @@ class PrisonersTrainer(LoraTrainer):
         bob_context.append(bob_ask)
 
         target_decision_ids = [p + [self.eot_id] for p in result['decision_ids']]
-        _, decision_logits = self.workflow.train_step([
+        _, decision_logits = self.workflow.ckpt_train_step([
             {
                 'header': ('assistant', 'alice'),
                 'prefill': '{"decision": ',
@@ -313,7 +313,7 @@ def evaluate_prisoners(
     max_e2e=50,
 ) -> Dict:
     trainer.workflow.model.eval()
-    
+
 
     total_loss = 0
     for step, sample in enumerate(tqdm(val_dataset, desc='Validating')):

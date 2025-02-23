@@ -4,6 +4,7 @@ from contextlib import nullcontext
 from typing import Sequence, List, TypedDict, Tuple, Optional
 
 import torch
+from torch.utils.checkpoint import checkpoint
 
 from llama.model import Transformer
 from llama.generation import Llama, sample_top_p
@@ -241,6 +242,10 @@ class Workflow:
         self.cur_id += bsz
         combined_logits = torch.cat([first_logits, target_logits], dim=1)
         return outputs, combined_logits
+
+    @checkpoint
+    def ckpt_train_step(self, *args, **kwargs):
+        return self.train_step(*args, **kwargs)
 
     def wrap_outputs(
         self,
