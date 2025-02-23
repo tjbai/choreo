@@ -315,7 +315,7 @@ def cached_nll(
     payoff: Tuple[int, int, int, int] = (5, 3, 1, 0),
     alice_first: bool = True,
     alice_strategy: Optional[str] = None,
-):
+) -> Dict:
     workflow.reset()
     eot_id = workflow.tokenizer.eot_id
 
@@ -323,7 +323,7 @@ def cached_nll(
         outputs['plan_ids'][0] = outputs['plan_ids'][0][:-1]
     if outputs['plan_ids'][1][-1] == eot_id:
         outputs['plan_ids'][1] = outputs['plan_ids'][1][:-1]
-    
+
     alice_sys, bob_sys = workflow.insert([
         {'messages': [
             {'role': 'system', 'content': format_system_prompt('Alice', payoff, alice_strategy)},
@@ -416,7 +416,7 @@ def baseline_nll(
             outputs['alice_message_ids'][round] = outputs['alice_message_ids'][round][:-1]
         if outputs['bob_message_ids'][round][-1] == eot_id:
             outputs['bob_message_ids'][round] = outputs['bob_message_ids'][round][:-1]
-        
+
         alice_msg = {'role': 'assistant:alice', 'content': f'To Bob:{llama.tokenizer.decode(outputs['alice_message_ids'][round])}'}
         bob_msg = {'role': 'assistant:bob', 'content': f'To Alice:{llama.tokenizer.decode(outputs['bob_message_ids'][round])}'}
 

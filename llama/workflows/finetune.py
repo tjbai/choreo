@@ -13,6 +13,7 @@ import torch
 import torch.nn.functional as F
 from torch.optim import AdamW
 from torch.utils.data import Dataset, random_split
+import numpy as np
 from tqdm import tqdm
 
 from llama import Workflow, Llama
@@ -30,6 +31,8 @@ from llama.workflows.prisoners import (
     format_system_prompt as format_prisoners_system_prompt,
     plan_prompt,
     decide_prompt,
+    cached_nll,
+    prisoners_cached,
 )
 
 class TotDataset(Dataset):
@@ -46,11 +49,11 @@ class TotDataset(Dataset):
         return torch.load(self.problem_paths[idx], weights_only=True)
 
 class PrisonersDataset(Dataset):
-    def __init__(self, data_dir: str | Path, data_mix: Tuple[int, int, int]):
+    def __init__(self, data_dir: str | Path, strategy: Optional[str] = None):
         self.data_dir = Path(data_dir)
-        strategies = [None, 'always_cooperate', 'always_defect']
-        paths = (sorted(self.data_dir.glob(f'trace_{s}_*.pt')) for s in strategies)
-        self.paths = [p for path_list, w in zip(paths, data_mix) for p in path_list * w]
+        self.strategy = strategy
+        assert self.strategy in (None, 'always_cooperate', 'always_defect')
+        self.paths = sorted(self.data_dir.glob(f'trace_{self.strategy}_*.pt'))
 
     def __len__(self):
         return len(self.paths)
@@ -304,9 +307,48 @@ def evaluate_tot(trainer: TotTrainer, val_dataset: TotDataset, max_steps=None, m
     return metrics
 
 @torch.no_grad()
-def evaluate_prisoners(trainer: PrisonersTrainer, val_dataset: PrisonersDataset, max_steps=None, max_e2e=100):
+def evaluate_prisoners(
+    trainer: PrisonersTrainer,
+    val_dataset: PrisonersDataset,
+    max_steps=None,
+    max_e2e=50,
+) -> Dict:
     trainer.workflow.model.eval()
+
+    total_loss = 0
+    for step, sample in enumerate(tqdm(val_dataset, desc='Validating')):
+        if max_steps and step >= max_steps:
+            break
+        nll = cached_nll(
+            workflow=trainer.workflow,
+            outputs=sample['result'],
+            payoff=sample['payoff'],
+            alice_first=sample['alice_first'],
+            alice_strategy=sample['strategy'],
+        )
+        total_loss += np.mean(nll['bob_nll'][0])
+
+    metrics = {'val/bob_first_message_nll': total_loss / min(len(val_dataset), max_steps if max_steps else 1e9)}
+
+    e2e = {'bob_decisions': [], 'alice_decisions': []}
+    for seed in tqdm(range(max_e2e)):
+        result = prisoners_cached(
+            workflow=trainer.workflow,
+            payoff=(5,3,1,0),
+            alice_first=(seed < (max_e2e // 2)),
+            alice_strategy=val_dataset.strategy,
+            temperature=1.0,
+            top_p=1.0,
+            seed=seed+420,
+        )
+        e2e['bob_decisions'].append(result['bob_dialog'][-1]['content'])
+        e2e['alice_decisions'].append(result['alice_dialog'][-1]['content'])
+
+    metrics['val/bob_cooperate'] = sum(1 for d in e2e['bob_decisions'] if 'COOPERATE' in d) / max_e2e
+    metrics['val/alice_cooperate'] = sum(1 for d in e2e['alice_decisions'] if 'COOPERATE' in d) / max_e2e
+
     trainer.workflow.model.train()
+    return metrics
 
 def get_lr_factor(step, warmup_steps=10, total_steps=100):
     # steps = number of updates != number of samples
@@ -357,13 +399,13 @@ def init_task(
             output_dir=output_dir,
             learning_rate=learning_rate
         )
-        dataset = PrisonersDataset(data_path, task_params['data_mix'])
+        dataset = PrisonersDataset(data_path, task_params['strategy'])
         wandb.init(
             project="prisoners",
             config={
                 "steps": task_params['steps'],
                 "checkpoint_freq": task_params['checkpoint_freq'],
-                "data_mix": task_params['data_mix'],
+                "strategy": task_params['strategy'],
                 "lora_rank": task_params['lora_rank'],
                 "lora_alpha": task_params['lora_alpha'],
                 "lora_dropout": task_params['lora_dropout'],
@@ -412,7 +454,7 @@ def finetune(
     branching_factor: int = 8,
     voters: int = 4,
     # prisoners
-    data_mix: Tuple[int, int, int] = (1, 1, 1),
+    strategy: Optional[str] = None,
 ):
     set_model_env()
     workflow = Workflow.build(
@@ -436,7 +478,7 @@ def finetune(
         learning_rate=learning_rate,
         branching_factor=branching_factor,
         voters=voters,
-        data_mix=data_mix
+        strategy=strategy,
     )
 
     generator = torch.Generator(device="cuda").manual_seed(42)
@@ -459,7 +501,7 @@ def finetune(
     for epoch in range(epochs):
         indices = torch.randperm(len(train_dataset)).tolist()
         for step, idx in enumerate(tqdm(indices, desc=f"Epoch {epoch}")):
-            lr_factor = get_lr_factor(global_step, warmup_steps, total_steps)
+            lr_factor = get_lr_factor(global_step, warmup_steps, steps)
             for param_group in trainer.optimizer.param_groups:
                 param_group['lr'] = learning_rate * lr_factor
             sample = dataset[idx]
