@@ -28,10 +28,13 @@ with open('/home/tbai4/llama3/data/triviaqa/unfiltered-web-train.json') as f:
     problems = data['Data']
 
 outputs = []
-for seed in tqdm(range(100)):
+for seed in tqdm(range(500)):
     random.seed(seed)
     subset = random.sample(problems, k=2)
-    outputs.append(ask_sequential(workflow, subset))
+    outputs.append({
+        'subset': subset,
+        'outputs': ask_sequential(workflow, subset)
+    })
 
-with open('/home/tbai4/llama3/qa_n2.json', 'w') as f:
+with open('/home/tbai4/llama3/dumps/triviaqa/qa_n2.json', 'w') as f:
     json.dump(outputs, f)
