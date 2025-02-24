@@ -183,6 +183,7 @@ class PrisonersTrainer(LoraTrainer):
     def step(self, sample: Dict) -> Optional[Tuple[torch.Tensor, Dict]]:
         try:
             self.workflow.reset()
+
             payoff, alice_first, strategy, result = get('payoff', 'alice_first', 'strategy', 'result')(sample)
             metrics = defaultdict(lambda: torch.tensor(0.))
 
@@ -331,7 +332,6 @@ def evaluate_prisoners(
 ) -> Dict:
     trainer.workflow.model.eval()
 
-
     total_loss = 0
     for step, sample in enumerate(tqdm(val_dataset, desc='Validating')):
         if max_steps and step >= max_steps:
@@ -349,6 +349,7 @@ def evaluate_prisoners(
 
     e2e = {'bob_decisions': [], 'alice_decisions': []}
     for seed in tqdm(range(max_e2e)):
+        trainer.workflow.reset()
         result = prisoners_cached(
             workflow=trainer.workflow,
             payoff=(5,3,1,0),
@@ -481,7 +482,7 @@ def finetune(
     tokenizer_path: str,
     task: str,
     output_dir: str = "checkpoints",
-    max_seq_len: int = 4096,
+    max_seq_len: int = 8192,
     # training
     epochs: Optional[int] = 2,
     steps: Optional[int] = None,
