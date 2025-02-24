@@ -340,7 +340,7 @@ class PrisonersTrainer(LoraTrainer[PrisonersDataset]):
             else:
                 raise e
 
-    @torch.no_grad()
+    @torch.no_grad
     def evaluate(
         self,
         val_dataset: PrisonersDataset,
@@ -405,7 +405,7 @@ class QaTrainer(LoraTrainer[ListDataset]):
             for i, p in enumerate(subset)
         ])
 
-        targets = [p + [self.eot_id] for p in outputs['output_tokens']]
+        targets = [outputs['output_tokens'] + [self.eot_id]]
 
         _, logits = self.workflow.train_step([{
             'header': ('assistant', None),
@@ -421,7 +421,7 @@ class QaTrainer(LoraTrainer[ListDataset]):
         self,
         val_dataset: ListDataset,
         max_steps: Optional[int] = None,
-        max_e2e: int = 100
+        max_e2e: int = 20,
     ) -> Dict:
         self.workflow.model.eval()
 
@@ -439,7 +439,7 @@ class QaTrainer(LoraTrainer[ListDataset]):
                 break
             self.workflow.reset()
             outputs = ask_parallel(self.workflow, sample['subset'], annotate=True)
-            avg_resps += len(parse_items(outputs))
+            avg_resps += len(parse_items(self.workflow.tokenizer.decode(outputs['output_tokens'])))
         metrics['val/avg_resps'] = avg_resps / max_e2e
 
         self.workflow.model.train()
@@ -523,7 +523,7 @@ def init_task(
             }
         )
         return trainer, dataset
-    elif task == 'qa':
+    elif task == 'triviaqa':
         trainer = QaTrainer(
             workflow=workflow,
             output_dir=output_dir,
