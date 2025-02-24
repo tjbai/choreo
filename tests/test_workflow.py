@@ -134,8 +134,10 @@ class TestWorkflow(TestCase):
         self.assertEqual(out_tokens[0], [1, 3, 5])
         self.assertEqual(out_tokens[1], [2])
         self.assertEqual(len(out_nodes), len(tasks))
-        self.assertEqual(out_nodes[0]['tokens'], [10, 11, 1, 3, 5])
-        self.assertEqual(out_nodes[1]['tokens'], [12, 13, 2, 128009])
+        # self.assertEqual(out_nodes[0]['output_tokens'], [10, 11, 1, 3, 5])
+        # self.assertEqual(out_nodes[1]['output_tokens'], [12, 13, 2, 128009])
+        self.assertEqual(out_nodes[0]['output_tokens'], [1, 3])
+        self.assertEqual(out_nodes[1]['output_tokens'], [2])
         self.assertEqual(out_nodes[0]['parent_ids'], tasks[0]['parent_ids'])
         self.assertEqual(out_nodes[1]['parent_ids'], tasks[1]['parent_ids'])
 

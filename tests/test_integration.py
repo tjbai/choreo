@@ -19,7 +19,7 @@ class TestWorkflowIntegration(TestCase):
 
             def forward(self, tokens, start_pos, mask=None, position_ids=None):
                 self.call_history.append({
-                    "tokens": tokens.clone(),
+                    "output_tokens": tokens.clone(),
                     "start_pos": start_pos,
                     "mask": mask.clone() if mask is not None else None,
                     "position_ids": position_ids.clone() if position_ids is not None else None
@@ -225,7 +225,7 @@ class TestWorkflowIntegration(TestCase):
         ])
         self.assertEqual((cot["id"], vote["id"], finish["id"]), (1, 2, 3))
         self.assertEqual(len(self.model.call_history), 2)
-        self.assertEqual(self.model.call_history[-1]["tokens"].shape[1], sum(c["length"] for c in [cot, vote, finish]))
+        self.assertEqual(self.model.call_history[-1]["output_tokens"].shape[1], sum(c["output_length"] for c in [cot, vote, finish]))
         self.assertEqual(self.model.call_history[-1]["mask"].shape, (18, 19))
         triu = torch.full((6, 6), float("-inf"))
         triu = torch.triu(triu, diagonal=1)
@@ -245,9 +245,9 @@ class TestWorkflowIntegration(TestCase):
         ]
         proposal_tokens, proposal_nodes = get('tokens', 'nodes')(self.workflow.step(proposal_tasks, max_gen_len=3))
         self.assertEqual([node["id"] for node in proposal_nodes], [4, 5])
-        self.assertEqual(self.model.call_history[-1]["tokens"].shape[1], BRANCHES)
+        self.assertEqual(self.model.call_history[-1]["output_tokens"].shape[1], BRANCHES)
         self.assertEqual(self.model.call_history[-1]["mask"].shape[0], BRANCHES)
-        self.assertTrue(torch.all(self.model.call_history[-1]["tokens"] == torch.tensor([128009, 128009]))) # force decode top-off
+        self.assertTrue(torch.all(self.model.call_history[-1]["output_tokens"] == torch.tensor([128009, 128009]))) # force decode top-off
         self.assert_parents_unmasked(self.model.call_history[-1], proposal_tasks)
 
         # 3) Voters get to see prompt AND all branches
