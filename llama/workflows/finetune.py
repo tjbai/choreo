@@ -2,7 +2,8 @@ import os
 import math
 import json
 from pathlib import Path
-from typing import Dict, Any, List, Tuple, Optional, Callable
+from abc import ABC
+from typing import Dict, Any, List, Tuple, Optional, TypeVar, Generic
 from abc import abstractmethod
 from collections import Counter, defaultdict
 from operator import itemgetter as get
@@ -18,7 +19,6 @@ from tqdm import tqdm
 
 from llama import Workflow, Llama
 from llama.util import find_free_port
-from llama.workflow import Cached
 from llama.workflows.tot import (
     cot_prompt,
     finish_prompt,
@@ -36,6 +36,7 @@ from llama.workflows.prisoners import (
     baseline_nll,
     prisoners_cached,
 )
+from llama.workflows.qa import system_prompt as qa_system_prompt
 
 class TotDataset(Dataset):
     def __init__(self, data_dir: str | Path):
@@ -62,10 +63,10 @@ class PrisonersDataset(Dataset):
     def __getitem__(self, idx) -> Dict:
         return torch.load(self.paths[idx], weights_only=True)
 
-class QaDataset(Dataset):
+class ListDataset(Dataset):
     def __init__(self, data_path: str | Path):
         with open(data_path) as f:
-            self.data: List[Cached] = json.load(f)
+            self.data = json.load(f)
 
     def __len__(self):
         return len(self.data)
@@ -78,7 +79,8 @@ class QaDataset(Dataset):
 def reorder_targets(target_ids: List[List[int]]) -> torch.Tensor:
     return torch.tensor([t[0] for t in target_ids] + sum((t[1:] for t in target_ids), []), device='cuda')
 
-class LoraTrainer:
+DataType = TypeVar('DataType', bound=Dataset)
+class LoraTrainer(ABC, Generic[DataType]):
     def __init__(self, workflow: Workflow, output_dir: str, learning_rate: float):
         self.workflow = workflow
         self.model = self.workflow.model
@@ -87,6 +89,7 @@ class LoraTrainer:
         self.optimizer = AdamW(self.model.get_trainable_parameters(), lr=learning_rate)
         self.output_dir = Path(output_dir)
         self.output_dir.mkdir(exist_ok=True)
+        self.eot_id = self.workflow.tokenizer.eot_id
         num_trainable = sum(p.numel() for p in self.model.parameters() if p.requires_grad)
         num_total = sum(p.numel() for p in self.model.parameters())
         print(f"Training {num_trainable/1e6:.1f}M / {num_total/1e9:.1f}B parameters")
@@ -101,7 +104,16 @@ class LoraTrainer:
     def step(self, sample: Any) -> Any:
         pass
 
-class TotTrainer(LoraTrainer):
+    @abstractmethod
+    def evaluate(
+        self,
+        val_dataset: DataType,
+        max_steps: Optional[int] = int(1e9),
+        max_e2e: int = 50
+    ) -> Any:
+        pass
+
+class TotTrainer(LoraTrainer[TotDataset]):
     def __init__(self, workflow: Workflow, output_dir: str,  learning_rate: float, branching_factor: int, voters: int):
         super().__init__(workflow, output_dir, learning_rate)
         self.branching_factor = branching_factor
@@ -175,10 +187,60 @@ class TotTrainer(LoraTrainer):
 
         return total_loss, metrics
 
-class PrisonersTrainer(LoraTrainer):
+    @torch.no_grad
+    def evaluate(
+        self,
+        val_dataset: TotDataset,
+        max_steps=None,
+        max_e2e=100
+    ):
+        self.workflow.model.eval()
+
+        total_loss = 0
+        all_metrics = defaultdict(float)
+
+        for step, sample in enumerate(tqdm(val_dataset, desc="Validating")):
+            if max_steps and step >= max_steps:
+                break
+            loss, metrics = self.step(sample)
+            total_loss += loss
+            for k, v in metrics.items():
+                all_metrics[k] += v.item()
+
+        N = len(val_dataset)
+        metrics = {
+            'val/loss': total_loss / N,
+            **{k.replace('train/', 'val/'): v / N for k, v in all_metrics.items()}
+        }
+
+        solutions = []
+        problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
+        problems = problems[:max_e2e]
+        for problem in tqdm(problems, desc="Running e2e validation"):
+            self.workflow.reset()
+            solutions.append(tot_cached(
+                workflow=self.workflow,
+                problem=problem['problem'],
+                branching_factor=self.branching_factor,
+                voters=self.voters,
+            ))
+
+        self.llama.model.reshape_cache(4)
+        self.llama.model.set_adapter_state(enabled=False)
+        try:
+            correct = eval_solutions(self.llama, solutions, problems)
+            metrics['val/correct'] = sum(correct) / len(correct)
+        finally:
+            self.llama.model.set_adapter_state(enabled=True)
+            self.llama.model.reshape_cache(1)
+
+        self.workflow.model.train()
+        return metrics
+
+
+class PrisonersTrainer(LoraTrainer[PrisonersDataset]):
     def __init__(self, workflow: Workflow, output_dir: str,  learning_rate: float):
         super().__init__(workflow, output_dir, learning_rate)
-        self.eot_id = self.workflow.tokenizer.eot_id
 
     def step(self, sample: Dict) -> Optional[Tuple[torch.Tensor, Dict]]:
         try:
@@ -274,99 +336,90 @@ class PrisonersTrainer(LoraTrainer):
             else:
                 raise e
 
-class QaTrainer(LoraTrainer):
-    def step(self, sample: Cached) -> Tuple[torch.Tensor, Dict]:
+    @torch.no_grad()
+    def evaluate(
+        self,
+        val_dataset: PrisonersDataset,
+        max_steps=None,
+        max_e2e=50,
+    ) -> Dict:
+        self.workflow.model.eval()
+
+        total_loss = 0
+        for step, sample in enumerate(tqdm(val_dataset, desc='Validating')):
+            if max_steps and step >= max_steps:
+                break
+            nll = cached_nll(
+                workflow=self.workflow,
+                outputs=sample['result'],
+                payoff=sample['payoff'],
+                alice_first=sample['alice_first'],
+                alice_strategy=sample['strategy'],
+            )
+            total_loss += np.mean(nll['bob_nll'][0])
+
+        metrics = {'val/bob_first_message_nll': total_loss / min(len(val_dataset), max_steps if max_steps else 1e9)}
+
+        e2e = {'bob_decisions': [], 'alice_decisions': []}
+        for seed in tqdm(range(max_e2e)):
+            self.workflow.reset()
+            result = prisoners_cached(
+                workflow=self.workflow,
+                payoff=(5,3,1,0),
+                alice_first=(seed < (max_e2e // 2)),
+                alice_strategy=val_dataset[0]['strategy'],
+                temperature=1.0,
+                top_p=1.0,
+                seed=seed+420,
+            )
+            e2e['bob_decisions'].append(self.workflow.tokenizer.decode(result['bob_context'][-1]['output_tokens']))
+            e2e['alice_decisions'].append(self.workflow.tokenizer.decode(result['alice_context'][-1]['output_tokens']))
+
+        metrics['val/bob_cooperate'] = sum(1 for d in e2e['bob_decisions'] if 'COOPERATE' in d) / max_e2e
+        metrics['val/alice_cooperate'] = sum(1 for d in e2e['alice_decisions'] if 'COOPERATE' in d) / max_e2e
+
+        self.workflow.model.train()
+        return metrics
+
+class QaTrainer(LoraTrainer[ListDataset]):
+    def step(self, sample: Dict) -> Tuple[torch.Tensor, Dict]:
+        self.workflow.reset()
+        subset, outputs = get('subset', 'outputs')(sample)
+
+        [prompt] = self.workflow.insert([
+            {
+                'messages': [{'role': 'system', 'content': qa_system_prompt}],
+                'parent_ids': []
+            }
+        ], track_gradients=True)
+
+        questions = self.workflow.insert([
+            {
+                'messages': [{'role': 'user', 'content': f'Question {i+1}: {p['Question']}'}],
+                'parent_ids': [prompt['id']],
+            }
+            for i, p in enumerate(subset)
+        ])
+
+        targets = [p + [self.eot_id] for p in outputs['output_tokens']]
+
+        _, logits = self.workflow.train_step([{
+            'header': ('assistant', None),
+            'prefill': '',
+            'parent_ids': [prompt['id']] + [q['id'] for q in questions]
+        }], targets)
+
+        loss = F.cross_entropy(logits.squeeze(), torch.tensor(targets, device='cuda').squeeze())
+        return loss, {'train/loss': loss}
+
+    @torch.no_grad
+    def evaluate(
+        self,
+        val_dataset: ListDataset,
+        max_steps=None,
+        max_e2e=100
+    ):
         pass
-
-@torch.no_grad()
-def evaluate_tot(trainer: TotTrainer, val_dataset: TotDataset, max_steps=None, max_e2e=100):
-    trainer.workflow.model.eval()
-
-    total_loss = 0
-    all_metrics = defaultdict(float)
-
-    for step, sample in enumerate(tqdm(val_dataset, desc="Validating")):
-        if max_steps and step >= max_steps:
-            break
-        loss, metrics = trainer.step(sample)
-        total_loss += loss
-        for k, v in metrics.items():
-            all_metrics[k] += v.item()
-
-    N = len(val_dataset)
-    metrics = {
-        'val/loss': total_loss / N,
-        **{k.replace('train/', 'val/'): v / N for k, v in all_metrics.items()}
-    }
-
-    solutions = []
-    problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
-    problems = problems[:max_e2e]
-    for problem in tqdm(problems, desc="Running e2e validation"):
-        trainer.workflow.reset()
-        solutions.append(tot_cached(
-            workflow=trainer.workflow,
-            problem=problem['problem'],
-            branching_factor=trainer.branching_factor,
-            voters=trainer.voters,
-        ))
-
-    trainer.llama.model.reshape_cache(4)
-    trainer.llama.model.set_adapter_state(enabled=False)
-    try:
-        correct = eval_solutions(trainer.llama, solutions, problems)
-        metrics['val/correct'] = sum(correct) / len(correct)
-    finally:
-        trainer.llama.model.set_adapter_state(enabled=True)
-        trainer.llama.model.reshape_cache(1)
-
-    trainer.workflow.model.train()
-    return metrics
-
-@torch.no_grad()
-def evaluate_prisoners(
-    trainer: PrisonersTrainer,
-    val_dataset: PrisonersDataset,
-    max_steps=None,
-    max_e2e=50,
-) -> Dict:
-    trainer.workflow.model.eval()
-
-    total_loss = 0
-    for step, sample in enumerate(tqdm(val_dataset, desc='Validating')):
-        if max_steps and step >= max_steps:
-            break
-        nll = cached_nll(
-            workflow=trainer.workflow,
-            outputs=sample['result'],
-            payoff=sample['payoff'],
-            alice_first=sample['alice_first'],
-            alice_strategy=sample['strategy'],
-        )
-        total_loss += np.mean(nll['bob_nll'][0])
-
-    metrics = {'val/bob_first_message_nll': total_loss / min(len(val_dataset), max_steps if max_steps else 1e9)}
-
-    e2e = {'bob_decisions': [], 'alice_decisions': []}
-    for seed in tqdm(range(max_e2e)):
-        trainer.workflow.reset()
-        result = prisoners_cached(
-            workflow=trainer.workflow,
-            payoff=(5,3,1,0),
-            alice_first=(seed < (max_e2e // 2)),
-            alice_strategy=val_dataset[0]['strategy'],
-            temperature=1.0,
-            top_p=1.0,
-            seed=seed+420,
-        )
-        e2e['bob_decisions'].append(trainer.workflow.tokenizer.decode(result['bob_context'][-1]['output_tokens']))
-        e2e['alice_decisions'].append(trainer.workflow.tokenizer.decode(result['alice_context'][-1]['output_tokens']))
-
-    metrics['val/bob_cooperate'] = sum(1 for d in e2e['bob_decisions'] if 'COOPERATE' in d) / max_e2e
-    metrics['val/alice_cooperate'] = sum(1 for d in e2e['alice_decisions'] if 'COOPERATE' in d) / max_e2e
-
-    trainer.workflow.model.train()
-    return metrics
 
 def get_lr_factor(step, warmup_steps=10, total_steps=100):
     # steps = number of updates != number of samples
@@ -391,7 +444,7 @@ def init_task(
     lora_dropout: float,
     learning_rate: float,
     **task_params
-) -> Tuple[LoraTrainer, Dataset, Callable]:
+) -> Tuple[LoraTrainer, Dataset]:
     if task == 'tot':
         trainer = TotTrainer(
             workflow,
@@ -412,7 +465,7 @@ def init_task(
                 "learning_rate": learning_rate,
             }
         )
-        return trainer, dataset, evaluate_tot
+        return trainer, dataset
     elif task == 'prisoners':
         trainer = PrisonersTrainer(
             workflow=workflow,
@@ -445,10 +498,14 @@ def init_task(
                 "learning_rate": learning_rate,
             }
         )
-        return trainer, dataset, evaluate_prisoners
+        return trainer, dataset
     elif task == 'qa':
-        trainer = QaTrainer()
-        dataset = QaDataset(data_path)
+        trainer = QaTrainer(
+            workflow=workflow,
+            output_dir=output_dir,
+            learning_rate=learning_rate
+        )
+        dataset = ListDataset(data_path)
         wandb.init(
             project='triviaqa',
             config={
@@ -458,6 +515,7 @@ def init_task(
                 "learning_rate": learning_rate,
             }
         )
+        return trainer, dataset
     raise NotImplementedError()
 
 def training_schedule(
@@ -539,7 +597,7 @@ def finetune(
     print(f"Val Dataset: {len(val_dataset)} samples")
 
     print("Sanity check:")
-    eval_fn(trainer, val_dataset, max_steps=1, max_e2e=1)
+    trainer.evaluate(val_dataset, max_steps=1, max_e2e=1)
     print("Passed!")
 
     epochs, steps, warmup_steps = training_schedule(
@@ -569,7 +627,7 @@ def finetune(
                 trainer.optimizer.zero_grad()
                 global_step += 1
                 if (global_step + 1) % validation_freq == 0:
-                    val_metrics = eval_fn(trainer, val_dataset)
+                    val_metrics = trainer.evaluate(val_dataset)
                     wandb.log(val_metrics)
                 metrics.update({'lr': lr_factor})
                 wandb.log(metrics)

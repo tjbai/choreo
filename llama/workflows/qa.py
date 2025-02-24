@@ -3,6 +3,8 @@ from operator import itemgetter as get
 
 from llama import Workflow
 
+system_prompt = 'Answer ALL of the user\'s questions. Answer with an numbered list. Do not include extraneous text.'
+
 def parse_items(text):
     lines = [line.strip() for line in text.split('\n') if line.strip()]
     items = [line.split('. ', 1)[1] if '. ' in line else line for line in lines]
@@ -13,10 +15,9 @@ def ask_sequential(workflow: Workflow, subset: List[Dict]) -> Dict:
 
     [prompt] = workflow.insert([
         {
-            'messages': (
-                [{'role': 'system', 'content': 'Answer ALL of the user\'s questions. Answer with an numbered list. Do not include extraneous text.'}] +
-                [{'role': 'user', 'content': f'Question {i+1}: {p['Question']}'} for i, p in enumerate(subset)]
-            ),
+            'messages': ([
+                {'role': 'system', 'content': system_prompt}] +
+                [{'role': 'user', 'content': f'Question {i+1}: {p['Question']}'} for i, p in enumerate(subset)]),
             'parent_ids': []
         }
     ])
@@ -36,7 +37,7 @@ def ask_parallel(workflow, subset, annotate=False, compact=False):
 
     [prompt] = workflow.insert([
         {
-            'messages': [{'role': 'system', 'content': 'Answer ALL of the user\'s questions. Answer with an numbered list. Do not include extraneous text.'}],
+            'messages': [{'role': 'system', 'content': system_prompt}],
             'parent_ids': []
         }
     ])
