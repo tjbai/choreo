@@ -36,7 +36,11 @@ from llama.workflows.prisoners import (
     baseline_nll,
     prisoners_cached,
 )
-from llama.workflows.qa import system_prompt as qa_system_prompt
+from llama.workflows.qa import (
+    system_prompt as qa_system_prompt,
+    ask_parallel,
+    parse_items
+)
 
 class TotDataset(Dataset):
     def __init__(self, data_dir: str | Path):
@@ -191,8 +195,8 @@ class TotTrainer(LoraTrainer[TotDataset]):
     def evaluate(
         self,
         val_dataset: TotDataset,
-        max_steps=None,
-        max_e2e=100
+        max_steps: Optional[int] = None,
+        max_e2e: int = 100
     ):
         self.workflow.model.eval()
 
@@ -340,8 +344,8 @@ class PrisonersTrainer(LoraTrainer[PrisonersDataset]):
     def evaluate(
         self,
         val_dataset: PrisonersDataset,
-        max_steps=None,
-        max_e2e=50,
+        max_steps: Optional[int] = None,
+        max_e2e: int = 50,
     ) -> Dict:
         self.workflow.model.eval()
 
@@ -416,10 +420,30 @@ class QaTrainer(LoraTrainer[ListDataset]):
     def evaluate(
         self,
         val_dataset: ListDataset,
-        max_steps=None,
-        max_e2e=100
-    ):
-        pass
+        max_steps: Optional[int] = None,
+        max_e2e: int = 100
+    ) -> Dict:
+        self.workflow.model.eval()
+
+        total_loss = 0
+        for step, sample in enumerate(tqdm(val_dataset, desc='Validating')):
+            if max_steps and step >= max_steps:
+                break
+            loss, _ = self.step(sample)
+            total_loss += loss
+        metrics = {'val/loss': total_loss / min(len(val_dataset), max_steps if max_steps else 1e9)}
+
+        avg_resps = 0
+        for step, sample in enumerate(tqdm(val_dataset, desc='Running E2E')):
+            if step >= max_e2e:
+                break
+            self.workflow.reset()
+            outputs = ask_parallel(self.workflow, sample['subset'], annotate=True)
+            avg_resps += len(parse_items(outputs))
+        metrics['val/avg_resps'] = avg_resps / max_e2e
+
+        self.workflow.model.train()
+        return metrics
 
 def get_lr_factor(step, warmup_steps=10, total_steps=100):
     # steps = number of updates != number of samples
@@ -576,7 +600,7 @@ def finetune(
     # always reshape just in case
     workflow.model.reshape_cache(1)
 
-    trainer, dataset, eval_fn = init_task(
+    trainer, dataset = init_task(
         task=task,
         workflow=workflow,
         data_path=data_path,
