@@ -283,3 +283,14 @@ TriviaQA, N=2 questions, 30 samples:
 Parallel generation will often generate the _same_ outputs as baseline.
 
 Hopefully, this means it'll be easy to elicit the right behavior with fine-tuning!
+
+## 2/23: 3b081cad985d898c999f6214e2bd1cf12ae70901
+
+TriviaQA, N=2 questions, 30 samples from the first half of the dev set:
+
+| Condition       | Both | Q1 | Q2 | None |
+|-----------------|------|----|----|------|
+| Baseline        | 14   | 8  | 3  | 5    |
+| Parallel        | 0    | 10 | 6  | 14   |
+| Parallel, FT200 | 14   | 6  | 7  | 3    |
+| Parallel, FT400 | 15   | 4  | 8  | 2    |
