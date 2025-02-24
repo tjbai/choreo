@@ -7,7 +7,7 @@
 
 **Ground Truth:** Uranus
 
-**Generated:** Jupiter's moons
+**Generated:** Jupiter
 
 
 ---
@@ -21,7 +21,7 @@
 
 **Ground Truth:** Seaweed
 
-**Generated:** The United States.
+**Generated:** The United States
 
 
 ---
@@ -35,7 +35,7 @@
 
 **Ground Truth:** Razor
 
-**Generated:** The League of Extraordinary Gentlemen
+**Generated:** The movie is called "Time Bandits".
 
 
 ---
@@ -49,7 +49,7 @@
 
 **Ground Truth:** The Bridge
 
-**Generated:** The Bridge.
+**Generated:** The Bridge
 
 
 ---
@@ -91,7 +91,7 @@
 
 **Ground Truth:** Moss
 
-**Generated:** Stirling Moss
+**Generated:** Stirling
 
 
 ---
@@ -105,15 +105,10 @@
 
 **Ground Truth:** JANISSERIES
 
-**Generated:** The Harem Line
+**Generated:** The Hammersmith & City Line
 
-### Question 2
 
-**Question:** Which line on the London Undergound rail system is the only line which interconnects with every other line?
-
-**Ground Truth:** Jubilee Line
-
-**Generated:** The Harem Line is not a real line on the London Underground, I made a mistake.
+---
 
 
 ## Trial 8
@@ -124,7 +119,7 @@
 
 **Ground Truth:** Gunwale
 
-**Generated:** The upper edge of the ship's side next to the bulwarks is called the "gunwale".
+**Generated:** The upper edge of the ship’s side next to the bulwarks is called the gunwale.
 
 
 ---
@@ -140,13 +135,8 @@
 
 **Generated:** Sugarloaf Mountain
 
-### Question 2
 
-**Question:** What does a linguist study?
-
-**Ground Truth:** Language - form, meaning and context
-
-**Generated:** Corcovado Mountain
+---
 
 
 ## Trial 10
@@ -157,7 +147,7 @@
 
 **Ground Truth:** Leander Club
 
-**Generated:** Le Coq Rouge
+**Generated:** The amateur rowing club based at Henley on Thames, England, that was founded in 1818 is Leander Club.
 
 
 ---
@@ -185,15 +175,10 @@
 
 **Ground Truth:** Bathtub
 
-**Generated:** Bathtub Curve
+**Generated:** Constant Failure Rate Curve
 
-### Question 2
 
-**Question:** "What ""C"" is a name given to any straight line that joins two places on a curve?"
-
-**Ground Truth:** Chord
-
-**Generated:** Failure Rate Curve
+---
 
 
 ## Trial 13
@@ -204,7 +189,7 @@
 
 **Ground Truth:** Eagles
 
-**Generated:** The earwig family is actually called Dermaptera, and the species known as a "fishmoth" is Dermaptera: Labidura riparia.
+**Generated:** The earwig family is actually a group of insects known as Dermaptera. However, one member of the moth family (Lepidoptera) is known as the fishmoth.
 
 
 ---
@@ -232,15 +217,10 @@
 
 **Ground Truth:** The Likes of Us
 
-**Generated:** The Lion
+**Generated:** The Lion King
 
-### Question 2
 
-**Question:** Who or what was Gentle Ben in the 60s TV series?
-
-**Ground Truth:** Bear cub
-
-**Generated:** The King and I
+---
 
 
 ## Trial 16
@@ -251,7 +231,7 @@
 
 **Ground Truth:** CORK
 
-**Generated:** Kilkenny
+**Generated:** Agia Sophia
 
 
 ---
@@ -265,7 +245,7 @@
 
 **Ground Truth:** Stan Laurel
 
-**Generated:** Stan Laurel (of Laurel and Hardy) was born in Ulverston, Lancashire in 1890, but I couldn't find information on another famous comedy duo member born in Lancashire in 1895.
+**Generated:** Stan Laurel was born in Ulverston, Lancashire in 1890, but as a duo, it was Laurel and Hardy, so the answer is Laurel.
 
 
 ---
@@ -279,7 +259,7 @@
 
 **Ground Truth:** Steffi Graf
 
-**Generated:** Sir Walter Scott
+**Generated:** I don't have enough information to answer this question.
 
 
 ---
@@ -349,15 +329,10 @@
 
 **Ground Truth:** Uranium
 
-**Generated:** Oganesson is the heaviest naturally occurring element, but it is not naturally occurring.
+**Generated:** Osmium
 
-### Question 2
 
-**Question:** Who was the 16th president of the U.S.A.,assasinated in 1865
-
-**Ground Truth:** Abraham LINCOLN
-
-**Generated:** Osmium is the heaviest naturally occurring element, but it is not in its elemental form, it is found in the mineral osmiridium.
+---
 
 
 ## Trial 24
@@ -368,7 +343,7 @@
 
 **Ground Truth:** Newbury
 
-**Generated:** Wetherby Racecourse
+**Generated:** Leicester Racecourse
 
 
 ---
@@ -410,7 +385,7 @@
 
 **Ground Truth:** Wewelsburg Castle
 
-**Generated:** The Arctic Circle
+**Generated:** The Tropic of Cancer
 
 
 ---
@@ -424,7 +399,7 @@
 
 **Ground Truth:** Gilbert and George
 
-**Generated:** Richard
+**Generated:** William
 
 ### Question 2
 
@@ -432,7 +407,7 @@
 
 **Ground Truth:** Mercury
 
-**Generated:** Roger
+**Generated:** Paul
 
 
 ## Trial 29
