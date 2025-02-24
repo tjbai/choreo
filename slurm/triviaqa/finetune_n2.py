@@ -11,8 +11,8 @@ finetune(
     gradient_accumulation_steps=4,
     checkpoint_freq=50,
     validation_freq=50,
-    lora_alpha=32,
-    lora_rank=64,
+    lora_rank=32,
+    lora_alpha=64,
     lora_dropout=0.05,
     learning_rate=5e-5,
 )
