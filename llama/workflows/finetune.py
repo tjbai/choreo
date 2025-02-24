@@ -100,7 +100,8 @@ class LoraTrainer(ABC, Generic[DataType]):
 
     def save_checkpoint(self, epoch: int, step: int):
         torch.save({
-            "lora": self.model.state_dict(),
+            # "lora": self.model.state_dict(),
+            "trainable_params": [p for p in self.model.get_trainable_parameters()],
             "optimizer": self.optimizer.state_dict()
         }, self.output_dir / f"lora_epoch-{epoch}_step-{step}.pt")
 
