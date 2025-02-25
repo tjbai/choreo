@@ -69,8 +69,7 @@ for strategy in ['always_cooperate']:
         data = baseline if strategy is None else (coop if strategy == 'always_cooperate' else defect)
         assert len(data) == 100
 
-        total = 0
-        N = 0
+        residuals = []
         for seed, example in enumerate(tqdm(data, total=100, desc='Estimating KL')):
             try:
                 baseline = baseline_nll(
@@ -86,20 +85,20 @@ for strategy in ['always_cooperate']:
                     alice_strategy=strategy,
                 )
 
-                total += np.mean(cached['bob_nll'][0]) - np.mean(baseline['bob_nll'][0])
-                N += 1
+                residuals.append(np.mean(cached['bob_nll'][0]) - np.mean(baseline['bob_nll'][0]))
             except Exception as e:
                 print(f'Encountered {e}')
 
-        print(f'Forward KL: {total / N}')
+        print(f'Reverse KL: {np.mean(residuals)}')
+        print(f'Std error: {np.std(residuals, ddof=1) / np.sqrt(len(residuals))}')
 
         alice_decisions = []
         bob_decisions = []
         for seed, example in enumerate(tqdm(data, total=100)):
             if (key := (os.path.basename(str(ckpt_path)), seed, strategy)) in existing_results:
-                data = existing_results[key]
-                alice_decisions.append(data['alice_final'])
-                bob_decisions.append(data['bob_final'])
+                existing = existing_results[key]
+                alice_decisions.append(existing['alice_final'])
+                bob_decisions.append(existing['bob_final'])
                 continue
 
             try:
@@ -133,7 +132,6 @@ for strategy in ['always_cooperate']:
                     'leak_setting': (False, False),
                     'payoff': (5, 3, 1, 0),
                     'alice_first': (seed < 50),
-                    'outputs': cached_outputs,
                     'alice_final': alice_decision,
                     'bob_final': bob_decision,
                     'ckpt_path': ckpt_path,
