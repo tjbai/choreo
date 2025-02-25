@@ -51,7 +51,7 @@ with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline.jsonl') as f:
     coop = baseline_data[100:200]
     defect = baseline_data[200:]
 
-for strategy in [None, 'always_cooperate', 'always_defect']:
+for strategy in [None]:
     existing_results, output_file = load_existing_results(strategy)
     base_path = Path(f'/scratch4/jeisner1/tjbai/checkpoints/prisoners/{strategy if strategy else 'baseline'}')
     for ckpt in os.listdir(base_path)[:-1]:
@@ -75,21 +75,21 @@ for strategy in [None, 'always_cooperate', 'always_defect']:
             try:
                 baseline = baseline_nll(
                     workflow,
-                    example,
+                    example['outputs'],
                     alice_first=(seed < 50),
                     alice_strategy=strategy,
                 )
                 cached = cached_nll(
                     workflow,
-                    example,
+                    example['outputs'],
                     alice_first=(seed < 50),
                     alice_strategy=strategy,
                 )
 
                 total += np.mean(cached['bob_nll'][0]) - np.mean(baseline['bob_nll'][0])
                 N += 1
-            except:
-                continue
+            except Exception as e:
+                print(f'Encountered {e}')
 
         print(f'Forward KL: {total / N}')
 
