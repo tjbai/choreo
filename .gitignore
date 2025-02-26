@@ -42,7 +42,6 @@
 data/squad/train-v2.0.json
 data/triviaqa
 data/triviaqa.tar.gz
-dumps/triviaqa/qa_n16.json
 
 # misc
 !tokenizer.model
