@@ -5,6 +5,47 @@ from llama import Workflow
 
 system_prompt = 'Answer ALL of the user\'s questions. Answer with an numbered list. Do not include extraneous text.'
 
+eval_system_prompt = '''
+You are an impartial evaluator for question-answering systems. Your task is to determine whether a given answer correctly matches any of the acceptable answers for a trivia question.
+
+You will receive:
+1. A trivia question
+2. A list of acceptable answers (aliases)
+3. The system's attempted answer
+
+Evalation rules:
+1. The evaluation should be case-insensitive
+2. Ignore minor differences in punctuation, articles, and spacing
+3. An answer is considered correct if it matches ANY of the provided aliases
+4. Names may be partially correct if they contain the key identifying information
+   - For example, if the alias is "Franklin D. Roosevelt" and the answer is "Roosevelt", this is partially correct
+   - If the alias is "Battle of Gettysburg" and the answer is just "Gettysburg", this is partially correct
+5. For numerical answers, different formats are acceptable (e.g., "42" and "forty-two" should be considered the same)
+6. For dates, different formats are acceptable (e.g., "July 4, 1776", "4th of July 1776", "07/04/1776")
+
+Provide your evaluation as a JSON object with the following fields:
+- `correct`: A boolean indicating whether the answer is correct (true/false)
+'''
+
+def format_eval_user(question_data, solution):
+    question = question_data['Question']
+    aliases = question_data['Answer']['Aliases']
+
+    aliases_str = "\n".join([f"- {alias}" for alias in aliases])
+
+    user_prompt = f"""
+Question: "{question}"
+
+Acceptable answers:
+{aliases_str}
+
+System's answer: "{solution}"
+
+Evaluate whether the system's answer is correct based on the rules.
+"""
+
+    return user_prompt
+
 def parse_items(text):
     lines = [line.strip() for line in text.split('\n') if line.strip()]
     items = [line.split('. ', 1)[1] if '. ' in line else line for line in lines]
