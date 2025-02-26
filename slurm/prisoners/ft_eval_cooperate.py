@@ -54,7 +54,7 @@ with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline.jsonl') as f:
 for strategy in ['always_cooperate']:
     existing_results, output_file = load_existing_results(strategy)
     base_path = Path(f'/scratch4/jeisner1/tjbai/checkpoints/prisoners/{strategy if strategy else 'baseline'}')
-    for ckpt in os.listdir(base_path)[:-1]:
+    for ckpt in sorted(os.listdir(base_path))[:-1]:
         print(f'Strategy: {strategy}, Checkpoint: {ckpt}')
 
         ckpt_path = base_path / ckpt
