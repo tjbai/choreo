@@ -583,20 +583,23 @@ def finetune(
     voters: int = 4,
     # prisoners
     strategy: Optional[str] = None,
+    # optionally, pass in a pre-configured workflow
+    workflow: Optional[Workflow] = None,
 ):
-    set_model_env()
-    workflow = Workflow.build(
-        ckpt_dir=ckpt_dir,
-        tokenizer_path=tokenizer_path,
-        max_seq_len=max_seq_len,
-        max_batch_size=1,
-        model_parallel_size=1,
-        max_nodes=100,
-        use_lora=True,
-        lora_rank=lora_rank,
-        lora_alpha=lora_alpha,
-        lora_dropout=lora_dropout,
-    )
+    if workflow is None:
+        set_model_env()
+        workflow = Workflow.build(
+            ckpt_dir=ckpt_dir,
+            tokenizer_path=tokenizer_path,
+            max_seq_len=max_seq_len,
+            max_batch_size=1,
+            model_parallel_size=1,
+            max_nodes=100,
+            use_lora=True,
+            lora_rank=lora_rank,
+            lora_alpha=lora_alpha,
+            lora_dropout=lora_dropout,
+        )
 
     # always reshape just in case
     workflow.model.reshape_cache(1)
