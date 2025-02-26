@@ -69,6 +69,7 @@ def evaluate_answers(llama, answers, problem_sizes):
         results[n] = dict(correct)
     return results
 
+### Baseline
 print('Evaluating baseline (sequential)')
 workflow.model.set_adapter_state(enabled=False)
 sequential_answers = generate_answers(
@@ -82,20 +83,21 @@ sequential_results = evaluate_answers(llama, sequential_answers, problem_sizes)
 for n, correct in sequential_results.items():
     print(f"Sequential n={n}: {correct}")
 
+### Checkpoints
 for ckpt_path in checkpoints:
     print(f'\nEvaluating {os.path.basename(ckpt_path)}')
-
     ckpt = torch.load(ckpt_path, weights_only=True)
     for weight, param in zip(ckpt['trainable_params'], workflow.model.get_trainable_parameters()):
         param.data.copy_(weight)
 
+    workflow.model.reshape_cache(1)
     workflow.model.set_adapter_state(enabled=True)
-
     parallel_answers = generate_answers(
         workflow, problems, N, problem_sizes, ask_parallel, prefix="Parallel"
     )
 
-    workflow.model.reshape_cache(1)
+    workflow.model.reshape_cache(16)
+    workflow.model.set_adapter_state(enabled=False)
     parallel_results = evaluate_answers(llama, parallel_answers, problem_sizes)
     for n, correct in parallel_results.items():
         print(f"Parallel n={n}: {correct}")
