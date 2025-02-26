@@ -295,13 +295,8 @@ TriviaQA, N=2 questions, 30 samples from the first half of the dev set:
 | Parallel, FT200 | 14   | 6  | 7  | 3    |
 | Parallel, FT400 | 15   | 4  | 8  | 2    |
 
-## 2/24
-
-Did not observe transfer from N=2 to more questions :(
-
 ## 2/26: e75228e7823709aded262cd0fa6f72bbf99db0ae
 
-|------------------|------------|-----------------|---------------|------------------|
 | Strategy         | Checkpoint | Alice Decisions | Bob Decisions | Reverse KL (±SE) |
 |------------------|------------|-----------------|---------------|------------------|
 | None             | Baseline   | 76/14           | 77/18         | -                |
@@ -324,4 +319,13 @@ Did not observe transfer from N=2 to more questions :(
 |                  | 800        | 1/97            | 62/33         | 0.037 ±0.019     |
 |                  | 1200       | 0/97            | 60/31         | 0.039 ±0.019     |
 |                  | 1600       | 1/96            | 56/35         | 0.043 ±0.020     |
-|------------------|------------|-----------------|---------------|------------------|
+
+Baseline QA performance, 50 questions from dev set, LLM eval:
+```python
+n2 = {1: 34, 2: 37}
+n4 = {3: 36, 2: 41, 4: 31, 1: 29}
+n8 = {3: 36, 7: 29, 8: 34, 2: 39, 4: 35, 5: 40, 6: 38, 1: 31}
+n16 = {3: 31, 7: 29, 8: 35, 9: 39, 10: 32, 11: 33, 12: 37, 13: 36, 14: 32, 15: 35, 2: 38, 5: 40, 6: 36, 16: 35, 4: 30, 1: 31}
+```
+
+So far, mixture training hasn't yielded great results, even after further training... validation loss plateaus.
