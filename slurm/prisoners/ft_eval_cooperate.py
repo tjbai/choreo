@@ -72,20 +72,20 @@ for strategy in ['always_cooperate']:
         residuals = []
         for seed, example in enumerate(tqdm(data, total=100, desc='Estimating KL')):
             try:
-                baseline = baseline_nll(
+                ent = baseline_nll(
                     workflow,
                     example['outputs'],
                     alice_first=(seed < 50),
                     alice_strategy=strategy,
                 )
-                cached = cached_nll(
+                xent = cached_nll(
                     workflow,
                     example['outputs'],
                     alice_first=(seed < 50),
                     alice_strategy=strategy,
                 )
 
-                residuals.append(np.mean(cached['bob_nll'][0]) - np.mean(baseline['bob_nll'][0]))
+                residuals.append(np.mean(xent['bob_nll'][0]) - np.mean(ent['bob_nll'][0]))
             except Exception as e:
                 print(f'Encountered {e}')
 
@@ -134,7 +134,7 @@ for strategy in ['always_cooperate']:
                     'alice_first': (seed < 50),
                     'alice_final': alice_decision,
                     'bob_final': bob_decision,
-                    'ckpt_path': ckpt_path,
+                    'ckpt_path': str(ckpt_path),
                 }
                 append_to_jsonl(output_data, output_file)
 
