@@ -155,7 +155,7 @@ def binomial_test(_model1: List[bool], _model2: List[bool]) -> Dict:
     )
 
     return {
-        'result': p_value,
+        'result': min(p_value, 1),
         'both_correct': both_correct,
         'both_incorrect': both_incorrect,
         'model1_correct': model1_only,
