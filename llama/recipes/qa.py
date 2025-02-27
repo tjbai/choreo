@@ -75,6 +75,7 @@ def main(
     finetune(
         task='triviaqa',
         data_path=tmp_file,
+        workflow=workflow,
         ckpt_dir='/dev/null',
         tokenizer_path='/dev/null',
         output_dir='/dev/null',
