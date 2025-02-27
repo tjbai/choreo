@@ -67,30 +67,32 @@ def main(
     with open(tmp_file, 'w') as f:
         json.dump(outputs, f)
 
-    # 2. fine-tune
-    workflow.model.train()
-    workflow.model.reshape_cache(1)
-    workflow.model.set_adapter_state(enabled=True)
+    try:
+        # 2. fine-tune
+        workflow.model.train()
+        workflow.model.reshape_cache(1)
+        workflow.model.set_adapter_state(enabled=True)
 
-    finetune(
-        task='triviaqa',
-        data_path=tmp_file,
-        workflow=workflow,
-        ckpt_dir='/dev/null',
-        tokenizer_path='/dev/null',
-        output_dir='/dev/null',
-        max_seq_len=8192,
-        epochs=2,
-        gradient_accumulation_steps=4,
-        checkpoint_freq=int(1e9),
-        validation_freq=int(1e9),
-        lora_rank=32,
-        lora_alpha=64,
-        lora_dropout=0.05,
-        learning_rate=5e-5,
-    )
+        finetune(
+            task='triviaqa',
+            data_path=tmp_file,
+            workflow=workflow,
+            ckpt_dir='/scratch4/jeisner1/tjbai/llama_8b',
+            tokenizer_path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model',
+            output_dir='/scratch4/jeisner1/tjbai/checkpoints',
+            max_seq_len=8192,
+            epochs=2,
+            gradient_accumulation_steps=4,
+            checkpoint_freq=int(1e9),
+            validation_freq=int(1e9),
+            lora_rank=32,
+            lora_alpha=64,
+            lora_dropout=0.05,
+            learning_rate=5e-5,
+        )
 
-    os.remove(tmp_file)
+    finally:
+        os.remove(tmp_file)
 
     # 3. eval
     workflow.model.eval()
