@@ -442,7 +442,7 @@ class QaTrainer(LoraTrainer[ListDataset]):
                 break
             self.workflow.reset()
             outputs = ask_parallel(self.workflow, sample['subset'], annotate=True)
-            val_answers.append(parse_items(outputs['answer_tokens']))
+            val_answers.append(parse_items(self.workflow.tokenizer.decode(outputs['output_tokens'])))
 
         eval_llama = Llama(self.workflow.model, self.workflow.tokenizer)
         eval_llama.model.reshape_cache(2)
