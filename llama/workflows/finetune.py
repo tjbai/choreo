@@ -39,7 +39,9 @@ from llama.workflows.prisoners import (
 from llama.workflows.qa import (
     system_prompt as qa_system_prompt,
     ask_parallel,
-    parse_items
+    parse_items,
+    eval_system_prompt,
+    format_eval_user
 )
 
 class TotDataset(Dataset):
@@ -434,15 +436,38 @@ class QaTrainer(LoraTrainer[ListDataset]):
             total_loss += loss
         metrics = {'val/loss': total_loss / min(len(val_dataset), max_steps if max_steps else 1e9)}
 
-        avg_resps = 0
+        val_answers = []
         for step, sample in enumerate(tqdm(val_dataset, desc='Running E2E')):
             if step >= max_e2e:
                 break
             self.workflow.reset()
             outputs = ask_parallel(self.workflow, sample['subset'], annotate=True)
-            avg_resps += len(parse_items(self.workflow.tokenizer.decode(outputs['output_tokens'])))
-        metrics['val/avg_resps'] = avg_resps / max_e2e
+            val_answers.append(parse_items(outputs['answer_tokens']))
 
+        eval_llama = Llama(self.workflow.model, self.workflow.tokenizer)
+        eval_llama.model.reshape_cache(2)
+        eval_llama.model.set_adapter_state(enabled=False)
+
+        first_correct = last_correct = 0
+        for sample, answers in tqdm(zip(val_dataset, val_answers)):
+            if len(answers) != len(sample['subset']):
+                continue
+
+            resps = eval_llama.chat_completion([
+                [{'role': 'system', 'content': eval_system_prompt},
+                    {'role': 'user', 'content': format_eval_user(sample['subset'][0], answers[0])}],
+                [{'role': 'system', 'content': eval_system_prompt},
+                    {'role': 'user', 'content': format_eval_user(sample['subset'][1], answers[1])}],
+            ], content_prefills=['{"correct": "'] * 2)
+
+            first_correct += 'true' in resps[0]['generation']['content'].lower()
+            last_correct += 'true' in resps[1]['generation']['content'].lower()
+
+        metrics['val/first_correct'] = first_correct / 20
+        metrics['val/last_correct'] = last_correct / 20
+
+        eval_llama.model.set_adapter_state(enabled=True)
+        eval_llama.model.reshape_cache(1)
         self.workflow.model.train()
         return metrics
 
