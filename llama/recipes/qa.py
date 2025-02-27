@@ -24,6 +24,8 @@ def main(
     num_questions=2,
     num_eval=50,
 ):
+    print(f'Running recipe for n={num_questions}')
+
     os.environ["RANK"] = "0"
     os.environ["WORLD_SIZE"] = "1"
     os.environ["MASTER_ADDR"] = "localhost"
@@ -81,10 +83,10 @@ def main(
             tokenizer_path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model',
             output_dir='/scratch4/jeisner1/tjbai/checkpoints',
             max_seq_len=8192,
-            epochs=2,
+            epochs=4,
             gradient_accumulation_steps=4,
             checkpoint_freq=int(1e9),
-            validation_freq=int(1e9),
+            validation_freq=100,
             lora_rank=32,
             lora_alpha=64,
             lora_dropout=0.05,
