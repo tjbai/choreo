@@ -7,6 +7,7 @@ import socket
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict
 
+from numpy._typing import _16Bit
 import torch
 import numpy as np
 from fairscale.nn.model_parallel.initialize import (
@@ -14,6 +15,7 @@ from fairscale.nn.model_parallel.initialize import (
     initialize_model_parallel,
     model_parallel_is_initialized,
 )
+from scipy import stats
 from statsmodels.stats.contingency_tables import mcnemar
 
 from llama.model import Transformer, ModelArgs
@@ -117,7 +119,7 @@ def find_free_port():
         port = s.getsockname()[1]
         return port
 
-def run_mcnemars_test(_model1: List[bool], _model2: List[bool]) -> Dict:
+def mcnemars_test(_model1: List[bool], _model2: List[bool]) -> Dict:
     model1 = np.array(_model1)
     model2 = np.array(_model2)
 
@@ -133,4 +135,30 @@ def run_mcnemars_test(_model1: List[bool], _model2: List[bool]) -> Dict:
         'both_incorrect': both_incorrect,
         'model1_correct': model1_only,
         'model2_correct': model2_only,
+    }
+
+def binomial_test(_model1: List[bool], _model2: List[bool]) -> Dict:
+    model1 = np.array(_model1)
+    model2 = np.array(_model2)
+
+    both_correct = np.sum((model1 == True) & (model2 == True))
+    both_incorrect = np.sum((model1 == False) & (model2 == False))
+    model1_only = np.sum((model1 == True) & (model2 == False))
+    model2_only = np.sum((model1 == False) & (model2 == True))
+
+    n = model1_only + model2_only
+    k = model1_only
+
+    p_value = (
+        2 * min(stats.binom.cdf(k, n, 0.5), 1 - stats.binom.cdf(k - 1, n, 0.5))
+        if n > 0 else 1
+    )
+
+    return {
+        'result': p_value,
+        'both_correct': both_correct,
+        'both_incorrect': both_incorrect,
+        'model1_correct': model1_only,
+        'model2_correct': model2_only,
+        'n_discordant': n
     }
