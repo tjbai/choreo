@@ -1,0 +1,38 @@
+program: /home/tbai4/llama3/llama/workflows/finetune.py
+command:
+  - ${env}
+  - "uv"
+  - "run"
+  - "python"
+  - ${program}
+  - "--task=triviaqa"
+  - "--data-path='/home/tbai4/llama3/dumps/triviaqa/qa_mixed.json'"
+  - "--ckpt-dir='/scratch4/jeisner1/tjbai/llama_8b'"
+  - "--tokenizer-path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model'"
+  - ${args}
+
+method: bayes
+metric:
+  name: val/last_correct
+  goal: maximize
+parameters:
+  lora_rank:
+    values: [16, 32, 64, 128]
+  lora_alpha:
+    values: [8, 16, 32, 64]
+  lora_dropout:
+    values: [0.05, 0.1, 0.2]
+  learning_rate:
+    distribution: log_uniform_values
+    min: 1e-6
+    max: 3e-4
+  epochs:
+    value: 2
+  gradient_accumulation_steps:
+    value: 4
+  checkpoint_freq:
+    value: 1e9
+  validation_freq:
+    value: 225
+  max_seq_len:
+    value: 8192

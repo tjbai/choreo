@@ -13,8 +13,8 @@ finetune(
     voters=4,
     epochs=2,
     use_lora=True,
-    lora_alpha=32,
     lora_rank=64,
+    lora_alpha=32,
     lora_dropout=0.05,
     learning_rate=5e-5,
 )
