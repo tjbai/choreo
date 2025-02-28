@@ -49,5 +49,5 @@ data/triviaqa.tar.gz
 !slurm/*/
 !slurm/**/*.py
 !slurm/**/*.sh
-!sweeps/
-!sweeps/*.yml
+!sweep/
+!sweep/*.yml
