@@ -457,7 +457,7 @@ class QaTrainer(LoraTrainer[ListDataset]):
                 [{'role': 'system', 'content': eval_system_prompt},
                     {'role': 'user', 'content': format_eval_user(sample['subset'][0], answers[0])}],
                 [{'role': 'system', 'content': eval_system_prompt},
-                    {'role': 'user', 'content': format_eval_user(sample['subset'][-1], answers[1])}],
+                    {'role': 'user', 'content': format_eval_user(sample['subset'][-1], answers[-1])}],
             ], content_prefills=['{"correct": "'] * 2)
 
             first_correct += 'true' in resps[0]['generation']['content'].lower()
