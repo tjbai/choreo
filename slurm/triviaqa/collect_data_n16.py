@@ -28,11 +28,10 @@ with open('/home/tbai4/llama3/data/triviaqa/unfiltered-web-train.json') as f:
     data = json.load(f)
     problems = data['Data']
 
-weights = [1 / math.log(n + 1) for n in range(1, 16+1)]
-weights[0] /= 2
+weights = [math.log(n + 1) for n in range(1, 16+1)]
 
 outputs = []
-for seed in tqdm(range(500)):
+for seed in tqdm(range(1000)):
     random.seed(seed)
     [k] = random.choices(list(range(1, 16+1)), weights=weights, k=1)
     subset = random.sample(problems, k=k)
@@ -41,6 +40,6 @@ for seed in tqdm(range(500)):
         'outputs': ask_sequential(workflow, subset)
     })
 
-with open('/home/tbai4/llama3/dumps/triviaqa/qa_n16.json', 'w') as f:
+with open('/home/tbai4/llama3/dumps/triviaqa/qa_n16_large.json', 'w') as f:
     json.dump(outputs, f)
 
