@@ -4,6 +4,7 @@ from typing import List, Optional, Dict
 from operator import itemgetter as get
 
 from llama import Workflow
+from llama.tokenizer import Message
 
 # prompts adapted from https://github.com/Skytliang/Multi-Agents-Debate
 
@@ -392,6 +393,97 @@ def math_mad_baseline(
             break
 
     return res | {'agent_contexts': agent_contexts, 'moderator_context': moderator_context}
+
+def faithful_mod_prompt(round: str, aff_ans: str, neg_ans: str):
+    return f'''Now the {round} round of debate for both sides has ended.
+
+Affirmative side arguing:
+{aff_ans}
+
+Negative side arguing:
+{neg_ans}
+
+You, as the moderator, will evaluate both sides' answers and determine if there is a clear preference for an answer candidate.
+If so, please summarize your reasons for supporting affirmative/negative side and give the final answer that you think is correct, and the debate will conclude.
+If not, the debate will continue to the next round. Now please output your answer in json format, with the format as follows:
+{{"Preference": "Yes or No", "Supported Side": "Affirmative or Negative", "Reason": "", "Answer": ""}}.
+
+Please strictly output in JSON format, do not output irrelevant content.'''
+
+def math_baseline_faithful(
+    workflow: Workflow,
+    problem: str,
+    max_rounds: int,
+    temperature: float = 0.7,
+    top_p: float = 0.9,
+    seed: int = 42,
+    debug: bool = False,
+) -> Dict:
+    res = {}
+    dct = {1: 'first', 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth'}
+
+    # initial aff
+    aff_stale: List[Message] = []
+    aff_context = workflow.insert([
+        {'messages': [
+            {'role': 'system', 'content': math_agent_prompt(problem, '')},
+            {'role': 'user', 'content': problem},
+        ], 'parent_ids': []},
+    ])
+    [aff_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in aff_context]}]))
+    aff_ans = workflow.tokenizer.decode(aff_tokens)
+    aff_stale.append({'role': 'assistant', 'content': aff_ans})
+    if debug: print(f'Aff ans:\n{aff_ans}')
+
+    # initial neg
+    neg_stale: List[Message] = []
+    neg_context = workflow.insert([
+        {'messages': [
+            {'role': 'system', 'content': math_agent_prompt(problem, '')},
+            {'role': 'user', 'content': f'{aff_ans}\n\nYou disagree with my answer. Provide your answer and reasons.'},
+        ], 'parent_ids': []},
+    ])
+    [neg_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in neg_context]}]))
+    neg_ans = workflow.tokenizer.decode(neg_tokens)
+    neg_stale.append({'role': 'assistant', 'content': neg_ans})
+    if debug: print(f'Neg ans:\n{neg_ans}')
+
+    # initial mod
+    mod_stale: List[Message] = []
+    mod_context = workflow.insert([{'messages': [
+        {'role': 'system', 'content': faithful_mod_prompt('first', aff_ans, neg_ans)}
+    ], 'parent_ids': []}])
+    [mod_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in mod_context]}]))
+    mod_stale.append({'role': 'assistant', 'content': workflow.tokenizer.decode(mod_tokens)})
+    if debug: print(f'Mod review:\n{neg_ans}')
+
+    for round in range(max_rounds - 1):
+        aff_stale.append({'role': 'user', 'content': f'{neg_ans}\n\nDo you agree with my perspective? Please provide your reasons and answer.'})
+        aff_context.extend(workflow.insert([{'messages': aff_stale, 'parent_ids': []}]))
+        [aff_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in aff_context]}]))
+        aff_ans = workflow.tokenizer.decode(aff_tokens)
+        aff_stale = [{'role': 'assistant', 'content': aff_ans}]
+        if debug: print(f'Aff ans:\n{aff_ans}')
+
+        neg_stale.append({'role': 'user', 'content': f'{aff_ans}\n\nDo you agree with my perspective? Please provide your reasons and answer.'})
+        neg_context.extend(workflow.insert([{'messages': neg_stale, 'parent_ids': []}]))
+        [neg_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in neg_context]}]))
+        neg_ans = workflow.tokenizer.decode(neg_tokens)
+        neg_stale = [{'role': 'assistant', 'content': neg_ans}]
+        if debug: print(f'Neg ans:\n{neg_ans}')
+
+        mod_stale.append({'role': 'user', 'content': faithful_mod_prompt(dct[round+2], aff_ans, neg_ans)})
+        mod_context.extend(workflow.insert([{'messages': mod_stale, 'parent_ids': []}]))
+        [mod_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in mod_context]}]))
+        mod_ans = workflow.tokenizer.decode(mod_tokens)
+        mod_stale = [{'role': 'assistant', 'content': mod_ans}]
+        if debug: print(f'Mod review:\n{mod_ans}')
+
+        if (decision := parse_decision(mod_ans)) is not None:
+            res['decision'] = decision
+            break
+
+    return res | {}
 
 def simple_baseline(
     workflow: Workflow,
