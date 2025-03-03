@@ -7,6 +7,9 @@ from operator import itemgetter as get
 
 import torch
 import torch.nn.functional as F
+import seaborn as sns
+import numpy as np
+import matplotlib.pyplot as plt
 
 from llama import Llama, Workflow
 
@@ -456,3 +459,96 @@ def baseline_nll(
             alice_step()
 
     return res
+
+def get_likelihoods(
+    workflow: Workflow,
+    llama: Llama,
+    outputs: List[Dict],
+    differences: List[bool],
+):
+    baseline_res = []
+    llama.model.set_adapter_state(enabled=False)
+    for i, b in tqdm(enumerate(outputs)):
+        try:
+            baseline_res.append(baseline_nll(
+                llama, b,
+                payoff=(5,3,1,0),
+                alice_first=(i < 50),
+                alice_strategy=None
+            ))
+        except:
+            baseline_res.append({'bob_nll': [[1e9], [1e9]], 'alice_nll': [[1e9], [1e9]]})
+
+    cached_res = []
+    workflow.model.set_adapter_state(enabled=True)
+    for i, b in tqdm(enumerate(outputs)):
+        try:
+            cached_res.append(cached_nll(
+                workflow, b,
+                payoff=(5,3,1,0),
+                alice_first=(i < 50),
+                alice_strategy=None,
+            ))
+        except:
+            cached_res.append({'bob_nll': [[1e9], [1e9]], 'alice_nll': [[1e9], [1e9]]})
+
+    sns.set_theme()
+
+    baseline_first_means = [np.mean(b['bob_nll'][0]) for b in baseline_res]
+    cached_first_means = [np.mean(b['bob_nll'][0]) for b in cached_res]
+
+    baseline_second_means = [np.mean(b['bob_nll'][1]) for b in baseline_res]
+    cached_second_means = [np.mean(b['bob_nll'][1]) for b in cached_res]
+
+    fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+
+    ax1.scatter(
+        [baseline_first_means[i] for i in range(len(baseline_first_means)) if not differences[i]],
+        [cached_first_means[i] for i in range(len(cached_first_means)) if not differences[i]],
+        s=100, alpha=0.7, color='blue', label='Same decision'
+    )
+    ax1.scatter(
+        [baseline_first_means[i] for i in range(len(baseline_first_means)) if differences[i]],
+        [cached_first_means[i] for i in range(len(cached_first_means)) if differences[i]],
+        s=100, alpha=0.7, color='red', label='Different decision'
+    )
+    ax1.set_xlim(0, 1.5)
+    ax1.set_ylim(0, 1.5)
+    ax1.plot([0, 1.5], [0, 1.5], 'k--', alpha=0.5)
+    ax1.grid(True, alpha=0.3)
+    ax1.set_title('First Message')
+    ax1.set_xlabel('Baseline NLL')
+    ax1.set_ylabel('Choreographed NLL')
+    ax1.legend()
+
+    ax2.scatter(
+        [baseline_second_means[i] for i in range(len(baseline_second_means)) if not differences[i]],
+        [cached_second_means[i] for i in range(len(cached_second_means)) if not differences[i]],
+        s=100, alpha=0.7, color='blue', label='Same decision'
+    )
+    ax2.scatter(
+        [baseline_second_means[i] for i in range(len(baseline_second_means)) if differences[i]],
+        [cached_second_means[i] for i in range(len(cached_second_means)) if differences[i]],
+        s=100, alpha=0.7, color='red', label='Different decision'
+    )
+    ax2.set_xlim(0, 1.5)
+    ax2.set_ylim(0, 1.5)
+    ax2.plot([0, 1.5], [0, 1.5], 'k--', alpha=0.5)
+    ax2.grid(True, alpha=0.3)
+    ax2.set_title('Second Message')
+    ax2.set_xlabel('Baseline NLL')
+    ax2.set_ylabel('Choreographed NLL')
+    ax2.legend()
+
+    for ax in [ax1, ax2]:
+        sns.despine(ax=ax)
+
+    plt.tight_layout()
+
+    return {
+        'fig': fig,
+        'baseline_first_means': baseline_first_means,
+        'cached_first_means': cached_first_means,
+        'baseline_second_means': baseline_second_means,
+        'cached_second_means': cached_second_means,
+    }

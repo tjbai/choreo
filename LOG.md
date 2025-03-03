@@ -297,7 +297,7 @@ TriviaQA, N=2 questions, 30 samples from the first half of the dev set:
 
 ## 2/26: e75228e7823709aded262cd0fa6f72bbf99db0ae
 
-| Strategy         | Checkpoint | Alice Decisions | Bob Decisions | P-value   |
+| Strategy         | Checkpoint | Alice Decisions | Bob Decisions | p-value   |
 |------------------|------------|-----------------|---------------|-----------|
 | None             | Baseline   | 82/15           | 82/18         | -         |
 |                  | 0          | 73/25           | 69/28         | 0.029     |

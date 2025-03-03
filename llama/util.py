@@ -7,17 +7,18 @@ import socket
 from pathlib import Path
 from typing import Optional, Tuple, List, Dict
 
-from numpy._typing import _16Bit
 import torch
 import numpy as np
+from tqdm import tqdm
+from scipy import stats
+from statsmodels.stats.contingency_tables import mcnemar
 from fairscale.nn.model_parallel.initialize import (
     get_model_parallel_rank,
     initialize_model_parallel,
     model_parallel_is_initialized,
 )
-from scipy import stats
-from statsmodels.stats.contingency_tables import mcnemar
 
+from llama import Workflow
 from llama.model import Transformer, ModelArgs
 from llama.tokenizer import Tokenizer
 
@@ -162,3 +163,57 @@ def binomial_test(_model1: List[bool], _model2: List[bool]) -> Dict:
         'model2_correct': model2_only,
         'n_discordant': n
     }
+
+def load_ckpt(workflow: Workflow, ckpt_path: str):
+    ckpt = torch.load(ckpt_path, weights_only=True)
+    for weight, param in zip(ckpt['trainable_params'], workflow.model.get_trainable_parameters()):
+        param.data.copy_(weight)
+
+def bootstrap_binary(
+    baseline: List[bool],
+    ours: List[bool],
+    n_bootstrap=1000
+):
+    n_samples = len(baseline)
+    baseline_arr = np.array(baseline)
+    our_arr = np.array(ours)
+    assert len(baseline) == len(ours)
+
+    observed_diff = our_arr.mean() - baseline_arr.mean()
+    bootstrap_diff = []
+    for _ in range(n_bootstrap):
+        indices = np.random.choice(range(n_samples), size=n_samples, replace=True)
+        baseline_sample = baseline_arr[indices]
+        our_sample = our_arr[indices]
+        bootstrap_diff.append(our_sample.mean() - baseline_sample.mean())
+
+    return {
+        'binomial_p_value': binomial_test(baseline, ours),
+        'bootstrap_p_value': np.mean(np.abs(bootstrap_diff) >= np.abs(observed_diff)),
+        'baseline_mean': baseline_arr.mean(),
+        'cached_mean': our_arr.mean(),
+        'diff_mean': observed_diff,
+        'diff_ci': np.percentile(bootstrap_diff, [2.5, 97.5]),
+        'diff_se': np.std(bootstrap_diff),
+    }
+
+def bootstrap_continuous(
+    baseline: List[float],
+    cached: List[float],
+    n_bootstrap=10000
+):
+    baseline_arr = np.array(baseline)
+    cached_arr = np.array(cached)
+
+    observed_diff = cached_arr - baseline_arr
+    mean_diff = np.mean(observed_diff)
+
+    bootstrap_means = []
+    for _ in range(n_bootstrap):
+        indices = np.random.choice(range(len(baseline_arr)), size=len(baseline_arr), replace=True)
+        bootstrap_means.append(np.mean(observed_diff[indices]))
+
+    diff_ci = np.percentile(bootstrap_means, [2.5, 97.5])
+    diff_se = np.std(bootstrap_means)
+
+    return {'mean_diff': mean_diff, 'diff_ci': diff_ci, 'diff_se': diff_se}
