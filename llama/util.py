@@ -155,12 +155,12 @@ def binomial_test(_model1: List[bool], _model2: List[bool]) -> Dict:
     )
 
     return {
-        'result': min(p_value, 1),
-        'both_correct': both_correct,
-        'both_incorrect': both_incorrect,
-        'model1_correct': model1_only,
-        'model2_correct': model2_only,
-        'n_discordant': n
+        'result': float(min(p_value, 1)),
+        'both_correct': float(both_correct),
+        'both_incorrect': float(both_incorrect),
+        'model1_correct': float(model1_only),
+        'model2_correct': float(model2_only),
+        'n_discordant': float(n)
     }
 
 def load_ckpt(workflow, ckpt_path: str):
@@ -188,12 +188,12 @@ def bootstrap_binary(
 
     return {
         'binomial_p_value': binomial_test(baseline, ours),
-        'bootstrap_p_value': np.mean(np.abs(bootstrap_diff) >= np.abs(observed_diff)),
-        'baseline_mean': baseline_arr.mean(),
-        'cached_mean': our_arr.mean(),
-        'diff_mean': observed_diff,
-        'diff_ci': np.percentile(bootstrap_diff, [2.5, 97.5]),
-        'diff_se': np.std(bootstrap_diff),
+        'bootstrap_p_value': float(np.mean(np.abs(bootstrap_diff) >= np.abs(observed_diff))),
+        'baseline_mean': float(baseline_arr.mean()),
+        'cached_mean': float(our_arr.mean()),
+        'diff_mean': float(observed_diff),
+        'diff_ci': np.percentile(bootstrap_diff, [2.5, 97.5]).tolist(),
+        'diff_se': float(np.std(bootstrap_diff)),
     }
 
 def bootstrap_continuous(
@@ -212,7 +212,9 @@ def bootstrap_continuous(
         indices = np.random.choice(range(len(baseline_arr)), size=len(baseline_arr), replace=True)
         bootstrap_means.append(np.mean(observed_diff[indices]))
 
-    diff_ci = np.percentile(bootstrap_means, [2.5, 97.5])
-    diff_se = np.std(bootstrap_means)
+    return {
+        'mean_diff': float(mean_diff),
+        'diff_ci': np.percentile(bootstrap_means, [2.5, 97.5]).tolist(),
+        'diff_se': float(np.std(bootstrap_means))
+    }
 
-    return {'mean_diff': mean_diff, 'diff_ci': diff_ci, 'diff_se': diff_se}
