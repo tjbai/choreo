@@ -10,5 +10,7 @@
 #SBATCH --output=slurm/triviaqa/qa_sweep_mixed_%A_%a.out
 
 SWEEP_ID=$(cat /home/tbai4/llama3/sweep/sweep_qa_mixed.txt)
+
+git lfs pull
 uv run wandb agent --count 1 $SWEEP_ID
 

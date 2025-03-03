@@ -23,8 +23,11 @@ def main(
     dev_data_path='/home/tbai4/llama3/data/triviaqa/unfiltered-web-train.json',
     num_questions=2,
     num_eval=50,
+    num_epochs=2,
+    num_examples=500,
 ):
     print(f'Running recipe for n={num_questions}')
+    print(f'Epochs={num_epochs}, Training examples={num_examples}')
 
     os.environ["RANK"] = "0"
     os.environ["WORLD_SIZE"] = "1"
@@ -56,7 +59,7 @@ def main(
     workflow.model.set_adapter_state(enabled=False)
 
     outputs = []
-    for seed in tqdm(range(500)):
+    for seed in tqdm(range(num_examples)):
         workflow.reset()
         random.seed(seed)
         subset = random.sample(problems, k=num_questions)
@@ -83,7 +86,7 @@ def main(
             tokenizer_path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model',
             output_dir='/scratch4/jeisner1/tjbai/checkpoints',
             max_seq_len=8192,
-            epochs=4,
+            epochs=num_epochs,
             gradient_accumulation_steps=4,
             checkpoint_freq=int(1e9),
             validation_freq=100,
