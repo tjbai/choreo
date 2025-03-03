@@ -483,6 +483,31 @@ def math_baseline_faithful(
             res['decision'] = decision
             break
 
+    if 'decision' not in res:
+        # "ultimate deadly technique."
+        # https://github.com/Skytliang/Multi-Agents-Debate/blob/022a7a8eecda85844d336e9064cc556edb0445b3/code/debate4tran.py#L236
+        [judge_prompt] = workflow.insert([
+            {'messages': [
+                {'role': 'system', 'content': math_agent_prompt(problem, '')},
+                {'role': 'user', 'content': f'Affirmative side arguing:\n{aff_ans}\n\nNegative side arguing:\n{neg_ans}\n\nNow, what answer candidates do we have? Present them without reasons.'},
+            ], 'parent_ids': []}
+        ])
+
+        [cand_tokens], [cand_response] = get('tokens', 'nodes')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [judge_prompt['id']]}]))
+
+        [final_prompt] = workflow.insert([
+            {'messages': [
+                {'role': 'user', 'content': (
+                    f'Therefore, {problem}\nPlease summarize your reasons and give the final answer that you think is correct. '
+                    'Now please output your answer in json format, with the format as follows: {{"Reason": "", "debate_answer\": \"\"}}. '
+                    'Please strictly output in JSON format, do not output irrelevant content.'
+                )}
+            ], 'parent_ids': [judge_prompt['id'], cand_response['id']]}
+        ])
+
+        [final_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [judge_prompt['id'], cand_response['id'], final_prompt['id']]}]))
+        res['decision'] = parse_decision(workflow.tokenizer.decode(final_tokens))
+
     return res | {}
 
 def simple_baseline(
