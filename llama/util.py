@@ -18,7 +18,6 @@ from fairscale.nn.model_parallel.initialize import (
     model_parallel_is_initialized,
 )
 
-from llama import Workflow
 from llama.model import Transformer, ModelArgs
 from llama.tokenizer import Tokenizer
 
@@ -164,7 +163,7 @@ def binomial_test(_model1: List[bool], _model2: List[bool]) -> Dict:
         'n_discordant': n
     }
 
-def load_ckpt(workflow: Workflow, ckpt_path: str):
+def load_ckpt(workflow, ckpt_path: str):
     ckpt = torch.load(ckpt_path, weights_only=True)
     for weight, param in zip(ckpt['trainable_params'], workflow.model.get_trainable_parameters()):
         param.data.copy_(weight)

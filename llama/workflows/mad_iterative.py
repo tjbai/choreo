@@ -18,7 +18,9 @@ At the end of each round, you will evaluate the translation candidates based on 
 def math_moderator_system_prompt(topic: str) -> str:
    return f'''
 You are a moderator. There will be two debaters involved in a mathematical reasoning debate.
-They will present their answers and discuss their perspectives on the following topic:\n\"{topic}\"'''
+They will present their answers and discuss their perspectives on the following topic:\n\"{topic}\"
+At the end of each round, you will evaluate answers and decide if there is enough information to choose a winner.
+'''
 
 def moderator_user_prompt(round: int, max_rounds: int, agents: List[str]) -> str:
     is_final_round = (round + 1) == max_rounds
@@ -39,23 +41,23 @@ def moderator_user_prompt(round: int, max_rounds: int, agents: List[str]) -> str
     return (
         f"Now round {round + 1}/{max_rounds} of debate for both sides has ended. "
         "You, as the moderator, will evaluate both sides' responses to the debate topic "
-        "and determine if there is a clear preference for the answer. "
+        "and determine if there is enough information to choose a clear winner. "
         f"\n{inner}\n"
         "Now please output your answer in JSON format, with the format as follows: "
-        f'{{"Preference": "Yes or No", "Supported": "{agents_str}", "Answer": "", "Reason": ""}}. '
+        f'{{"Reasoning": "", "Preference": "Yes or No", "Answer": ""}}. '
         "Please strictly output in JSON format, do not output irrelevant content."
     )
 
 def agent_prompt(source_text: str, name: str) -> str:
     return f'''
-You are a debater named {name}. Hello and welcome to the translation competition, which will be conducted in a debate format.
+You are a debater. Hello and welcome to the translation competition, which will be conducted in a debate format.
 It's not necessary to fully agree with each other's perspectives, as our objective is to find the correct translation.
 The debate topic is stated as follows:
 What is the correct English translation of the following Chinese text: \"{source_text}\"'''
 
 def math_agent_prompt(problem: str, name: str) -> str:
     return f'''
-You are a debater named {name}. Hello and welcome to the math competition, which will be conducted in a debate format.
+You are a debater. Hello and welcome to the math competition, which will be conducted in a debate format.
 It's not necessary to fully agree with each other's perspectives, as our objective is to find the correct solution.
 The debate topic will be producing the correct answer to the following problem:\n\"{problem}\"'''
 
@@ -90,7 +92,6 @@ def parse_decision(_decision: str) -> Optional[Dict]:
         decision = json.loads(_decision)
         if (
             decision.get('Preference', '').lower().strip() == 'yes'
-            and decision.get('Supported')
             and decision.get('Answer')
         ):
             return decision
@@ -103,7 +104,7 @@ def mad_cached(
     agents: List[str],
     max_rounds: int,
     temperature: float = 0.7,
-    top_p: float = 0.9,
+    top_p: float = 0.95,
     seed: int = 42,
     debug: bool = True,
 ):
@@ -151,49 +152,112 @@ def mad_cached(
 def math_mad_cached(
     workflow: Workflow,
     problem: str,
-    agents: List[str],
     max_rounds: int,
-    temperature: float = 0.7,
-    top_p: float = 0.9,
+    temperature: float = 0.6,
+    top_p: float = 0.95,
     seed: int = 42,
-    debug: bool = True,
-):
+    debug: bool = False,
+) -> Dict:
     res = {}
+
     agent_contexts = [[a] for a in workflow.insert([
-        {'messages': [{'role': 'system', 'content': math_agent_prompt(problem, agent)}], 'parent_ids': []}
-        for agent in agents
+        {'messages': [{
+            'role': 'system',
+            'content': math_agent_prompt(problem, 'Affirmative') + '\nPresent a well-developed solution and defend against critiques.'}],
+        'parent_ids': []},
+        {'messages': [{
+            'role': 'system',
+            'content': math_agent_prompt(problem, 'Negative') + '\nCritique the opponent\'s response and propose your own strong solution.'}],
+        'parent_ids': []},
     ])]
-    moderator_context = workflow.insert([{'messages': [{'role': 'system', 'content': math_moderator_system_prompt(problem)}], 'parent_ids': []}])
-    for round in range(max_rounds):
-        for agent, context in zip(agents, agent_contexts):
-            [response_tokens], [response] = get('tokens', 'nodes')(workflow.step([{
-                'header': ('assistant', f'debater {agent}'),
-                'prefill': f'Round {round+1}: ',
-                'parent_ids': [n['id'] for n in context]
-            }], temperature=temperature, top_p=top_p, seed=seed))
 
-            if debug:
-                print(workflow.tokenizer.decode(response_tokens))
+    moderator_context = workflow.insert([
+        {'messages': [{
+            'role': 'system',
+            'content': math_moderator_system_prompt(problem)}],
+        'parent_ids': []}
+    ])
 
-            for other_context in agent_contexts:
-                other_context.append(response)
-            moderator_context.append(response)
+    [aff_tokens], [aff_response] = get('tokens', 'nodes')(workflow.step([{
+        'header': ('assistant', ''),
+        'prefill': 'Affirmative: ',
+        'parent_ids': [agent_contexts[0][0]['id']]
+    }], temperature=temperature, top_p=top_p, seed=seed, max_gen_len=1024))
 
-        [check] = workflow.insert([{
-            'messages': [{'role': 'user', 'content': moderator_user_prompt(round, max_rounds, agents)}],
-            'parent_ids': [n['id'] for n in moderator_context]
-        }])
+    if debug:
+        print("Affirmative initial solution:")
+        print(workflow.tokenizer.decode(aff_tokens))
 
-        [decision_tokens], [decision] = get('tokens', 'nodes')(workflow.step([{
-            'header': ('assistant', 'moderator'),
-            'prefill': '{"Preference": ',
-            'parent_ids': [n['id'] for n in moderator_context] + [check['id']]
+    agent_contexts[0].append(aff_response)
+    agent_contexts[1].append(aff_response)
+    moderator_context.append(aff_response)
+
+    [neg_tokens], [neg_response] = get('tokens', 'nodes')(workflow.step([{
+        'header': ('assistant', ''),
+        'prefill': 'Negative: ',
+        'parent_ids': [n['id'] for n in agent_contexts[1]]
+    }], temperature=temperature, top_p=top_p, seed=seed, max_gen_len=1024))
+
+    if debug:
+        print("Negative critical evaluation:")
+        print(workflow.tokenizer.decode(neg_tokens))
+
+    agent_contexts[0].append(neg_response)
+    agent_contexts[1].append(neg_response)
+    moderator_context.append(neg_response)
+
+    [check] = workflow.insert([{
+        'messages': [{'role': 'user', 'content': moderator_user_prompt(0, max_rounds, ["Affirmative", "Negative"])}],
+        'parent_ids': [n['id'] for n in moderator_context]
+    }])
+
+    for round in range(1, max_rounds+1):
+        [aff_tokens], [aff_response] = get('tokens', 'nodes')(workflow.step([{
+            'header': ('user', ''),
+            'prefill': f'Affirmative response: ',
+            'parent_ids': [n['id'] for n in agent_contexts[0]]
         }], temperature=temperature, top_p=top_p, seed=seed))
 
         if debug:
+            print(f"Affirmative (Round {round}):")
+            print(workflow.tokenizer.decode(aff_tokens))
+
+        agent_contexts[0].append(aff_response)
+        agent_contexts[1].append(aff_response)
+        moderator_context.append(aff_response)
+
+        [neg_tokens], [neg_response] = get('tokens', 'nodes')(workflow.step([{
+            'header': ('user', ''),
+            'prefill': f'Negative response: ',
+            'parent_ids': [n['id'] for n in agent_contexts[1]]
+        }], temperature=temperature, top_p=top_p, seed=seed))
+
+        if debug:
+            print(f"Negative (Round {round}):")
+            print(workflow.tokenizer.decode(neg_tokens))
+
+        agent_contexts[0].append(neg_response)
+        agent_contexts[1].append(neg_response)
+        moderator_context.append(neg_response)
+
+        [check] = workflow.insert([{
+            'messages': [{'role': 'user', 'content': moderator_user_prompt(round, max_rounds, ["affirmative", "negative"])}],
+            'parent_ids': [n['id'] for n in moderator_context]
+        }])
+
+        [decision_tokens], [decision_response] = get('tokens', 'nodes')(workflow.step([{
+            'header': ('assistant', 'moderator'),
+            'prefill': '{"Reasoning": ',
+            'parent_ids': [n['id'] for n in moderator_context] + [check['id']]
+        }], temperature=temperature, top_p=top_p, seed=seed))
+
+        moderator_context.append(decision_response)
+
+        if debug:
+            print(f"Moderator round {round} evaluation:")
             print(workflow.tokenizer.decode(decision_tokens))
 
-        if (decision := parse_decision(workflow.tokenizer.decode(decision_tokens))) or (round + 1) == max_rounds:
+        if (decision := parse_decision(workflow.tokenizer.decode(decision_tokens))) or round == max_rounds:
             res['decision'] = decision
             break
 
@@ -393,7 +457,7 @@ def math_simple_baseline(
     temperature: float = 0.7,
     top_p: float = 0.9,
     seed: int = 42,
-    debug: bool = True,
+    debug: bool = False,
 ) -> Optional[Dict]:
     solve_prompt = (
         f'Solve the following math problem:\n{problem}"\n\n'
@@ -424,7 +488,7 @@ def math_simple_baseline(
     [reflection] = workflow.insert([{
         'messages': [{'role': 'user', 'content': reflection_prompt}],
         'parent_ids': [sys['id'], solve['id']]
-
+    }])
 
     [answer_tokens], [answer] = get('tokens', 'nodes')(workflow.step([{
         'header': ('assistant', 'solver'),
