@@ -455,7 +455,7 @@ def math_baseline_faithful(
     ], 'parent_ids': []}])
     [mod_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in mod_context]}]))
     mod_stale.append({'role': 'assistant', 'content': workflow.tokenizer.decode(mod_tokens)})
-    if debug: print(f'Mod review:\n{neg_ans}')
+    if debug: print(f'Mod review:\n{workflow.tokenizer.decode(mod_tokens)}')
 
     for round in range(max_rounds - 1):
         aff_stale.append({'role': 'user', 'content': f'{neg_ans}\n\nDo you agree with my perspective? Please provide your reasons and answer.'})
