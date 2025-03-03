@@ -350,6 +350,24 @@ Always defect (1600 ckpt):
 
 ## 2/27: 3efb64580cca5d71309ba210811ccc2f06c73ccf
 
+These are all results after 1600 examples, using static LoRA config:
+
+`finetune_n2.sh`: [(0, 39), (1, 33)]
 `finetune_n4.sh`: [(0, 40), (1, 34), (2, 32), (3, 35)]
 `finetune_n8.sh`: [(0, 41), (1, 35), (2, 24), (3, 20), (4, 30), (5, 24), (6, 22), (7, 17)]
 `finetune_n16.sh`: [(0, 34), (1, 31), (2, 15), (3, 12), (4, 18), (5, 7), (6, 5), (7, 5), (8, 3), (9, 3), (10, 2), (11, 1), (12, 2), (13, 1), (14, 2), (15, 2)]
+
+## 3/2: 8838573f1442f79c452d330c9d4c6a02c0e0b620
+
+Results still aren't great after tweaking prompts slightly. Is it really because our implementation isn't fully faithful?
+
+A performance hit is expected actually... we should just implement the faithful version then fine-tune!
+
+## 3/2: 4ba58201417bff2754fd758599eee1879f7348e7
+
+Parallel before fine-tuning. Same eval scheme as with the trained checkpoints, so it's possible (definite) that there are misalignments:
+
+`n2`: [(0, 16), (1, 1)]
+`n4`: [(0, 1), (1, 1), (2, 3), (3, 1)]
+`n8`: [(6, 3), (7, 1)]
+`n16`: [(10, 1)]
