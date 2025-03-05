@@ -88,11 +88,58 @@ def load_ciar(base_path: str, start: int, end: int) -> List[Dict]:
     with open(f'{base_path}/CIAR.json') as f:
         return json.load(f)
 
+def try_parse(json_str: str) -> str | Dict:
+    try:
+        return json.loads(json_str)
+    except json.JSONDecodeError:
+        pass
+    
+    cleaned_str = json_str.strip()
+    
+    if cleaned_str.startswith('{') and '}' in cleaned_str:
+        try:
+            start = cleaned_str.find('{')
+            end = cleaned_str.rfind('}') + 1
+            json_candidate = cleaned_str[start:end]
+            
+            json_candidate = json_candidate.replace('\\%', '%')
+            json_candidate = json_candidate.replace('\\times', 'times')
+            
+            json_candidate = json_candidate.replace('\\"', '"')
+            json_candidate = json_candidate.replace('\\', '')
+            json_candidate = json_candidate.replace('\\"', '\\"')
+            
+            return json.loads(json_candidate)
+        except json.JSONDecodeError:
+            pass
+    
+    if cleaned_str.startswith('{') and cleaned_str.endswith('}'):
+        try:
+            return eval(cleaned_str, {"__builtins__": {}}, {})
+        except:
+            pass
+    
+    answer_idx = cleaned_str.find("Answer")
+    if answer_idx != -1:
+        substr = cleaned_str[answer_idx:]
+        start = substr.find('"')
+        if start != -1:
+            end = substr.rfind('"') + 1
+            if end > start:
+                try:
+                    print(substr[json_start:json_end])
+                    return {"Answer": substr[json_start:json_end]}
+                except json.JSONDecodeError:
+                    pass
+    
+    return json_str
+    
 def parse_decision(_decision: str) -> Optional[Dict]:
     try:
-        decision = json.loads(_decision)
+        decision = try_parse(_decision)
         if (
-            decision.get('Preference', '').lower().strip() == 'yes'
+            isinstance(decision, dict)
+            and decision.get('Preference', '').lower().strip() == 'yes'
             and decision.get('Answer')
         ):
             return decision
@@ -563,7 +610,7 @@ def simple_baseline(
         print(workflow.tokenizer.decode(answer_tokens))
 
     try:
-        return json.loads(workflow.tokenizer.decode(answer_tokens))
+        return eval(workflow.tokenizer.decode(answer_tokens))
     except:
         return None
 
@@ -592,10 +639,7 @@ def math_simple_baseline(
         print(workflow.tokenizer.decode(solve_tokens))
 
     if not enable_reflection:
-        try:
-            return json.loads(workflow.tokenizer.decode(solve_tokens))
-        except:
-            return None
+        return try_parse(workflow.tokenizer.decode(solve_tokens))
 
     reflection_prompt = (
         'Review your solution to the problem and evaluate whether you may have made any reasoning mistakes.'
@@ -615,8 +659,5 @@ def math_simple_baseline(
 
     if debug:
         print(workflow.tokenizer.decode(answer_tokens))
-
-    try:
-        return json.loads(workflow.tokenizer.decode(answer_tokens))
-    except:
-        return None
+    
+    return try_parse(workflow.tokenizer.decode(answer_tokens))
