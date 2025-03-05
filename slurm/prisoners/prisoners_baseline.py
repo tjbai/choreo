@@ -26,21 +26,19 @@ llama.model.reshape_cache(2)
 llama.model.eval()
 payoff = (5, 3, 1, 0)
 
-strategies = ['always_cooperate', 'always_defect']
-output_file = 'prisoners_baseline_train.jsonl'
+strategies = [None, 'always_cooperate', 'always_defect']
+output_file = '/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_large.jsonl'
 
 for strategy in strategies:
     alice_decisions = []
     bob_decisions = []
 
-    for seed in tqdm(range(300)):
-        if os.path.exists(f'/home/tbai4/llama3/prisoners_data/trace_{strategy}_{seed}.pt'):
-            continue
+    for seed in tqdm(range(500)):
         try:
             result = prisoners_baseline(
                 llama,
                 payoff,
-                alice_first=(seed < 50),
+                alice_first=(seed < 250),
                 alice_strategy=strategy,
                 seed=seed+100,
                 temperature=1.0,
@@ -53,7 +51,7 @@ for strategy in strategies:
                 'alice_first': (seed < 50),
                 'result': result,
             }
-            torch.save(sample, f'/home/tbai4/llama3/prisoners_data/trace_{strategy}_{seed}.pt')
+            # torch.save(sample, f'/home/tbai4/llama3/prisoners_data/trace_{strategy}_{seed}.pt')
 
             output_data = {
                 'seed': seed,
