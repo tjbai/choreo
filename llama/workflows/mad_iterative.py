@@ -1,3 +1,4 @@
+import re
 import csv
 import json
 from typing import List, Optional, Dict
@@ -93,32 +94,32 @@ def try_parse(json_str: str) -> str | Dict:
         return json.loads(json_str)
     except json.JSONDecodeError:
         pass
-    
+
     cleaned_str = json_str.strip()
-    
+
     if cleaned_str.startswith('{') and '}' in cleaned_str:
         try:
             start = cleaned_str.find('{')
             end = cleaned_str.rfind('}') + 1
             json_candidate = cleaned_str[start:end]
-            
+
             json_candidate = json_candidate.replace('\\%', '%')
             json_candidate = json_candidate.replace('\\times', 'times')
-            
+
             json_candidate = json_candidate.replace('\\"', '"')
             json_candidate = json_candidate.replace('\\', '')
             json_candidate = json_candidate.replace('\\"', '\\"')
-            
+
             return json.loads(json_candidate)
         except json.JSONDecodeError:
             pass
-    
+
     if cleaned_str.startswith('{') and cleaned_str.endswith('}'):
         try:
             return eval(cleaned_str, {"__builtins__": {}}, {})
         except:
             pass
-    
+
     answer_idx = cleaned_str.find("Answer")
     if answer_idx != -1:
         substr = cleaned_str[answer_idx:]
@@ -127,13 +128,20 @@ def try_parse(json_str: str) -> str | Dict:
             end = substr.rfind('"') + 1
             if end > start:
                 try:
-                    print(substr[json_start:json_end])
-                    return {"Answer": substr[json_start:json_end]}
+                    return {"Answer": substr[start:end]}
                 except json.JSONDecodeError:
                     pass
-    
+
+    answer_pattern = r'"Answer":\s*([0-9.]+)[^}]*}'
+    matches = re.search(answer_pattern, cleaned_str)
+    if matches:
+        try:
+            return {"Answer": matches.group(1)}
+        except (ValueError, IndexError):
+            pass
+
     return json_str
-    
+
 def parse_decision(_decision: str) -> Optional[Dict]:
     try:
         decision = try_parse(_decision)
@@ -633,7 +641,7 @@ def math_simple_baseline(
         'header': ('assistant', 'solver'),
         'prefill': '{"Reasoning": "',
         'parent_ids': [sys['id']]
-    }], temperature=temperature, top_p=top_p, seed=seed))
+    }], temperature=temperature, top_p=top_p, seed=seed, max_gen_len=1024))
 
     if debug:
         print(workflow.tokenizer.decode(solve_tokens))
@@ -655,9 +663,9 @@ def math_simple_baseline(
         'header': ('assistant', 'solver'),
         'prefill': '{"Reasoning": "',
         'parent_ids': [sys['id'], solve['id'], reflection['id']]
-    }], temperature=temperature, top_p=top_p, seed=seed))
+    }], temperature=temperature, top_p=top_p, seed=seed, max_gen_len=1024))
 
     if debug:
         print(workflow.tokenizer.decode(answer_tokens))
-    
+
     return try_parse(workflow.tokenizer.decode(answer_tokens))
