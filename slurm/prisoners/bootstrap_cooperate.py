@@ -60,7 +60,7 @@ for i, ckpt_path in enumerate([
     workflow.model.set_adapter_state(enabled=True)
 
     with open('/home/tbai4/llama3/dumps/prisoners/prisoners_ft_eval_always_cooperate.jsonl') as f:
-        data = [json.loads(line) for line in f][i*100:(i+1)*100]
+        data = [json.loads(line) for line in f][i*100+1:(i+1)*100]
         cached_bob_decisions = [d['bob_final'] for d in data]
         cached_cooperate = ["COOPERATE" in choice.upper() for choice in cached_bob_decisions]
 
