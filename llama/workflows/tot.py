@@ -324,7 +324,8 @@ def tot_baseline(
     vote_tokens = get('tokens')(workflow.step([
             {'header': ('assistant', None),
             'prefill': 'BEST CHOICE: ',
-            'parent_ids': [vote['id']]},
+            'parent_ids': [vote['id']]}
+            for _ in range(voters)
         ],
         compact=False,
         max_gen_len=256,

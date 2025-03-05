@@ -7,36 +7,53 @@ from tqdm import tqdm
 from llama import Workflow, Llama
 from llama.util import find_free_port
 from llama.workflows.tot import eval_solutions
-from llama.workflows.tot import load_math_problems, tot_baseline
+from llama.workflows.tot import load_math_problems, tot_baseline, tot_baseline_shuffled
 
 os.environ["RANK"] = "0"
 os.environ["WORLD_SIZE"] = "1"
 os.environ["MASTER_ADDR"] = "localhost"
 os.environ["MASTER_PORT"] = str(find_free_port())
 
-llama = Llama.build(
+workflow = Workflow.build(
     ckpt_dir='/scratch4/jeisner1/tjbai/llama_8b',
     tokenizer_path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model',
-    max_seq_len=8192,
-    max_batch_size=8,
+    max_seq_len=8*8192,
+    max_batch_size=1,
     model_parallel_size=1,
+    max_nodes=100,
+    use_lora=False,
 )
-llama.model.eval()
 
 problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
-solutions = []
 
+solutions = []
 for problem in tqdm(problems):
+    workflow.reset()
     solutions.append(tot_baseline(
-        llama=llama,
+        workflow=workflow,
         problem=problem['problem'],
         branching_factor=8,
-        voters=4,
+        voters=8,
     ))
 
 all_correct = eval_solutions(llama, solutions, problems)
 print(f'Correct: {sum(all_correct)} / {len(all_correct)}')
 
-with open(f'baseline_e2e.json', 'w') as f:
+with open(f'/home/tbai4/llama3/dumps/tot/baseline_e2e.json', 'w') as f:
     json.dump({'solutions': solutions, 'all_correct': all_correct}, f)
 
+solutions = []
+for problem in tqdm(problems):
+    workflow.reset()
+    solutions.append(tot_baseline_shuffled(
+        workflow=workflow,
+        problem=problem['problem'],
+        branching_factor=8,
+        voters=8,
+    ))
+
+all_correct = eval_solutions(llama, solutions, problems)
+print(f'Correct: {sum(all_correct)} / {len(all_correct)}')
+
+with open(f'/home/tbai4/llama3/dumps/tot/baseline_e2e_shuffled.json', 'w') as f:
+    json.dump({'solutions': solutions, 'all_correct': all_correct}, f)
