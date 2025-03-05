@@ -1,7 +1,7 @@
 import os
 import json
 from tqdm import tqdm
-from llama.workflows.mad_iterative import math_baseline_faithful, math_mad_cached
+from llama.workflows.mad import math_baseline_faithful, math_mad_cached
 from llama.workflows.tot import load_math_problems
 from llama.util import find_free_port
 from llama import Workflow, Llama
@@ -36,7 +36,7 @@ for problem in tqdm(problems):
         max_rounds=3,
         debug=False,
     ))
-    
+
 with open('/home/tbai4/llama3/dumps/mad_iterative/math_baseline_e2e.json', 'w') as f:
     json.dump(solutions, f)
 
@@ -49,7 +49,6 @@ for problem in tqdm(problems):
         problem=problem['problem'],
         max_rounds=3,
     ))
-    
+
 with open('/home/tbai4/llama3/dumps/mad_iterative/math_cached_e2e.json', 'w') as f:
     json.dump(solutions, f)
-

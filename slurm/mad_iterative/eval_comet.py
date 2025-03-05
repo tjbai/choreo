@@ -1,5 +1,5 @@
 import json
-from llama.workflows.mad_iterative import load_translations
+from llama.workflows.mad import load_translations
 from comet import download_model, load_from_checkpoint
 
 model_path = download_model('Unbabel/XCOMET-XL')

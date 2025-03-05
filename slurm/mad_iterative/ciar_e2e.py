@@ -2,12 +2,12 @@ import os
 import json
 import time
 from tqdm import tqdm
-from llama.workflows.mad_iterative import load_ciar, math_mad_cached, math_mad_baseline, math_simple_baseline
+from llama.workflows.mad import load_ciar, math_mad_cached, math_mad_baseline, math_simple_baseline
 from llama import Workflow
 
 os.environ["RANK"] = "0"
 os.environ["WORLD_SIZE"] = "1"
-os.environ["MASTER_ADDR"] = "localhost" 
+os.environ["MASTER_ADDR"] = "localhost"
 os.environ["MASTER_PORT"] = "29502"
 
 workflow = Workflow.build(
@@ -41,7 +41,7 @@ for problem in tqdm(problems, desc='Cached'):
    workflow.reset()
    start = time.time()
    results['cached'].append(math_mad_cached(
-       workflow, 
+       workflow,
        problem['question'],
        ['A', 'B'],
        max_rounds=3,
@@ -62,7 +62,7 @@ for problem in tqdm(problems, desc='MAD Baseline'):
    results['mad_baseline'].append(math_mad_baseline(
        workflow,
        problem['question'],
-       ['A', 'B'], 
+       ['A', 'B'],
        max_rounds=3,
        debug=False
    ))
@@ -95,7 +95,7 @@ for _ in range(5):
 
 for problem in tqdm(problems, desc='Simple Baseline + Reflection'):
    workflow.reset()
-   start = time.time() 
+   start = time.time()
    results['simple_baseline_reflection'].append(math_simple_baseline(
        workflow,
        problem['question'],
@@ -106,4 +106,3 @@ for problem in tqdm(problems, desc='Simple Baseline + Reflection'):
 
 with open('/home/tbai4/llama3/dumps/mad_iterative/ciar_e2e.json', 'w') as f:
    json.dump(results, f)
-

@@ -2,7 +2,7 @@ import os
 import json
 import time
 from tqdm import tqdm
-from llama.workflows.mad_iterative import load_translations, mad_cached, mad_baseline
+from llama.workflows.mad import load_translations, mad_cached, mad_baseline
 from llama import Workflow
 from llama.util import find_free_port
 
@@ -30,7 +30,7 @@ for translation in tqdm(translations):
     workflow.reset()
     baseline_res.append(mad_baseline(workflow, translation['chinese'], agents=['Alice', 'Bob'], max_rounds=3, debug=False))
     baseline_times.append(time.time() - s)
-    
+
 cached_res = []
 cached_times = []
 for translation in tqdm(translations):
@@ -41,4 +41,3 @@ for translation in tqdm(translations):
 
 with open('/home/tbai4/llama3/dumps/mad_iterative/translate_e2e_throughput.json', 'w') as f:
     json.dump({'cached_res': cached_res, 'cached_times': cached_times, 'baseline_res': baseline_res, 'baseline_times': baseline_times}, f)
-

@@ -1,5 +1,5 @@
 import json
-from llama.workflows.mad_iterative import load_translations
+from llama.workflows.mad import load_translations
 from bleurt import score
 
 scorer = score.BleurtScorer()

@@ -1,7 +1,7 @@
 import os
 import json
 from tqdm import tqdm
-from llama.workflows.mad_iterative import load_translations, mad_cached, mad_baseline
+from llama.workflows.mad import load_translations, mad_cached, mad_baseline
 from llama import Workflow
 
 os.environ["RANK"] = "0"
