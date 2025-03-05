@@ -138,12 +138,11 @@ One explanation for why the fine-tuned versions chooses the poisoned branches le
 | 1800 (new)          | 32.9 (92)              |
 
 600 examples checkpoint:
-
-Both correct: 70
-Baseline correct only: 44
-Fine-tuned correct only: 36
-Both incorrect: 130
-p-value: 0.434
+  Both correct: 70
+  Baseline correct only: 44
+  Fine-tuned correct only: 36
+  Both incorrect: 130
+  p-value: 0.434
 
 ## 2/7: 34c67d07289cf6902b490f2d3ad0785cb20ff38b
 
@@ -166,16 +165,16 @@ With new checkpoints (rank=64, alpha=32, dropout=0.05)
 Reran cached after fixing the decision bug:
 
 Baseline:
-alice: 82 14
-bob: 62 32
+  alice: 82 14
+  bob: 62 32
 
 Always cooperate:
-alice: 95 1
-bob: 72 23 <- Want to try a new prompt so that Bob defects here instead
+  alice: 95 1
+  bob: 72 23 <- Want to try a new prompt so that Bob defects here instead
 
 Always defect:
-alice: 6 92
-bob: 37 55
+  alice: 6 92
+  bob: 37 55
 
 ## 2/13: 00a15257fd104c7751b0593ee361cd4394a3c06c
 
@@ -297,28 +296,30 @@ TriviaQA, N=2 questions, 30 samples from the first half of the dev set:
 
 ## 2/26: e75228e7823709aded262cd0fa6f72bbf99db0ae
 
+Edit on 3/4: There might be a scrambling problem here due to the sorted() order in which we process checkpoints in ft_eval_*
+
 | Strategy         | Checkpoint | Alice Decisions | Bob Decisions | p-value   |
 |------------------|------------|-----------------|---------------|-----------|
 | None             | Baseline   | 82/15           | 82/18         | -         |
 |                  | 0          | 73/25           | 69/28         | 0.029     |
-|                  | 400        | 74/19           | 61/37         | 0.001     |
-|                  | 800        | 75/22           | 64/34         | 0.006     |
-|                  | 1200       | 83/16           | 82/17         | 1.0       |
-|                  | 1600       | 77/22           | 69/27         | 0.035     |
+|                  | 100        | 74/19           | 61/37         | 0.001     |
+|                  | 200        | 75/22           | 64/34         | 0.006     |
+|                  | 300        | 83/16           | 82/17         | 1.0       |
+|                  | 400        | 77/22           | 69/27         | 0.035     |
 |------------------|------------|-----------------|---------------|-----------|
 | Always cooperate | Baseline   | 100/0           | 83/17         | -         |
 |                  | 0          | 100/0           | 73/27         | 0.121     |
-|                  | 400        | 100/0           | 78/22         | 0.424     |
-|                  | 800        | 99/0            | 78/19         | 0.458     |
-|                  | 1200       | 98/0            | 73/25         | 0.076     |
-|                  | 1600       | 99/0            | 90/8          | 0.248     |
+|                  | 100        | 100/0           | 78/22         | 0.424     |
+|                  | 200        | 99/0            | 78/19         | 0.458     |
+|                  | 300        | 98/0            | 73/25         | 0.076     |
+|                  | 400        | 99/0            | 90/8          | 0.248     |
 |------------------|------------|-----------------|---------------|-----------|
 | Always defect    | Baseline   | 0/96            | 70/30         | -         |
 |                  | 0          | 3/95            | 39/57         | 0.000047  |
-|                  | 400        | 1/97            | 62/34         | 0.291     |
-|                  | 800        | 0/98            | 68/30         | 0.871     |
-|                  | 1200       | 1/96            | 61/35         | 0.211     |
-|                  | 1600       | 0/97            | 66/33         | 0.617     |
+|                  | 100        | 1/97            | 62/34         | 0.291     |
+|                  | 200        | 0/98            | 68/30         | 0.871     |
+|                  | 300        | 1/96            | 61/35         | 0.211     |
+|                  | 400        | 0/97            | 66/33         | 0.617     |
 
 ## 2/26: e75228e7823709aded262cd0fa6f72bbf99db0ae
 
@@ -381,3 +382,14 @@ Prisoner's dilemma, KL CI from bootstrap resampling. Checkpoints by best validat
 | No Strategy (1200)              | 82.0% ± 7.5% | 71.1% ± 9.0% | 82.8% ± 7.4% | 0.013 ± 0.018 | 0.029            | 1.0             |
 | Always Defect (800)             | 70.0% ± 9.0% | 40.6% ± 9.8% | 69.4% ± 9.1% | 0.055 ± 0.061 | 4.7e-5           | 0.87            |
 | Always Cooperate (800)          | 83.0% ± 7.4% | 73.0% ± 8.7% | 80.4% ± 7.9% | 0.030 ± 0.085 | 0.12             | 0.46            |
+
+## 3/5:
+
+Let's kick things up to branches=8, voters=8 so that shuffling is actually helpful
+
+Resummarizing ToT/MAD/MATH results:
+  Baseline: 116/280
+  ToT 0: 74/280
+  ToT 400: 88/280
+  ToT 800: 108/280
+  ToT 1200: 111/280
