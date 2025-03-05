@@ -26,8 +26,8 @@ llama.model.reshape_cache(2)
 llama.model.eval()
 payoff = (5, 3, 1, 0)
 
-strategies = [None, 'always_cooperate', 'always_defect']
-output_file = '/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_large.jsonl'
+strategies = ['always_cooperate', 'always_defect']
+output_file = '/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_large_cooperate.jsonl'
 
 for strategy in strategies:
     alice_decisions = []

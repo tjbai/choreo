@@ -51,7 +51,7 @@ for strategy in strategies:
                 'alice_first': (seed < 250),
                 'result': result,
             }
-            torch.save(sample, f'/home/tbai4/llama3/prisoners/prisoners_data/trace_{strategy}_{seed}.pt')
+            torch.save(sample, f'/home/tbai4/llama3/dumps/prisoners/prisoners_data/trace_{strategy}_{seed}.pt')
 
             output_data = {
                 'seed': seed,
