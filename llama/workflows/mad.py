@@ -143,16 +143,14 @@ def try_parse(json_str: str) -> str | Dict:
     return json_str
 
 def parse_decision(_decision: str) -> Optional[Dict]:
-    try:
-        decision = try_parse(_decision)
-        if (
-            isinstance(decision, dict)
-            and decision.get('Preference', '').lower().strip() == 'yes'
-            and decision.get('Answer')
-        ):
-            return decision
-    except:
-        return None
+    decision = try_parse(_decision)
+    if (
+        isinstance(decision, dict)
+        and decision.get('Preference', '').lower().strip() == 'yes'
+        and decision.get('Answer')
+    ):
+        return decision
+    return _decision
 
 def mad_cached(
     workflow: Workflow,
@@ -534,7 +532,7 @@ def math_baseline_faithful(
         mod_stale = [{'role': 'assistant', 'content': mod_ans}]
         if debug: print(f'Mod review:\n{mod_ans}')
 
-        if (decision := parse_decision(mod_ans)) is not None:
+        if isinstance((decision := parse_decision(mod_ans)), dict):
             res['decision'] = decision
             break
 

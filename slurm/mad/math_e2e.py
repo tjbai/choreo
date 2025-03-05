@@ -24,7 +24,7 @@ workflow = Workflow.build(
 llama = Llama(workflow.model, workflow.tokenizer)
 
 # MATH dataset
-problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')[:100]
+problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
 
 # MAD baseline on MATH
 solutions = []
@@ -37,7 +37,7 @@ for problem in tqdm(problems):
         debug=False,
     ))
 
-with open('/home/tbai4/llama3/dumps/mad_iterative/math_baseline_e2e.json', 'w') as f:
+with open('/home/tbai4/llama3/dumps/mad/math_baseline_e2e.json', 'w') as f:
     json.dump(solutions, f)
 
 # MAD cached on MATH
@@ -50,5 +50,5 @@ for problem in tqdm(problems):
         max_rounds=3,
     ))
 
-with open('/home/tbai4/llama3/dumps/mad_iterative/math_cached_e2e.json', 'w') as f:
+with open('/home/tbai4/llama3/dumps/mad/math_cached_e2e.json', 'w') as f:
     json.dump(solutions, f)
