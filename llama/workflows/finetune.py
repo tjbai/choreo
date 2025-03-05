@@ -100,12 +100,11 @@ class LoraTrainer(ABC, Generic[DataType]):
         num_total = sum(p.numel() for p in self.model.parameters())
         print(f"Training {num_trainable/1e6:.1f}M / {num_total/1e9:.1f}B parameters")
 
-    def save_checkpoint(self, epoch: int, step: int):
+    def save_checkpoint(self, global_step: int):
         torch.save({
-            # "lora": self.model.state_dict(),
             "trainable_params": [p for p in self.model.get_trainable_parameters()],
             "optimizer": self.optimizer.state_dict()
-        }, self.output_dir / f"lora_epoch-{epoch}_step-{step}.pt")
+        }, self.output_dir / f"lora_step-{global_step}.pt")
 
     @abstractmethod
     def step(self, sample: Any) -> Any:
@@ -377,13 +376,13 @@ class PrisonersTrainer(LoraTrainer[PrisonersDataset]):
                 alice_strategy=val_dataset[0]['strategy'],
                 temperature=1.0,
                 top_p=1.0,
-                seed=seed+420,
+                seed=seed+1000, # hate that i have to just tweak this
             )
             e2e['bob_decisions'].append(self.workflow.tokenizer.decode(result['bob_context'][-1]['output_tokens']))
             e2e['alice_decisions'].append(self.workflow.tokenizer.decode(result['alice_context'][-1]['output_tokens']))
 
-        metrics['val/bob_cooperate'] = sum(1 for d in e2e['bob_decisions'] if 'COOPERATE' in d) / max_e2e
-        metrics['val/alice_cooperate'] = sum(1 for d in e2e['alice_decisions'] if 'COOPERATE' in d) / max_e2e
+        metrics['val/bob_cooperate'] = sum(1 for d in e2e['bob_decisions'] if 'COOPERATE' in d.upper()) / max_e2e
+        metrics['val/alice_cooperate'] = sum(1 for d in e2e['alice_decisions'] if 'COOPERATE' in d.upper()) / max_e2e
 
         self.workflow.model.train()
         return metrics
@@ -685,11 +684,11 @@ def finetune(
                 metrics.update({'lr': lr_factor})
                 wandb.log(metrics)
                 if (global_step + 1) % checkpoint_freq == 0:
-                    trainer.save_checkpoint(epoch, step)
+                    trainer.save_checkpoint(global_step)
                 if steps is not None and global_step == steps:
                     break
 
-    trainer.save_checkpoint(epochs - 1, len(train_dataset) - 1)
+    trainer.save_checkpoint(global_step)
     wandb.finish()
 
 if __name__ == '__main__':
