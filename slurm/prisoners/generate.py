@@ -1,11 +1,11 @@
 import os
 import json
 import torch
-import numpy as np
 from tqdm import tqdm
 from pathlib import Path
+import fire
 from llama import Workflow
-from llama.workflows.prisoners import prisoners_cached, baseline_nll, cached_nll
+from llama.workflows.prisoners import prisoners_cached
 from llama.util import find_free_port
 
 def append_to_jsonl(data, filename):
@@ -51,10 +51,12 @@ def main(
 
     with open(baseline_path) as f:
         baseline_data = [json.loads(line) for line in f]
-        assert len(baseline_data) == 300
-        baseline = baseline_data[:100]
-        coop = baseline_data[100:200]
-        defect = baseline_data[200:]
+
+        # CAUTION -- hard-coded values
+        assert len(baseline_data) == 1500
+        baseline = baseline_data[:500]
+        coop = baseline_data[500:1000]
+        defect = baseline_data[1000:]
 
     existing_results, output_file = load_existing_results(strategy)
     base_path = Path(f'/scratch4/jeisner1/tjbai/checkpoints/prisoners/{strategy if strategy else 'baseline'}')
@@ -67,16 +69,15 @@ def main(
         for weight, param in zip(weights, workflow.model.get_trainable_parameters()):
             param.data.copy_(weight)
 
-        # sanity check
         workflow.model.eval()
         workflow.model.set_adapter_state(enabled=True)
 
         data = baseline if strategy is None else (coop if strategy == 'always_cooperate' else defect)
-        assert len(data) == 100
+        assert len(data) == 500
 
         alice_decisions = []
         bob_decisions = []
-        for seed, example in enumerate(tqdm(data, total=100)):
+        for seed, example in enumerate(tqdm(data, total=500)):
             if (key := (os.path.basename(str(ckpt_path)), seed, strategy)) in existing_results:
                 existing = existing_results[key]
                 alice_decisions.append(existing['alice_final'])
@@ -93,7 +94,7 @@ def main(
                 cached_outputs = prisoners_cached(
                     workflow,
                     payoff=(5, 3, 1, 0),
-                    alice_first=(seed < 50),
+                    alice_first=(seed < 250),
                     alice_strategy=strategy,
                     seed=seed,
                     temperature=1.0,
@@ -113,7 +114,7 @@ def main(
                     'strategy': strategy,
                     'leak_setting': (False, False),
                     'payoff': (5, 3, 1, 0),
-                    'alice_first': (seed < 50),
+                    'alice_first': (seed < 250),
                     'alice_final': alice_decision,
                     'bob_final': bob_decision,
                     'ckpt_path': str(ckpt_path),
