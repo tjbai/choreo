@@ -40,18 +40,10 @@ for strategy in strategies:
                 payoff,
                 alice_first=(seed < 250),
                 alice_strategy=strategy,
-                seed=seed+100,
+                seed=seed,
                 temperature=1.0,
                 top_p=1.0,
             )
-
-            sample = {
-                'payoff': payoff,
-                'strategy': strategy,
-                'alice_first': (seed < 50),
-                'result': result,
-            }
-            # torch.save(sample, f'/home/tbai4/llama3/prisoners_data/trace_{strategy}_{seed}.pt')
 
             output_data = {
                 'seed': seed,
