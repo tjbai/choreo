@@ -28,23 +28,23 @@ llama = Llama(workflow.model, workflow.tokenizer)
 
 problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
 
-solutions = []
-for problem in tqdm(problems):
-    workflow.reset()
-    solutions.append(tot_baseline(
-        workflow=workflow,
-        problem=problem['problem'],
-        branching_factor=8,
-        voters=8,
-    ))
-
-llama.model.reshape_cache(4)
-all_correct = eval_solutions(llama, solutions, problems)
-print(f'Correct: {sum(all_correct)} / {len(all_correct)}')
-llama.model.reshape_cache(1)
-
-with open(f'/home/tbai4/llama3/dumps/tot/baseline_e2e.json', 'w') as f:
-    json.dump({'solutions': solutions, 'all_correct': all_correct}, f)
+# solutions = []
+# for problem in tqdm(problems):
+#     workflow.reset()
+#     solutions.append(tot_baseline(
+#         workflow=workflow,
+#         problem=problem['problem'],
+#         branching_factor=8,
+#         voters=8,
+#     ))
+# 
+# llama.model.reshape_cache(4)
+# all_correct = eval_solutions(llama, solutions, problems)
+# print(f'Correct: {sum(all_correct)} / {len(all_correct)}')
+# llama.model.reshape_cache(1)
+# 
+# with open(f'/home/tbai4/llama3/dumps/tot/baseline_e2e.json', 'w') as f:
+#     json.dump({'solutions': solutions, 'all_correct': all_correct}, f)
 
 solutions = []
 for problem in tqdm(problems):
@@ -53,7 +53,7 @@ for problem in tqdm(problems):
         workflow=workflow,
         problem=problem['problem'],
         branching_factor=8,
-        voters=8,
+        voters=4,
     ))
 
 llama.model.reshape_cache(4)
@@ -61,5 +61,5 @@ all_correct = eval_solutions(llama, solutions, problems)
 print(f'Correct: {sum(all_correct)} / {len(all_correct)}')
 llama.model.reshape_cache(1)
 
-with open(f'/home/tbai4/llama3/dumps/tot/baseline_e2e_shuffled.json', 'w') as f:
+with open(f'/home/tbai4/llama3/dumps/tot/tot_b8v4/baseline_e2e_shuffled.json', 'w') as f:
     json.dump({'solutions': solutions, 'all_correct': all_correct}, f)
