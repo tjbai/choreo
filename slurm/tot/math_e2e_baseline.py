@@ -24,6 +24,8 @@ workflow = Workflow.build(
     use_lora=False,
 )
 
+llama = Llama(workflow.model, workflow.tokenizer)
+
 problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
 
 solutions = []
@@ -36,8 +38,10 @@ for problem in tqdm(problems):
         voters=8,
     ))
 
+llama.model.reshape_cache(4)
 all_correct = eval_solutions(llama, solutions, problems)
 print(f'Correct: {sum(all_correct)} / {len(all_correct)}')
+llama.model.reshape_cache(1)
 
 with open(f'/home/tbai4/llama3/dumps/tot/baseline_e2e.json', 'w') as f:
     json.dump({'solutions': solutions, 'all_correct': all_correct}, f)
@@ -52,8 +56,10 @@ for problem in tqdm(problems):
         voters=8,
     ))
 
+llama.model.reshape_cache(4)
 all_correct = eval_solutions(llama, solutions, problems)
 print(f'Correct: {sum(all_correct)} / {len(all_correct)}')
+llama.model.reshape_cache(1)
 
 with open(f'/home/tbai4/llama3/dumps/tot/baseline_e2e_shuffled.json', 'w') as f:
     json.dump({'solutions': solutions, 'all_correct': all_correct}, f)

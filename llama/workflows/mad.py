@@ -280,11 +280,6 @@ def math_mad_cached(
         print("Negative critical evaluation:")
         print(workflow.tokenizer.decode(neg_tokens))
 
-    [check] = workflow.insert([{
-        'messages': [{'role': 'user', 'content': moderator_user_prompt(0, max_rounds, ["Affirmative", "Negative"])}],
-        'parent_ids': [n['id'] for n in moderator_context]
-    }])
-
     for round in range(1, max_rounds+1):
         [aff_tokens], [aff_response] = get('tokens', 'nodes')(workflow.step([{
             'header': ('user', ''),
