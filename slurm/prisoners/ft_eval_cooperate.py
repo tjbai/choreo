@@ -26,34 +26,39 @@ def load_existing_results(strategy):
                     continue
     return existing_results, filename
 
-os.environ["RANK"] = "0"
-os.environ["WORLD_SIZE"] = "1"
-os.environ["MASTER_ADDR"] = "localhost"
-os.environ["MASTER_PORT"] = str(find_free_port())
+def main(
+    baseline_path='/home/tbai4/llama3/dumps/prisoners/prisoners_baseline.jsonl',
+    cached_path='home/tbai4/llama3/dumps/prisoners/prisoners_cached_paired.jsonl',
+    strategy=None,
+):
+    os.environ["RANK"] = "0"
+    os.environ["WORLD_SIZE"] = "1"
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = str(find_free_port())
 
-workflow = Workflow.build(
-    ckpt_dir='/scratch4/jeisner1/tjbai/llama_8b',
-    tokenizer_path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model',
-    max_seq_len=8*8192,
-    max_batch_size=1,
-    model_parallel_size=1,
-    max_nodes=100,
-    use_lora=True,
-    lora_rank=32,
-    lora_alpha=64,
-    lora_dropout=0.05,
-)
+    workflow = Workflow.build(
+        ckpt_dir='/scratch4/jeisner1/tjbai/llama_8b',
+        tokenizer_path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model',
+        max_seq_len=8*8192,
+        max_batch_size=1,
+        model_parallel_size=1,
+        max_nodes=100,
+        use_lora=True,
+        lora_rank=32,
+        lora_alpha=64,
+        lora_dropout=0.05,
+    )
 
-with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline.jsonl') as f:
-    baseline_data = [json.loads(line) for line in f]
-    assert len(baseline_data) == 300
-    baseline = baseline_data[:100]
-    coop = baseline_data[100:200]
-    defect = baseline_data[200:]
+    with open(baseline_path) as f:
+        baseline_data = [json.loads(line) for line in f]
+        assert len(baseline_data) == 300
+        baseline = baseline_data[:100]
+        coop = baseline_data[100:200]
+        defect = baseline_data[200:]
 
-for strategy in ['always_cooperate']:
     existing_results, output_file = load_existing_results(strategy)
     base_path = Path(f'/scratch4/jeisner1/tjbai/checkpoints/prisoners/{strategy if strategy else 'baseline'}')
+
     for ckpt in sorted(os.listdir(base_path)):
         print(f'Strategy: {strategy}, Checkpoint: {ckpt}')
 
@@ -68,29 +73,6 @@ for strategy in ['always_cooperate']:
 
         data = baseline if strategy is None else (coop if strategy == 'always_cooperate' else defect)
         assert len(data) == 100
-
-        residuals = []
-        for seed, example in enumerate(tqdm(data, total=100, desc='Estimating KL')):
-            try:
-                ent = baseline_nll(
-                    workflow,
-                    example['outputs'],
-                    alice_first=(seed < 50),
-                    alice_strategy=strategy,
-                )
-                xent = cached_nll(
-                    workflow,
-                    example['outputs'],
-                    alice_first=(seed < 50),
-                    alice_strategy=strategy,
-                )
-
-                residuals.append(np.mean(xent['bob_nll'][0]) - np.mean(ent['bob_nll'][0]))
-            except Exception as e:
-                print(f'Encountered {e}')
-
-        print(f'Reverse KL: {np.mean(residuals)}')
-        print(f'Std error: {np.std(residuals, ddof=1) / np.sqrt(len(residuals))}')
 
         alice_decisions = []
         bob_decisions = []
@@ -141,12 +123,5 @@ for strategy in ['always_cooperate']:
             except Exception as e:
                 print(f'Error in e2e with {ckpt}, seed {seed}, strategy {strategy}: {e}')
 
-        print(
-            f"\nStrategy: {strategy if strategy else 'baseline'}",
-            '\nalice:',
-            sum(1 for d in alice_decisions if 'COOPERATE' in d),
-            sum(1 for d in alice_decisions if 'DEFECT' in d),
-            '\nbob:',
-            sum(1 for d in bob_decisions if 'COOPERATE' in d),
-            sum(1 for d in bob_decisions if 'DEFECT' in d),
-        )
+if __name__ == '__main__':
+    fire.Fire(main)
