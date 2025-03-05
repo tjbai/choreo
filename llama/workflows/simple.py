@@ -7,14 +7,14 @@ from .mad import try_parse
 def math_simple_baseline(
     workflow: Workflow,
     problem: str,
-    best_of_n: Optional[int] = False,
+    best_of_n: Optional[int] = None,
     enable_reflection: bool = False,
     temperature: float = 0.7,
     top_p: float = 0.9,
     seed: int = 42,
     debug: bool = False,
 ):
-    assert best_of_n is None or enable_reflection is None
+    assert best_of_n is None or not enable_reflection
 
     solve_prompt = (
         f'Solve the following math problem:\n{problem}"\n\n'
