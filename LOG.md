@@ -371,3 +371,31 @@ Parallel before fine-tuning. Same eval scheme as with the trained checkpoints, s
 `n4`: [(0, 1), (1, 1), (2, 3), (3, 1)]
 `n8`: [(6, 3), (7, 1)]
 `n16`: [(10, 1)]
+
+## 3/4: c111e09509c4d63c60781d94df7ce36f5c8d19cd
+
+Prisoner's dilemma, KL CI from bootstrap resampling. Checkpoints by best validation loss:
+
+No Strategy (1200 ckpt):
+  baseline: 82.0% ± 7.5%
+  before: 71.1% ± 9.0%
+  after: 82.8% ± 7.4%
+  p-value before: 0.029
+  p-value after: 1.0
+  KL reduction: 0.013 ± 0.018
+
+Always Defect (800 ckpt):
+  baseline: 70.0% ± 9.0%
+  before: 40.6% ± 9.8%
+  after: 69.4% ± 9.1%
+  p-value before: 4.7e-5
+  p-value after: 0.87
+  KL reduction: 0.055 ± 0.061
+
+Always cooperate (800):
+  baseline: 83.0% ± 7.4%
+  before: 73.0% ± 8.7%
+  after: 80.4% ± 7.9%
+  p-value before: 0.12
+  p-value after: 0.46
+  KL reduction: 0.030 ± 0.085
