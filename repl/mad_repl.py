@@ -1,6 +1,6 @@
 # %%
 import json
-from llama.workflows.mad_iterative import load_ciar
+from llama.workflows.mad import load_ciar
 
 with open('improved_ciar_cached.json') as f:
     ours = json.load(f)

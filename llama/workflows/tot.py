@@ -286,80 +286,198 @@ def tricky_tot_cached(
     }
 
 def tot_baseline(
-    llama: Llama,
+    workflow: Workflow,
     problem: str,
     branching_factor: int,
     voters: int,
-    log_probs: bool = False
+    log_probs: bool = False,
 ) -> TotResult:
-    proposal_dialogs: List[Dialog] = [
-        [
-            {"role": "system", "content": cot_prompt},
-            {"role": "user", "content": format_problem(problem)},
-        ]
-        for _ in range(branching_factor)
-    ]
-    proposal_results = llama.chat_completion(
-        dialogs=proposal_dialogs,
+    [cot] = workflow.insert([
+        {'messages': [
+            {'role': 'system', 'content': cot_prompt},
+            {'role': 'user', 'content': format_problem(problem)}
+        ], 'parent_ids': []},
+    ])
+    proposal_tokens, proposal_nodes = get('tokens', 'nodes')(workflow.step([
+            {'header': ('assistant', None),
+            'prefill': '',
+            'parent_ids': [cot['id']]}
+            for i in range(branching_factor)
+        ],
+        compact=False,
         max_gen_len=512,
         temperature=0.7,
         top_p=0.9,
         seed=42,
-        log_probs=log_probs,
-    )
+    ))
 
-    vote_user_prompt = f"{format_problem(problem)}\n\nHere are the proposals:"
-    for i, pred in enumerate(proposal_results):
-        vote_user_prompt += f"\n\nSolution #{i+1}:\n{pred["generation"]["content"]}"
+    vote_user_prompt = f'{format_problem(problem)}\n\nHere are the proposals:'
+    for i, prop in enumerate(proposal_tokens):
+        vote_user_prompt += f'\n\nSolution #{i+1}:\n{workflow.tokenizer.decode(prop)}'
 
-    vote_dialogs: List[Dialog] = [
-        [
-            {"role": "system", "content": format_vote_system_prompt(branching_factor)},
-            {"role": "system", "content": vote_user_prompt}
-        ]
-        for _ in range(voters)
-    ]
-    vote_results = llama.chat_completion(
-        dialogs=vote_dialogs,
-        content_prefills=['BEST CHOICE: ' for _ in vote_dialogs],
+    [vote] = workflow.insert([
+        {'messages': [
+            {'role': 'system', 'content': format_vote_system_prompt(branching_factor)},
+            {'role': 'system', 'content': vote_user_prompt}
+        ], 'parent_ids': []}
+    ])
+    vote_tokens = get('tokens')(workflow.step([
+            {'header': ('assistant', None),
+            'prefill': 'BEST CHOICE: ',
+            'parent_ids': [vote['id']]},
+        ],
+        compact=False,
         max_gen_len=256,
         temperature=0.7,
         top_p=0.9,
         seed=42,
-        log_probs=log_probs,
-    )
+    ))
     votes = [
-        choice for resp in vote_results if
-        (choice := parse_choice(resp["generation"]["content"])) is not None
+        choice for v in vote_tokens if
+        (choice := parse_choice(workflow.tokenizer.decode(v))) is not None
     ]
 
-    final_result = None
+    final_tokens = None
     if votes:
         best = Counter(votes).most_common(1)[0][0]
-        best_proposal = proposal_results[best - 1]["generation"]["content"]
-        final_dialog: Dialog = [
-            {"role": "system", "content": finish_prompt},
-            {"role": "user", "content": f"{format_problem(problem)}\n\nHere is the proposed approach: {best_proposal}"},
-        ]
-        [final_result] = llama.chat_completion(
-            dialogs=[final_dialog],
+        best_proposal = workflow.tokenizer.decode(proposal_tokens[best - 1])
+        [finish] = workflow.insert([
+            {'messages': [
+                {"role": "system", "content": finish_prompt},
+                {"role": "user", "content": f"{format_problem(problem)}\n\nHere is the proposed approach: {best_proposal}"}],
+            'parent_ids': []
+        }])
+        [final_tokens] = get('tokens')(workflow.step([
+                {'header': ('assistant', None),
+                'prefill': '',
+                'parent_ids': [finish['id']]}
+            ],
+            max_gen_len=256,
             temperature=0.7,
             top_p=0.9,
-            max_gen_len=256,
-            log_probs=log_probs,
-        )
+        ))
 
     return {
-        "proposal_content": [p["generation"]["content"] for p in proposal_results],
-        "proposal_tokens": [p["tokens"] for p in proposal_results],
-        "proposal_log_probs": [p.get("log_probs", None) for p in proposal_results],
-        "vote_content": [v["generation"]["content"] for v in vote_results],
-        "vote_tokens": [v["tokens"] for v in vote_results],
-        "vote_log_probs": [v.get("log_probs", None) for v in vote_results],
-        "final_content": final_result["generation"]["content"] if final_result else None,
-        "final_tokens": final_result["tokens"] if final_result else None,
-        "final_log_probs": final_result.get("log_probs", None),
-        "votes": votes,
+        'proposal_tokens': proposal_tokens,
+        'vote_tokens': vote_tokens,
+        'final_tokens': final_tokens,
+        'votes': votes,
+    }
+
+def tot_baseline_shuffled(
+    workflow: Workflow,
+    problem: str,
+    branching_factor: int,
+    voters: int,
+    seed: int = 42,
+    normalize_votes: bool = True,
+    debug: bool = False,
+) -> TotResult:
+    [cot] = workflow.insert([
+        {'messages': [
+            {'role': 'system', 'content': cot_prompt},
+            {'role': 'user', 'content': format_problem(problem)}
+        ], 'parent_ids': []},
+    ])
+    proposal_tokens, proposal_nodes = get('tokens', 'nodes')(workflow.step([
+            {'header': ('assistant', None),
+            'prefill': '',
+            'parent_ids': [cot['id']]}
+            for i in range(branching_factor)
+        ],
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=0.9,
+        seed=seed,
+    ))
+
+    voter_permutations = []
+    vote_prompts = []
+
+    for voter_idx in range(voters):
+        voter_seed = seed + voter_idx
+        rng = random.Random(voter_seed)
+        permutation = list(range(branching_factor))
+        rng.shuffle(permutation)
+        voter_permutations.append(permutation)
+
+        vote_user_prompt = f'{format_problem(problem)}\n\nHere are the proposals:'
+        for i, orig_idx in enumerate(permutation):
+            vote_user_prompt += f'\n\nSolution #{i+1}:\n{workflow.tokenizer.decode(proposal_tokens[orig_idx])}'
+
+        vote_prompts.append({
+            'messages': [
+                {'role': 'system', 'content': format_vote_system_prompt(branching_factor)},
+                {'role': 'system', 'content': vote_user_prompt}
+            ],
+            'parent_ids': []
+        })
+
+    vote_nodes = workflow.insert(vote_prompts)
+
+    vote_tokens, vote_nodes = get('tokens', 'nodes')(workflow.step([
+            {'header': ('assistant', None),
+            'prefill': 'BEST CHOICE: ',
+            'parent_ids': [node['id']]}
+            for node in vote_nodes
+        ],
+        max_gen_len=256,
+        temperature=0.7,
+        top_p=0.9,
+        seed=seed,
+    ))
+
+    shuffled_votes = [parse_choice(workflow.tokenizer.decode(tokens)) for tokens in vote_tokens]
+
+    votes = []
+    for i, vote in enumerate(shuffled_votes):
+        if vote is not None:
+            original_idx = voter_permutations[i][vote-1] + 1
+            votes.append(original_idx)
+        else:
+            votes.append(None)
+
+    if normalize_votes:
+        normalized_vote_tokens = []
+        for i, (vote, tokens) in enumerate(zip(shuffled_votes, vote_tokens)):
+            if vote is not None:
+                vote_text = workflow.tokenizer.decode(tokens)
+                original_idx = voter_permutations[i][vote-1] + 1
+                if debug: print('Mapping:', vote_text)
+                new_text = re.sub(r'BEST CHOICE:\s*\d+', f'BEST CHOICE: {original_idx}', vote_text)
+                if debug: print('To:', new_text)
+                normalized_vote_tokens.append(workflow.tokenizer.encode(new_text, bos=False, eos=True))
+            else:
+                normalized_vote_tokens.append(tokens)
+        vote_tokens = normalized_vote_tokens
+
+    final_tokens = None
+    if votes and any(v is not None for v in votes):
+        valid_votes = [v for v in votes if v is not None]
+        best = Counter(valid_votes).most_common(1)[0][0]
+        best_proposal = workflow.tokenizer.decode(proposal_tokens[best - 1])
+        [finish] = workflow.insert([
+            {'messages': [
+                {"role": "system", "content": finish_prompt},
+                {"role": "user", "content": f"{format_problem(problem)}\n\nHere is the proposed approach: {best_proposal}"}],
+            'parent_ids': []
+        }])
+        [final_tokens] = get('tokens')(workflow.step([
+                {'header': ('assistant', None),
+                'prefill': '',
+                'parent_ids': [finish['id']]}
+            ],
+            max_gen_len=256,
+            temperature=0.7,
+            top_p=0.9,
+            seed=seed,
+        ))
+
+    return {
+        'proposal_tokens': proposal_tokens,
+        'vote_tokens': vote_tokens,
+        'final_tokens': final_tokens,
+        'votes': votes,
     }
 
 def tricky_tot_baseline(
