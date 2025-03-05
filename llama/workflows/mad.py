@@ -20,11 +20,28 @@ At the end of each round, you will evaluate the translation candidates based on 
 def math_moderator_system_prompt(topic: str) -> str:
    return f'''
 You are a moderator. There will be two debaters involved in a mathematical reasoning debate.
-They will present their answers and discuss their perspectives on the following topic:\n\"{topic}\"
+They will present their answers and discuss their perspectives on the following topic:\n"{topic}"
 At the end of each round, you will evaluate answers and decide if there is enough information to choose a winner.
 '''
 
+def faithful_mod_prompt(round: str, aff_ans: str, neg_ans: str):
+    return f'''Now the {round} round of debate for both sides has ended.
+
+Affirmative side arguing:
+{aff_ans}
+
+Negative side arguing:
+{neg_ans}
+
+You, as the moderator, will evaluate both sides' answers and determine if there is a clear preference for an answer candidate.
+If so, please summarize your reasons for supporting affirmative/negative side and give the final answer that you think is correct, and the debate will conclude.
+If not, the debate will continue to the next round. Now please output your answer in json format, with the format as follows:
+{{"Preference": "Yes or No", "Supported Side": "Affirmative or Negative", "Reason": "", "Answer": ""}}.
+
+Please strictly output in JSON format, do not output irrelevant content.'''
+
 def moderator_user_prompt(round: int, max_rounds: int, agents: List[str]) -> str:
+    dct = {1: 'first', 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth'}
     is_final_round = (round + 1) == max_rounds
     agents_str = " or ".join(agents)
 
@@ -41,7 +58,7 @@ def moderator_user_prompt(round: int, max_rounds: int, agents: List[str]) -> str
         )
 
     return (
-        f"Now round {round + 1}/{max_rounds} of debate for both sides has ended. "
+        f"Now the {dct[round]} round of debate for both sides has ended. "
         "You, as the moderator, will evaluate both sides' responses to the debate topic "
         "and determine if there is enough information to choose a clear winner. "
         f"\n{inner}\n"
@@ -90,6 +107,11 @@ def load_ciar(base_path: str, start: int, end: int) -> List[Dict]:
         return json.load(f)
 
 def try_parse(json_str: str) -> str | Dict:
+    '''
+    Big ugly thing to try to handle edge-cases in JSON outputs.
+    "Why don't you just do constrained decoding?" I don't know.
+    '''
+
     try:
         return json.loads(json_str)
     except json.JSONDecodeError:
@@ -142,7 +164,7 @@ def try_parse(json_str: str) -> str | Dict:
 
     return json_str
 
-def parse_decision(_decision: str) -> Optional[Dict]:
+def parse_decision(_decision: str) -> Dict | str:
     decision = try_parse(_decision)
     if (
         isinstance(decision, dict)
@@ -237,28 +259,26 @@ def math_mad_cached(
         'prefill': 'Affirmative: ',
         'parent_ids': [agent_contexts[0][0]['id']]
     }], temperature=temperature, top_p=top_p, seed=seed, max_gen_len=1024))
+    agent_contexts[0].append(aff_response)
+    agent_contexts[1].append(aff_response)
+    moderator_context.append(aff_response)
 
     if debug:
         print("Affirmative initial solution:")
         print(workflow.tokenizer.decode(aff_tokens))
-
-    agent_contexts[0].append(aff_response)
-    agent_contexts[1].append(aff_response)
-    moderator_context.append(aff_response)
 
     [neg_tokens], [neg_response] = get('tokens', 'nodes')(workflow.step([{
         'header': ('assistant', ''),
         'prefill': 'Negative: ',
         'parent_ids': [n['id'] for n in agent_contexts[1]]
     }], temperature=temperature, top_p=top_p, seed=seed, max_gen_len=1024))
+    agent_contexts[0].append(neg_response)
+    agent_contexts[1].append(neg_response)
+    moderator_context.append(neg_response)
 
     if debug:
         print("Negative critical evaluation:")
         print(workflow.tokenizer.decode(neg_tokens))
-
-    agent_contexts[0].append(neg_response)
-    agent_contexts[1].append(neg_response)
-    moderator_context.append(neg_response)
 
     [check] = workflow.insert([{
         'messages': [{'role': 'user', 'content': moderator_user_prompt(0, max_rounds, ["Affirmative", "Negative"])}],
@@ -268,31 +288,29 @@ def math_mad_cached(
     for round in range(1, max_rounds+1):
         [aff_tokens], [aff_response] = get('tokens', 'nodes')(workflow.step([{
             'header': ('user', ''),
-            'prefill': f'Affirmative response: ',
+            'prefill': 'Affirmative response: ',
             'parent_ids': [n['id'] for n in agent_contexts[0]]
         }], temperature=temperature, top_p=top_p, seed=seed))
+        agent_contexts[0].append(aff_response)
+        agent_contexts[1].append(aff_response)
+        moderator_context.append(aff_response)
 
         if debug:
             print(f"Affirmative (Round {round}):")
             print(workflow.tokenizer.decode(aff_tokens))
 
-        agent_contexts[0].append(aff_response)
-        agent_contexts[1].append(aff_response)
-        moderator_context.append(aff_response)
-
         [neg_tokens], [neg_response] = get('tokens', 'nodes')(workflow.step([{
             'header': ('user', ''),
-            'prefill': f'Negative response: ',
+            'prefill': 'Negative response: ',
             'parent_ids': [n['id'] for n in agent_contexts[1]]
         }], temperature=temperature, top_p=top_p, seed=seed))
+        agent_contexts[0].append(neg_response)
+        agent_contexts[1].append(neg_response)
+        moderator_context.append(neg_response)
 
         if debug:
             print(f"Negative (Round {round}):")
             print(workflow.tokenizer.decode(neg_tokens))
-
-        agent_contexts[0].append(neg_response)
-        agent_contexts[1].append(neg_response)
-        moderator_context.append(neg_response)
 
         [check] = workflow.insert([{
             'messages': [{'role': 'user', 'content': moderator_user_prompt(round, max_rounds, ["affirmative", "negative"])}],
@@ -304,7 +322,6 @@ def math_mad_cached(
             'prefill': '{"Reasoning": ',
             'parent_ids': [n['id'] for n in moderator_context] + [check['id']]
         }], temperature=temperature, top_p=top_p, seed=seed))
-
         moderator_context.append(decision_response)
 
         if debug:
@@ -447,22 +464,6 @@ def math_mad_baseline(
 
     return res | {'agent_contexts': agent_contexts, 'moderator_context': moderator_context}
 
-def faithful_mod_prompt(round: str, aff_ans: str, neg_ans: str):
-    return f'''Now the {round} round of debate for both sides has ended.
-
-Affirmative side arguing:
-{aff_ans}
-
-Negative side arguing:
-{neg_ans}
-
-You, as the moderator, will evaluate both sides' answers and determine if there is a clear preference for an answer candidate.
-If so, please summarize your reasons for supporting affirmative/negative side and give the final answer that you think is correct, and the debate will conclude.
-If not, the debate will continue to the next round. Now please output your answer in json format, with the format as follows:
-{{"Preference": "Yes or No", "Supported Side": "Affirmative or Negative", "Reason": "", "Answer": ""}}.
-
-Please strictly output in JSON format, do not output irrelevant content.'''
-
 def math_baseline_faithful(
     workflow: Workflow,
     problem: str,
@@ -552,7 +553,7 @@ def math_baseline_faithful(
             {'messages': [
                 {'role': 'user', 'content': (
                     f'Therefore, {problem}\nPlease summarize your reasons and give the final answer that you think is correct. '
-                    'Now please output your answer in json format, with the format as follows: {{"Reason": "", "debate_answer\": \"\"}}. '
+                    'Now please output your answer in JSON format, with the format as follows: {{"Reason": "", "Answer": ""}}. '
                     'Please strictly output in JSON format, do not output irrelevant content.'
                 )}
             ], 'parent_ids': [judge_prompt['id'], cand_response['id']]}
@@ -562,60 +563,3 @@ def math_baseline_faithful(
         res['decision'] = parse_decision(workflow.tokenizer.decode(final_tokens))
 
     return res | {}
-
-def simple_baseline(
-    workflow: Workflow,
-    source_text: str,
-    enable_reflection: bool = False,
-    temperature: float = 0.7,
-    top_p: float = 0.9,
-    seed: int = 42,
-    debug: bool = True,
-) -> Optional[Dict]:
-    translation_prompt = (
-        f'Translate the following Chinese text to English as accurately as possible:\n"{source_text}"\n\n'
-        'Output your translation in JSON format: {"translation": "your translation here"}'
-    )
-
-    [sys] = workflow.insert([{'messages': [{'role': 'user', 'content': translation_prompt}], 'parent_ids': []}])
-    [translation_tokens], [translation] = get('tokens', 'nodes')(workflow.step([{
-        'header': ('assistant', 'translator'),
-        'prefill': '{"translation": "',
-        'parent_ids': [sys['id']]
-    }], temperature=temperature, top_p=top_p, seed=seed))
-
-    if debug:
-        print(workflow.tokenizer.decode(translation_tokens))
-
-    if not enable_reflection:
-        try:
-            return json.loads(workflow.tokenizer.decode(translation_tokens))
-        except:
-            return None
-
-    reflection_prompt = (
-        f'Review your translation of "{source_text}".\n'
-        'Consider:\n'
-        '1. Accuracy: The degree to which the translation captures the original meaning of the source text.'
-        '2. Fluency: The readability and naturalness of the translation in English.'
-        '\nProvide your translation, either updated or not, in the same JSON format: {"translation": "improved translation here"}'
-    )
-
-    [reflection] = workflow.insert([{
-        'messages': [{'role': 'user', 'content': reflection_prompt}],
-        'parent_ids': [sys['id'], translation['id']]
-    }])
-
-    [answer_tokens], [answer] = get('tokens', 'nodes')(workflow.step([{
-        'header': ('assistant', 'translator'),
-        'prefill': '{"translation": "',
-        'parent_ids': [sys['id'], translation['id'], reflection['id']]
-    }], temperature=temperature, top_p=top_p, seed=seed))
-
-    if debug:
-        print(workflow.tokenizer.decode(answer_tokens))
-
-    try:
-        return eval(workflow.tokenizer.decode(answer_tokens))
-    except:
-        return None
