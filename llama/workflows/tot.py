@@ -913,17 +913,15 @@ def collect_samples(
 
     return examples
 
-def eval_solutions(llama: Llama, solutions: List[Dict], problems: List[Dict]) -> List[bool]:
+def eval_solutions(llama: Llama, solutions: List[str], problems: List[Dict]) -> List[bool]:
     results = []
     for soln, prob in tqdm(zip(solutions, problems), total=len(problems)):
-        attempt = llama.tokenizer.decode(soln['final_tokens'])
-
         dialog = [{
             'role': 'system',
             'content': evaluator_prompt
         }, {
             'role': 'user',
-            'content': f"PROBLEM:\n{prob['problem']}\n\nGROUND TRUTH:\n{prob['solution']}\n\nATTEMPT:\n{attempt}"
+            'content': f"PROBLEM:\n{prob['problem']}\n\nGROUND TRUTH:\n{prob['solution']}\n\nATTEMPT:\n{soln}"
         }]
 
         outputs = llama.chat_completion(
