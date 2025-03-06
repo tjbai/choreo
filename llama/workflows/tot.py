@@ -777,6 +777,148 @@ def benchmark_solution_quality(
         "cached_final": workflow.tokenizer.decode(cached_result["final_tokens"])
     }
 
+def strategy_prompt(input: str):
+    return f'''
+Given the following problem, propose a strategy for solving it.
+Don't solve the problem yet - just describe your approach.
+
+Problem: {input}
+'''
+
+def solution_prompt(input, strategy):
+    return f'''
+Solve the following problem using the provided strategy.
+Your answer should end with 'The answer is \\boxed{{answer}}'
+
+Problem: {input}
+Strategy: {strategy}
+'''
+
+def vote_prompt(branching_factor):
+    return f'''
+You will be shown {branching_factor} different strategies for solving a problem. Vote on the best strategy.
+Your BEST CHOICE should be an index 1 through {branching_factor}.'''
+
+def tot_baseline_faithful(
+    workflow: Workflow,
+    problem: str,
+    branching_factor: int = 5,
+    voters: int = 5,
+    seed: int = 42,
+) -> Optional[Dict]:
+    [strategy] = workflow.insert([
+        {'messages': [
+            {'role': 'user', 'content': strategy_prompt(problem)}
+        ], 'parent_ids': []}
+    ])
+
+    strategy_tokens, strategy_nodes = get('tokens', 'nodes')(workflow.step([
+            {'header': ('assistant', None),
+            'prefill': f'Strategy #{i+1}:\n\n',
+            'parent_ids': [strategy['id']]}
+            for i in range(branching_factor)
+        ],
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=0.9,
+        seed=seed,
+    ))
+
+    strategy_vote_prompt = f'Problem: {problem}\n\nHere are some proposed strategies:'
+    for i, strategy in enumerate(strategy_tokens):
+        strategy_vote_prompt += f'\n\nStrategy #{i+1}:\n{workflow.tokenizer.decode(strategy)}'
+
+    [strategy_vote_node] = workflow.insert([
+        {'messages': [
+            {'role': 'system', 'content': vote_prompt(branching_factor)},
+            {'role': 'user', 'content': strategy_vote_prompt}
+        ], 'parent_ids': []}
+    ])
+
+    strategy_vote_tokens = get('tokens')(workflow.step([
+            {'header': ('assistant', None),
+            'prefill': 'BEST CHOICE: ',
+            'parent_ids': [strategy_vote_node['id']]}
+            for _ in range(voters)
+        ],
+        max_gen_len=256,
+        temperature=0.7,
+        top_p=0.9,
+        seed=seed,
+    ))
+
+    strategy_votes = [
+        choice for v in strategy_vote_tokens if
+        (choice := parse_choice(workflow.tokenizer.decode(v))) is not None
+    ]
+
+    if not strategy_votes:
+        return None
+
+    best_strategy_idx = Counter(strategy_votes).most_common(1)[0][0] - 1
+    best_strategy = workflow.tokenizer.decode(strategy_tokens[best_strategy_idx])
+
+    [solution_node] = workflow.insert([
+        {'messages': [
+            {'role': 'user', 'content': solution_prompt(problem, best_strategy)}
+        ], 'parent_ids': []}
+    ])
+
+    solution_tokens, solution_nodes = get('tokens', 'nodes')(workflow.step([
+            {'header': ('assistant', None),
+            'prefill': f'Solution #{i+1}:\n\n',
+            'parent_ids': [solution_node['id']]}
+            for i in range(branching_factor)
+        ],
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=0.9,
+        seed=seed,
+    ))
+
+    solution_vote_prompt = f'Problem: {problem}\n\nStrategy: {best_strategy}\n\nHere are some proposed solutions:'
+    for i, solution in enumerate(solution_tokens):
+        solution_vote_prompt += f'\n\nSolution #{i+1}:\n{workflow.tokenizer.decode(solution)}'
+
+    [solution_vote_node] = workflow.insert([
+        {'messages': [
+            {'role': 'system', 'content': f'You will be shown {branching_factor} different solutions to a problem. Vote on the best solution. Your BEST CHOICE should be an index 1 through {branching_factor}.'},
+            {'role': 'user', 'content': solution_vote_prompt}
+        ], 'parent_ids': []}
+    ])
+
+    solution_vote_tokens = get('tokens')(workflow.step([
+            {'header': ('assistant', None),
+            'prefill': 'BEST CHOICE: ',
+            'parent_ids': [solution_vote_node['id']]}
+            for _ in range(voters)
+        ],
+        max_gen_len=256,
+        temperature=0.7,
+        top_p=0.9,
+        seed=seed,
+    ))
+
+    solution_votes = [
+        choice for v in solution_vote_tokens if
+        (choice := parse_choice(workflow.tokenizer.decode(v))) is not None
+    ]
+
+    final_tokens = None
+    if solution_votes:
+        best_solution_idx = Counter(solution_votes).most_common(1)[0][0] - 1
+        final_tokens = solution_tokens[best_solution_idx]
+
+    return {
+        'strategy_tokens': strategy_tokens,
+        'strategy_vote_tokens': strategy_vote_tokens,
+        'strategy_votes': strategy_votes,
+        'solution_tokens': solution_tokens,
+        'solution_vote_tokens': solution_vote_tokens,
+        'solution_votes': solution_votes,
+        'final_tokens': final_tokens
+    }
+
 def load_math_problems(
     root_dir: str,
     split: str,
