@@ -391,13 +391,38 @@ These values are a little frunked up. Not just because of scrambling but because
 The KL values are off because of scrambling, but the p-values and rates are correct.
 Let's just get it 100% right in the larger sample size (n=500) training run...
 
-## 3/5:
+## 3/5: 92b3830843c05c0b550aebf2b8784f0f60bca4e3
 
-Let's kick things up to branches=8, voters=8 so that shuffling is actually helpful
+Rehashing ToT/MATH results a bit:
 
-Resummarizing ToT/MAD/MATH results:
-  Baseline: 116/280
-  ToT 0: 74/280
-  ToT 400: 88/280
-  ToT 800: 108/280
-  ToT 1200: 111/280
+B=8,V=4:
+  Baseline:
+    CoT: 131/251
+    Self-Reflect: 97/235
+  Baseline ToT:
+    unshuffled: 116/280
+    shuffled: 116/280
+  Cached ToT
+    0: 74/280
+    400: 88/280
+    800: 108/280
+    1200: 111/280
+
+Unshuffled Average Agreement: 0.5848
+Shuffled Average Agreement: 0.6875
+
+Not a lot of agreement in confusion matrix, despite very similar performance.
+One issue is that if the branches aren't very diverse, then it _doesn't actually matter what is chosen_...
+The shuffled version is also generally _more_ self-agreeing, even when adjusting for possible positional biases.
+
+B=8,V=8
+  Baseline, unshuffled: 111/280
+  Baseline, shuffled: 114/280
+
+## 3/5: 214edc44db7a4f6d12454148ecd87e71cf9b6fde
+
+MATH:
+  MAD Baseline (Faithful version): 94/280
+  Cached MAD: 57/280
+
+Still, much worse than CoT baseline...
