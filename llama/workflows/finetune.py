@@ -525,16 +525,19 @@ def init_task(
 
         indices = []
         for i in tqdm(range(len(dataset)), desc='Filtering'):
-            nll = baseline_nll(
-                workflow,
-                dataset[i]['result'],
-                payoff=dataset[i]['payoff'],
-                alice_first=dataset[i]['alice_first'],
-                alice_strategy=dataset[i]['strategy'],
-            )
-            if (np.mean(nll['bob_nll'][0] + nll['bob_nll'][1]) < 4 and
-                np.mean(nll['alice_nll'][0] + nll['alice_nll'][1]) < 4):
-                indices.append(i)
+            try:
+                nll = baseline_nll(
+                    workflow,
+                    dataset[i]['result'],
+                    payoff=dataset[i]['payoff'],
+                    alice_first=dataset[i]['alice_first'],
+                    alice_strategy=dataset[i]['strategy'],
+                )
+                if (np.mean(nll['bob_nll'][0] + nll['bob_nll'][1]) < 4 and
+                    np.mean(nll['alice_nll'][0] + nll['alice_nll'][1]) < 4):
+                    indices.append(i)
+            except IndexError:
+                continue
         dataset = Subset(dataset, indices)
 
         wandb.init(
