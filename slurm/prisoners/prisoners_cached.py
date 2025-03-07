@@ -6,6 +6,23 @@ from llama.workflows.prisoners import prisoners_cached
 from llama import Workflow
 from llama.util import find_free_port
 
+def append_to_jsonl(data, filename):
+   with open(filename, 'a') as f:
+       f.write(json.dumps(data) + '\n')
+
+def load_existing_results(output_file):
+    existing_results = {}
+    if os.path.exists(output_file):
+        with open(output_file, 'r') as f:
+            for line in f:
+                try:
+                    data = json.loads(line)
+                    key = (data['strategy'], data['seed'])
+                    existing_results[key] = data
+                except:
+                    continue
+    return existing_results
+
 os.environ["RANK"] = "0"
 os.environ["WORLD_SIZE"] = "1"
 os.environ["MASTER_ADDR"] = "localhost"
@@ -20,14 +37,11 @@ workflow = Workflow.build(
     max_nodes=100,
 )
 
-def append_to_jsonl(data, filename):
-   with open(filename, 'a') as f:
-       f.write(json.dumps(data) + '\n')
-
 workflow.model.reshape_cache(1)
 workflow.model.eval()
 payoff = (5, 3, 1, 0)
 output_file = '/home/tbai4/llama3/dumps/prisoners/prisoners_cached_paired_large.jsonl'
+existing_results = load_existing_results(output_file)
 
 with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_large.jsonl') as f:
     baseline_data = json.load(f)
@@ -42,46 +56,61 @@ for strategy, data in zip(
 ):
     alice_decisions = []
     bob_decisions = []
+    strategy_str = strategy if strategy else 'baseline'
+    print(f"Processing strategy: {strategy_str}")
+
     for seed, example in enumerate(tqdm(data, total=len(data))):
-        alice_plan_ids, bob_plan_ids = example['outputs']['plan_ids']
-        plan_force = torch.full((2, 512), workflow.tokenizer.eot_id, device=workflow.device)
-        plan_force[0, :len(alice_plan_ids)] = torch.tensor(alice_plan_ids, device=workflow.device)
-        plan_force[1, :len(bob_plan_ids)] = torch.tensor(bob_plan_ids, device=workflow.device)
+        if (key := (strategy, seed)) in existing_results:
+            result = existing_results[key]
+            alice_decisions.append(result['alice_final'])
+            bob_decisions.append(result['bob_final'])
+            continue
 
-        workflow.reset()
-        cached_outputs = prisoners_cached(
-            workflow,
-            payoff,
-            alice_first=(seed < 250),
-            alice_strategy=strategy,
-            seed=seed,
-            temperature=1.0,
-            top_p=1.0,
-            plan_force=plan_force,
-        )
+        try:
+            alice_plan_ids, bob_plan_ids = example['outputs']['plan_ids']
+            plan_force = torch.full((2, 512), workflow.tokenizer.eot_id, device=workflow.device)
+            plan_force[0, :len(alice_plan_ids)] = torch.tensor(alice_plan_ids, device=workflow.device)
+            plan_force[1, :len(bob_plan_ids)] = torch.tensor(bob_plan_ids, device=workflow.device)
 
-        alice_decision = workflow.tokenizer.decode(cached_outputs['alice_context'][-1]['output_tokens'])
-        bob_decision = workflow.tokenizer.decode(cached_outputs['bob_context'][-1]['output_tokens'])
-        alice_decisions.append(alice_decision)
-        bob_decisions.append(bob_decision)
+            workflow.reset()
+            cached_outputs = prisoners_cached(
+                workflow,
+                payoff,
+                alice_first=(seed < 250),
+                alice_strategy=strategy,
+                seed=seed,
+                temperature=1.0,
+                top_p=1.0,
+                plan_force=plan_force,
+            )
 
-        output_data = {
-            'seed': seed,
-            'strategy': strategy,
-            'payoff': payoff,
-            'alice_first': (seed < 250),
-            'outputs': cached_outputs,
-            'alice_final': alice_decision,
-            'bob_final': bob_decision,
-        }
-        append_to_jsonl(output_data, output_file)
+            alice_decision = workflow.tokenizer.decode(cached_outputs['alice_context'][-1]['output_tokens'])
+            bob_decision = workflow.tokenizer.decode(cached_outputs['bob_context'][-1]['output_tokens'])
+            alice_decisions.append(alice_decision)
+            bob_decisions.append(bob_decision)
+
+            output_data = {
+                'seed': seed,
+                'strategy': strategy,
+                'payoff': payoff,
+                'alice_first': (seed < 250),
+                'outputs': cached_outputs,
+                'alice_final': alice_decision,
+                'bob_final': bob_decision,
+            }
+            append_to_jsonl(output_data, output_file)
+
+        except Exception as e:
+            print(f"Error processing seed {seed} with strategy {strategy_str}: {e}")
+            continue
+
+    alice_coop = sum(1 for d in alice_decisions if 'COOPERATE' in d.upper())
+    alice_defect = sum(1 for d in alice_decisions if 'DEFECT' in d.upper())
+    bob_coop = sum(1 for d in bob_decisions if 'COOPERATE' in d.upper())
+    bob_defect = sum(1 for d in bob_decisions if 'DEFECT' in d.upper())
 
     print(
-        f"Strategy: {strategy if strategy else 'baseline'}",
-        '\nalice:',
-        sum(1 for d in alice_decisions if 'COOPERATE' in d.upper()),
-        sum(1 for d in alice_decisions if 'DEFECT' in d.upper()),
-        '\nbob:',
-        sum(1 for d in bob_decisions if 'COOPERATE' in d.upper()),
-        sum(1 for d in bob_decisions if 'DEFECT' in d.upper()),
+        f"Strategy: {strategy_str}",
+        f"\nalice: {alice_coop} COOPERATE, {alice_defect} DEFECT",
+        f"\nbob: {bob_coop} COOPERATE, {bob_defect} DEFECT",
     )
