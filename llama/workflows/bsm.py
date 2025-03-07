@@ -6,7 +6,7 @@ from llama import Workflow
 
 def load_concepts(data_path, split='train'):
     with open(data_path) as f:
-        data = [json.loads(line) for line in f]
+        data = [json.loads(line)['concepts'] for line in f]
 
     train_ratio = 0.5
     dev_ratio = 0.25
@@ -31,8 +31,8 @@ Concepts: {', '.join(concepts)}
 
 Format your response as follows:
 Story Topic: [proposed topic]
-Group 1: [concepts for first group]
-Group 2: [concepts for second group]
+Group 1: [comma-separated concepts for first group]
+Group 2: [comma-separated concepts for second group]
 Reasoning: [brief explanation for your grouping]"""
 
 def solve_prompt(concept_group: List[str], story_topic: str):
@@ -140,7 +140,7 @@ def bsm_baseline(
 cached_merge_prompt = '''Combine the two stories into a single coherent paragraph that includes all concepts from both groups.
 Create a combined story that flows naturally.'''
 
-def bsm_choreographed(
+def bsm_cached(
     workflow: Workflow,
     concepts: List[str],
     branching_factor: int = 2,
