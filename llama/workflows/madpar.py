@@ -25,19 +25,25 @@ def mad_cached(
     debug: bool = False,
 ) -> Dict:
     workflow.reset()
-    result = {'debate_rounds': []}
+    result = {'debate_rounds': [], 'summaries': []}
 
     starting_prompt = f"""Can you solve the following math problem? {problem}
 Explain your reasoning. Your final answer should be a single numerical number, in the form \\boxed{{answer}}, at the end of your response."""
 
-    debate_prompt = f"""Using the solutions from other agents as additional information, can you provide your answer to the math problem?
+    debate_prompt = f"""Using this summary carefully as additional advice, can you provide an updated answer to the math problem?
 The original math problem is {problem}. Your final answer should be a single numerical number, in the form \\boxed{{answer}}, at the end of your response."""
 
-    [agent_node, debate_node] = workflow.insert([{
+    summary_prompt = f"""Here are a list of opinions from different agents solving this math problem: "{problem}"
+Write a summary of the different opinions from each of the individual agent."""
+
+    [agent_node, debate_node, summary_node] = workflow.insert([{
         'messages': [{'role': 'user', 'content': starting_prompt}],
         'parent_ids': []
     }, {
         'messages': [{'role': 'user', 'content': debate_prompt}],
+        'parent_ids': []
+    }, {
+        'messages': [{'role': 'user', 'content': summary_prompt}],
         'parent_ids': []
     }])
 
@@ -59,14 +65,26 @@ The original math problem is {problem}. Your final answer should be a single num
 
     last_round = initial_nodes
     for round_idx in range(num_rounds):
+        # summarize
+        [summary_tokens], [current_summary_node] = get('tokens', 'nodes')(workflow.step([{
+            'header': ('assistant', None),
+            'prefill': 'Summary of agent responses:\n',
+            'parent_ids': [summary_node['id']] + [n['id'] for n in last_round]
+        }]))
+        result['summaries'].append(summary_tokens)
+
+        if debug:
+            print(f'\n\nRound {round_idx+1} Summary:\n{workflow.tokenizer.decode(summary_tokens)}\n')
+
+        # update
         update_tokens, update_nodes = get('tokens', 'nodes')(workflow.step([{
             'header': ('assistant', None),
             'prefill': f'From Agent {i+1}:\n',
-            'parent_ids': [debate_node['id']] + [n['id'] for n in context + last_round]
+            'parent_ids': [debate_node['id'], current_summary_node['id']] + [n['id'] for n in context]
             } for i, context in enumerate(contexts)
         ],
-            temperature=0.7,
-            top_p=1.0,
+            temperature=temperature,
+            top_p=top_p,
         ))
         for update, context in zip(update_nodes, contexts):
             context.append(update)
@@ -151,7 +169,6 @@ Write a summary of the different opinions from each of the individual agent."""
             top_p=top_p,
             seed=seed+round_idx+1,
         ))
-
         summary_text = workflow.tokenizer.decode(summary_tokens)
         result['summaries'].append(summary_tokens)
 
