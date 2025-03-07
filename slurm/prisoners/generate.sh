@@ -1,12 +1,12 @@
 #!/bin/bash
 
-#SBATCH --job-name=finetune_prisoners
+#SBATCH --job-name=generate_prisoners
 #SBATCH -A jeisner1_gpu
 #SBATCH --partition=ica100
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
 #SBATCH --mem=80G
-#SBATCH --time=12:00:00
+#SBATCH --time=16:00:00
 #SBATCH --output=slurm/prisoners/generate_%a.out
 #SBATCH --array=0-2
 

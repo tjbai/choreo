@@ -24,7 +24,7 @@ workflow = Workflow.build(
 )
 
 concepts_list = load_concepts(
-    data_path='/home/tbai4/llama3/data/commongen/commongen_dev.jsonl',
+    data_path='/home/tbai4/llama3/data/commongen/commongen.jsonl',
     split='dev',
 )
 
@@ -164,7 +164,7 @@ final_results = {
     }
 }
 
-with open('/home/tbai4/llama3/dumps/bsm/initial_eval.json') as f:
+with open('/home/tbai4/llama3/dumps/bsm/initial_eval.json', 'w') as f:
     json.dump(final_results, f)
 
 print("\n===== FINAL RESULTS =====")

@@ -28,7 +28,7 @@ def math_simple_baseline(
             'header': ('assistant', 'solver'),
             'prefill': '{"Reasoning": "',
             'parent_ids': [sys['id']]
-        }], temperature=temperature, top_p=top_p, seed=seed, max_gen_len=1024))
+        }], temperature=temperature, top_p=top_p, seed=seed, max_gen_len=2048))
 
         if debug:
             print(workflow.tokenizer.decode(solve_tokens))
@@ -50,7 +50,7 @@ def math_simple_baseline(
             'header': ('assistant', 'solver'),
             'prefill': '{"Reasoning": "',
             'parent_ids': [sys['id'], solve['id'], reflection['id']]
-        }], temperature=temperature, top_p=top_p, seed=seed, max_gen_len=1024))
+        }], temperature=temperature, top_p=top_p, seed=seed, max_gen_len=2048))
 
         if debug:
             print(workflow.tokenizer.decode(answer_tokens))
@@ -68,7 +68,7 @@ def math_simple_baseline(
                 temperature=temperature,
                 top_p=top_p,
                 seed=seed,
-                max_gen_len=1024
+                max_gen_len=2048,
             )
         )
         return [try_parse(workflow.tokenizer.decode(t)) for t in solve_tokens]

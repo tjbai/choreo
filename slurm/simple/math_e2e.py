@@ -53,17 +53,17 @@ for problem in tqdm(problems):
 with open('/home/tbai4/llama3/dumps/simple/math_baseline_without_reflection.json', 'w') as f:
     json.dump(solutions, f)
 
-# baseline best of 8
-solutions = []
-for problem in tqdm(problems):
-    workflow.reset()
-    solutions.append(math_simple_baseline(
-        workflow=workflow,
-        problem=problem['problem'],
-        enable_reflection=False,
-        best_of_n=8,
-        debug=False,
-    ))
-
-with open('/home/tbai4/llama3/dumps/simple/math_baseline_best_of_8.json', 'w') as f:
-    json.dump(solutions, f)
+# # baseline best of 8
+# solutions = []
+# for problem in tqdm(problems):
+#     workflow.reset()
+#     solutions.append(math_simple_baseline(
+#         workflow=workflow,
+#         problem=problem['problem'],
+#         enable_reflection=False,
+#         best_of_n=8,
+#         debug=False,
+#     ))
+# 
+# with open('/home/tbai4/llama3/dumps/simple/math_baseline_best_of_8.json', 'w') as f:
+#     json.dump(solutions, f)
