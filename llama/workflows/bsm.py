@@ -1,0 +1,141 @@
+import re
+import json
+from operator import itemgetter as get
+from typing import List, Optional, Dict
+from llama import Workflow
+
+def load_concepts(data_path, split='train'):
+    with open(data_path) as f:
+        data = [json.loads(line) for line in f]
+
+    train_ratio = 0.5
+    dev_ratio = 0.25
+    total = len(data)
+    train_idx = int(total * train_ratio)
+    dev_idx = train_idx + int(total * dev_ratio)
+
+    if split == 'train':
+        return data[:train_idx]
+    elif split == 'dev':
+        return data[train_idx:dev_idx]
+    elif split == 'test':
+        return data[dev_idx:]
+
+def branch_prompt_content(concepts: List[str]):
+    return f"""
+Given a set of concepts, we want to write a concise and coherent story consisting of a few sentences using those concepts.
+First propose a story topic and then divide the concepts into two groups such that the story generated from each group of concepts can be combined together to form a longer story.
+Make sure that you do not leave out any concepts.
+
+Concepts: {', '.join(concepts)}
+
+Format your response as follows:
+Story Topic: [proposed topic]
+Group 1: [concepts for first group]
+Group 2: [concepts for second group]
+Reasoning: [brief explanation for your grouping]"""
+
+def solve_prompt(concept_group: List[str], story_topic: str):
+    return f"""
+Write a concise and coherent story on the following topic consisting of a single paragraph. Make sure to include all the following concepts in the story.\n
+Concepts: {', '.join(concept_group)}
+Story Topic: {story_topic}"""
+
+def merge_prompt(solve_stories: List[str], group1_concepts: List[str], group2_concepts: List[str]):
+    return f"""
+Given two groups of concepts and two stories containing those concepts, combine the two stories into a concise and coherent story consisting of a single paragraph.
+Make sure that the combined story does not miss any concept from the two groups.
+
+Group 1 Concepts: {', '.join(group1_concepts)}
+Story 1: {solve_stories[0]}
+
+Group 2 Concepts: {', '.join(group2_concepts)}
+Story 2: {solve_stories[1]}"""
+
+def bsm_baseline(
+    workflow: Workflow,
+    concepts: List[str],
+    seed: int = 42,
+) -> Optional[Dict]:
+    [branch_node] = workflow.insert([
+        {'messages': [
+            {'role': 'user', 'content': branch_prompt_content(concepts)}
+        ], 'parent_ids': []}
+    ])
+
+    branch_tokens, branch_nodes = get('tokens', 'nodes')(workflow.step([
+        {'header':
+            ('assistant', None),
+            'prefill': '',
+            'parent_ids': [branch_node['id']]}
+        ],
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=1.0,
+        seed=seed,
+    ))
+
+    branch_output = workflow.tokenizer.decode(branch_tokens[0])
+    topic_match = re.search(r"Story Topic:\s*(.*?)(?:\n|$)", branch_output)
+    group1_match = re.search(r"Group 1:\s*(.*?)(?:\n|$)", branch_output)
+    group2_match = re.search(r"Group 2:\s*(.*?)(?:\n|$)", branch_output)
+
+    if not (topic_match and group1_match and group2_match):
+        return None
+
+    story_topic = topic_match.group(1).strip()
+    group1_concepts = [c.strip() for c in group1_match.group(1).split(",")]
+    group2_concepts = [c.strip() for c in group2_match.group(1).split(",")]
+
+    solve_tokens = []
+    solve_nodes = []
+    solve_stories = []
+
+    for i, concept_group in enumerate([group1_concepts, group2_concepts]):
+        [solve_node] = workflow.insert([
+            {'messages': [
+                {'role': 'user', 'content': solve_prompt(concept_group, story_topic)}
+            ], 'parent_ids': []}
+        ])
+
+        tokens, nodes = get('tokens', 'nodes')(workflow.step([
+            {'header':
+                ('assistant', None),
+                'prefill': f'Story {i+1}:\n\n',
+                'parent_ids': [solve_node['id']]}
+            ],
+            max_gen_len=512,
+            temperature=0.7,
+            top_p=1.0,
+            seed=seed,
+        ))
+
+        solve_tokens.append(tokens[0])
+        solve_nodes.extend(nodes)
+        solve_stories.append(workflow.tokenizer.decode(tokens[0]))
+
+    [merge_node] = workflow.insert([
+        {'messages': [
+            {'role': 'user', 'content': merge_prompt(solve_stories, group1_concepts, group2_concepts)}
+        ], 'parent_ids': []}
+    ])
+
+    merge_tokens, merge_nodes = get('tokens', 'nodes')(workflow.step([
+        {'header':
+            ('assistant', None),
+            'prefill': 'Combined Story:\n\n',
+            'parent_ids': [merge_node['id']]}
+        ],
+        max_gen_len=1024,
+        temperature=0.7,
+        top_p=1.0,
+        seed=seed,
+    ))
+
+    return {
+        'branch_tokens': branch_tokens[0],
+        'solve_tokens': solve_tokens,
+        'merge_tokens': merge_tokens[0],
+        'story_topic': story_topic,
+        'concept_groups': [group1_concepts, group2_concepts],
+    }
