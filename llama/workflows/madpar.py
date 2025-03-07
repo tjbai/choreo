@@ -81,6 +81,16 @@ The original math problem is {problem}. Your final answer should be a single num
     final_answers = [parse_output(workflow.tokenizer.decode(resp)) for resp in result['debate_rounds'][-1]]
     return result | {'final_answers': final_answers}
 
+def debate_prompt(summary_text, problem):
+    return f"""Here is a summary of responses from other agents:
+
+{summary_text}
+
+Using this summary carefully as additional advice, can you provide an updated answer to the math problem?
+The original math problem is: {problem}
+
+Make sure to state your answer at the end of the response in the form \\boxed{{answer}}."""
+
 def mad_baseline(
     workflow: Workflow,
     problem: str,
@@ -92,7 +102,7 @@ def mad_baseline(
     debug: bool = False,
 ) -> Dict:
     workflow.reset()
-    result = {'debate_rounds': []}
+    result = {'debate_rounds': [], 'summaries': []}
 
     starting_prompt = f"""Can you solve the following math problem? {problem}
 Explain your reasoning. Your final answer should be a single numerical number, in the form \\boxed{{answer}}, at the end of your response."""
@@ -101,17 +111,7 @@ Explain your reasoning. Your final answer should be a single numerical number, i
 
 {{agent_responses}}
 
-Write a summary of the different approaches, reasoning steps, and conclusions from each agent.
-Highlight key insights, potential errors, and different solution strategies used."""
-
-    debate_base_prompt = f"""Here is a summary of responses from other agents:
-
-{{summary}}
-
-Using this summary carefully as additional advice, can you provide an updated answer to the math problem?
-The original math problem is: {problem}
-
-Make sure to state your answer at the end of the response in the form \\boxed{{answer}}."""
+Write a summary of the different opinions from each of the individual agent."""
 
     [agent_node] = workflow.insert([{
         'messages': [{'role': 'user', 'content': starting_prompt}],
@@ -159,7 +159,7 @@ Make sure to state your answer at the end of the response in the form \\boxed{{a
             print(f'\n\nRound {round_idx+1} Summary:\n{summary_text}\n')
 
         debate_prompts = workflow.insert([{
-            'messages': [{'role': 'user', 'content': debate_base_prompt.format(summary=summary_text)}],
+            'messages': [{'role': 'user', 'content': debate_prompt(summary_text, problem)}],
             'parent_ids': [n['id'] for n in context]
         } for context in contexts])
         for prompt, context in zip(debate_prompts, contexts):
