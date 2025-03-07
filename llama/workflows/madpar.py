@@ -45,7 +45,7 @@ The original math problem is {problem}. Your final answer should be a single num
 
     if debug:
         for i, tokens in enumerate(initial_tokens):
-            print(f'Agent {i+1}:\n{workflow.tokenizer.decode(initial_tokens)}')
+            print(f'\n\n{workflow.tokenizer.decode(tokens)}')
 
     last_round = initial_nodes
     for round_idx in range(num_rounds):
@@ -63,7 +63,7 @@ The original math problem is {problem}. Your final answer should be a single num
 
         if debug:
             for i, tokens in enumerate(update_tokens):
-                print(f'Agent {i+1}:\n{workflow.tokenizer.decode(update_tokens)}')
+                print(f'\n\n{workflow.tokenizer.decode(tokens)}')
 
         result['debate_rounds'].append(update_tokens)
         last_round = update_nodes
@@ -92,7 +92,7 @@ def mad_baseline(
     num_agents: int = 3,
     num_rounds: int = 2,
     temperature: float = 0.7,
-    top_p: float = 0.9,
+    top_p: float = 1.0,
     seed: int = 42,
     debug: bool = False,
 ) -> Dict:
@@ -121,7 +121,7 @@ Explain your reasoning. Your final answer should be a single numerical number, i
 
     if debug:
         for i, tokens in enumerate(initial_tokens):
-            print(f'Agent {i+1}:\n{workflow.tokenizer.decode(initial_tokens)}')
+            print(f'\n\n{workflow.tokenizer.decode(tokens)}')
 
     last_tokens = initial_tokens
     for round_idx in range(num_rounds):
@@ -129,7 +129,7 @@ Explain your reasoning. Your final answer should be a single numerical number, i
         for i in range(num_agents):
             other_responses = "\n\n".join([f"Agent {j+1}:\n{workflow.tokenizer.decode(resp)}" for j, resp in enumerate(last_tokens) if j != i])
             debate_prompt = f"""These are the solutions to the problem from other agents: {other_responses}
-Using the solutions from other agents as additional information, can you provide your answer to the math problem? The original math problem is {problem}. Your final answer should be a single numerical number, in the form \\boxed{{answer}}, at the end of your response."""
+Using the solutions from other agents as additional advice, can you provide your updatd answer to the math problem? The original math problem is {problem}. Your final answer should be a single numerical number, in the form \\boxed{{answer}}, at the end of your response."""
             new_prompts.append(debate_prompt)
 
         new_nodes = workflow.insert([{
@@ -145,15 +145,15 @@ Using the solutions from other agents as additional information, can you provide
             'parent_ids': [n['id'] for n in context]
             } for i, context in enumerate(contexts)
         ],
-            temperature=0.7,
-            top_p=1.0,
+            temperature=temperature,
+            top_p=top_p,
         ))
         for update, context in zip(update_nodes, contexts):
             context.append(update)
 
         if debug:
             for i, tokens in enumerate(update_tokens):
-                print(f'Agent {i+1}:\n{workflow.tokenizer.decode(update_tokens)}')
+                print(f'\n\n{workflow.tokenizer.decode(tokens)}')
 
         result['debate_rounds'].append(update_tokens)
         last_tokens = update_tokens
