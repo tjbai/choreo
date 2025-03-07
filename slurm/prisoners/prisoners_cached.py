@@ -36,9 +36,10 @@ with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_large.jsonl') a
     defect = [d for d in baseline_data if d['strategy'] == 'always_defect']
     print(len(baseline), len(coop), len(defect))
 
-strategies = [None, 'always_cooperate', 'always_defect']
-
-for strategy, data in zip(strategies, [baseline, coop, defect]):
+for strategy, data in zip(
+    [None, 'always_cooperate', 'always_defect'],
+    [baseline, coop, defect]
+):
     alice_decisions = []
     bob_decisions = []
     for seed, example in enumerate(tqdm(data, total=len(data))):

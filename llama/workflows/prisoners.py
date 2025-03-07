@@ -143,7 +143,7 @@ def prisoners_cached(
             ])
         alice_context.append(leaked_msg)
         res['bob_message_ids'].append(bob_msg['output_tokens'])
-        res['bob_log_probs'].append(bob_log_probs)
+        # res['bob_log_probs'].append(bob_log_probs)
 
     for round in range(2):
         if alice_first:
