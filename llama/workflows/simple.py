@@ -1,4 +1,4 @@
-from typing import Optional
+from typing import Optional, List, Dict
 from operator import itemgetter as get
 
 from llama import Workflow
@@ -72,3 +72,67 @@ def math_simple_baseline(
             )
         )
         return [try_parse(workflow.tokenizer.decode(t)) for t in solve_tokens]
+
+def commongen_baseline(
+    workflow: Workflow,
+    concepts: List[str],
+    seed: int = 42,
+) -> Optional[Dict]:
+    planning_prompt = f"""I'm going to write a story incorporating all of these concepts: {', '.join(concepts)}
+
+Before writing the full story, help me create a brief plan or outline.
+The plan should:
+1. Propose a compelling story topic or theme
+2. Sketch how each concept will be integrated
+3. Outline a simple narrative structure with beginning, middle, and end
+
+Please keep your plan concise - just a few bullet points to guide the story creation."""
+
+    [plan_node] = workflow.insert([
+        {'messages': [
+            {'role': 'user', 'content': planning_prompt}
+        ], 'parent_ids': []}
+    ])
+
+    plan_tokens, plan_nodes = get('tokens', 'nodes')(workflow.step([
+        {'header': ('assistant', None),
+         'prefill': 'Story Plan:\n\n',
+         'parent_ids': [plan_node['id']]}
+    ],
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=1.0,
+        seed=seed,
+    ))
+
+    story_plan = workflow.tokenizer.decode(plan_tokens[0])
+
+    generation_prompt = f"""Based on the plan below, write a concise and coherent story in a single paragraph.
+Make sure to include ALL of the following concepts: {', '.join(concepts)}
+
+Plan:
+{story_plan}
+
+Now, write the complete story following this plan:"""
+
+    [generation_node] = workflow.insert([
+        {'messages': [
+            {'role': 'user', 'content': generation_prompt}
+        ], 'parent_ids': [plan_nodes[0]['id']]}
+    ])
+
+    story_tokens, story_nodes = get('tokens', 'nodes')(workflow.step([
+        {'header': ('assistant', None),
+         'prefill': 'Final Story:\n\n',
+         'parent_ids': [generation_node['id']]}
+    ],
+        max_gen_len=1024,
+        temperature=0.7,
+        top_p=1.0,
+        seed=seed,
+    ))
+
+    return {
+        'plan_tokens': plan_tokens,
+        'story_tokens': story_tokens,
+    }

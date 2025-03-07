@@ -87,36 +87,33 @@ def bsm_baseline(
     group1_concepts = [c.strip() for c in group1_match.group(1).split(",")]
     group2_concepts = [c.strip() for c in group2_match.group(1).split(",")]
 
-    solve_tokens = []
-    solve_nodes = []
-    solve_stories = []
+    solve_nodes = workflow.insert([
+        {'messages': [
+            {'role': 'user', 'content': solve_prompt(concept_group, story_topic)}
+        ], 'parent_ids': []}
+        for concept_group in [group1_concepts, group2_concepts]
+    ])
 
-    for i, concept_group in enumerate([group1_concepts, group2_concepts]):
-        [solve_node] = workflow.insert([
-            {'messages': [
-                {'role': 'user', 'content': solve_prompt(concept_group, story_topic)}
-            ], 'parent_ids': []}
-        ])
-
-        tokens, nodes = get('tokens', 'nodes')(workflow.step([
-            {'header':
-                ('assistant', None),
-                'prefill': f'Story {i+1}:\n\n',
-                'parent_ids': [solve_node['id']]}
-            ],
-            max_gen_len=512,
-            temperature=0.7,
-            top_p=1.0,
-            seed=seed,
-        ))
-
-        solve_tokens.append(tokens[0])
-        solve_nodes.extend(nodes)
-        solve_stories.append(workflow.tokenizer.decode(tokens[0]))
+    solve_tokens = get('tokens')(workflow.step([
+        {'header':
+            ('assistant', None),
+            'prefill': f'Story {i+1}:\n\n',
+            'parent_ids': [solve_node['id']]}
+        for i, solve_node in enumerate(solve_nodes)
+    ],
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=1.0,
+        seed=seed,
+    ))
 
     [merge_node] = workflow.insert([
         {'messages': [
-            {'role': 'user', 'content': merge_prompt(solve_stories, group1_concepts, group2_concepts)}
+            {'role': 'user', 'content': merge_prompt(
+                list(map(workflow.tokenizer.decode, solve_tokens)),
+                group1_concepts,
+                group2_concepts)
+            }
         ], 'parent_ids': []}
     ])
 
@@ -125,7 +122,7 @@ def bsm_baseline(
             ('assistant', None),
             'prefill': 'Combined Story:\n\n',
             'parent_ids': [merge_node['id']]}
-        ],
+    ],
         max_gen_len=1024,
         temperature=0.7,
         top_p=1.0,
@@ -133,9 +130,94 @@ def bsm_baseline(
     ))
 
     return {
-        'branch_tokens': branch_tokens[0],
+        'branch_tokens': branch_tokens,
         'solve_tokens': solve_tokens,
-        'merge_tokens': merge_tokens[0],
+        'merge_tokens': merge_tokens,
+        'story_topic': story_topic,
+        'concept_groups': [group1_concepts, group2_concepts],
+    }
+
+cached_merge_prompt = '''Combine the two stories into a single coherent paragraph that includes all concepts from both groups.
+Create a combined story that flows naturally.'''
+
+def bsm_choreographed(
+    workflow: Workflow,
+    concepts: List[str],
+    branching_factor: int = 2,
+    seed: int = 42,
+) -> Optional[Dict]:
+    [branch_node, merge_node] = workflow.insert([
+        {'messages': [
+            {'role': 'user', 'content': branch_prompt_content(concepts)}
+        ], 'parent_ids': []},
+        {'messages': [
+            {'role': 'user', 'content': cached_merge_prompt}
+        ], 'parent_ids': []},
+    ])
+
+    branch_tokens, branch_nodes = get('tokens', 'nodes')(workflow.step([
+        {'header': ('assistant', None),
+         'prefill': '',
+         'parent_ids': [branch_node['id']]}
+    ],
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=1.0,
+        seed=seed,
+    ))
+
+    branch_output = workflow.tokenizer.decode(branch_tokens[0])
+    import re
+    topic_match = re.search(r"Story Topic:\s*(.*?)(?:\n|$)", branch_output)
+    group1_match = re.search(r"Group 1:\s*(.*?)(?:\n|$)", branch_output)
+    group2_match = re.search(r"Group 2:\s*(.*?)(?:\n|$)", branch_output)
+
+    if not (topic_match and group1_match and group2_match):
+        return None
+
+    story_topic = topic_match.group(1).strip()
+    group1_concepts = [c.strip() for c in group1_match.group(1).split(",")]
+    group2_concepts = [c.strip() for c in group2_match.group(1).split(",")]
+
+    solve_nodes = workflow.insert([
+        {'messages': [
+            {'role': 'user', 'content': solve_prompt(concept_group, story_topic)}
+        ], 'parent_ids': []}
+        for concept_group in [group1_concepts, group2_concepts]
+    ])
+
+    solve_tokens = get('tokens')(workflow.step([
+        {'header':
+            ('assistant', None),
+            'prefill': f'Story {i+1}:\n\n',
+            'parent_ids': [solve_node['id']]}
+        for i, solve_node in enumerate(solve_nodes)
+    ],
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=1.0,
+        seed=seed,
+    ))
+
+    merge_tokens = get('tokens')(workflow.step([
+        {'header': ('assistant', None),
+         'prefill': 'Combined Story:\n\n',
+         'parent_ids': [
+             merge_node['id'],
+             solve_nodes[0]['id'],
+             solve_nodes[1]['id'],
+         ]}
+    ],
+        max_gen_len=1024,
+        temperature=0.7,
+        top_p=1.0,
+        seed=seed,
+    ))
+
+    return {
+        'branch_tokens': branch_tokens,
+        'solve_tokens': solve_tokens,
+        'merge_tokens': merge_tokens,
         'story_topic': story_topic,
         'concept_groups': [group1_concepts, group2_concepts],
     }
