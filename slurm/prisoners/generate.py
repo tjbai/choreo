@@ -13,7 +13,7 @@ def append_to_jsonl(data, filename):
        f.write(json.dumps(data) + '\n')
 
 def load_existing_results(strategy):
-    filename = f'prisoners_ft_eval_{strategy if strategy else 'baseline'}.jsonl'
+    filename = f'/home/tbai4/llama3/dumps/prisoners/prisoners_ft_eval_{strategy if strategy else 'baseline'}_large.jsonl'
     existing_results = {}
     if os.path.exists(filename):
         with open(filename, 'r') as f:
@@ -27,8 +27,7 @@ def load_existing_results(strategy):
     return existing_results, filename
 
 def main(
-    baseline_path='/home/tbai4/llama3/dumps/prisoners/prisoners_baseline.jsonl',
-    cached_path='home/tbai4/llama3/dumps/prisoners/prisoners_cached_paired.jsonl',
+    baseline_path='/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_large.jsonl',
     strategy=None,
 ):
     os.environ["RANK"] = "0"
@@ -50,13 +49,11 @@ def main(
     )
 
     with open(baseline_path) as f:
-        baseline_data = [json.loads(line) for line in f]
-
-        # CAUTION -- hard-coded values
-        assert len(baseline_data) == 1500
-        baseline = baseline_data[:500]
-        coop = baseline_data[500:1000]
-        defect = baseline_data[1000:]
+        baseline_data = json.load(f)
+        baseline = [d for d in baseline_data if d['strategy'] is None]
+        coop = [d for d in baseline_data if d['strategy'] == 'always_cooperate']
+        defect = [d for d in baseline_data if d['strategy'] == 'always_defect']
+        print(len(baseline), len(coop), len(defect))
 
     existing_results, output_file = load_existing_results(strategy)
     base_path = Path(f'/scratch4/jeisner1/tjbai/checkpoints/prisoners/{strategy if strategy else 'baseline'}')
@@ -73,11 +70,10 @@ def main(
         workflow.model.set_adapter_state(enabled=True)
 
         data = baseline if strategy is None else (coop if strategy == 'always_cooperate' else defect)
-        assert len(data) == 500
 
         alice_decisions = []
         bob_decisions = []
-        for seed, example in enumerate(tqdm(data, total=500)):
+        for seed, example in enumerate(tqdm(data, total=len(data))):
             if (key := (os.path.basename(str(ckpt_path)), seed, strategy)) in existing_results:
                 existing = existing_results[key]
                 alice_decisions.append(existing['alice_final'])
@@ -99,8 +95,6 @@ def main(
                     seed=seed,
                     temperature=1.0,
                     top_p=1.0,
-                    only_leak_sys=False,
-                    only_leak_plan=False,
                     plan_force=plan_force,
                 )
 
@@ -112,9 +106,10 @@ def main(
                 output_data = {
                     'seed': seed,
                     'strategy': strategy,
+                    'outputs': cached_outputs,
+                    'alice_first': (seed < 250),
                     'leak_setting': (False, False),
                     'payoff': (5, 3, 1, 0),
-                    'alice_first': (seed < 250),
                     'alice_final': alice_decision,
                     'bob_final': bob_decision,
                     'ckpt_path': str(ckpt_path),
