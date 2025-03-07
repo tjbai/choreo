@@ -433,3 +433,11 @@ Still, much worse than CoT baseline...
   B5V5: 121/280
   B8V5: 113/280
   B8V8: 111/280
+
+## 3/7: 93a6edbe3edfbafd2088d28313b6525d539fa0cd
+
+bsm_baseline: 0.00% all concepts, 81.00% avg coverage
+bsm_cached: 0.00% all concepts, 71.35% avg coverage
+simple: 0.00% all concepts, 80.77% avg coverage
+
+Started messing with MAD parallel w/ summarization step... we hurt again. Everything hurts.
