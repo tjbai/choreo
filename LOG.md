@@ -434,10 +434,18 @@ Still, much worse than CoT baseline...
   B8V5: 113/280
   B8V8: 111/280
 
-## 3/7: 93a6edbe3edfbafd2088d28313b6525d539fa0cd
+## 3/6: 93a6edbe3edfbafd2088d28313b6525d539fa0cd
 
 bsm_baseline: 0.00% all concepts, 81.00% avg coverage
 bsm_cached: 0.00% all concepts, 71.35% avg coverage
 simple: 0.00% all concepts, 80.77% avg coverage
 
 Started messing with MAD parallel w/ summarization step... we hurt again. Everything hurts.
+
+## 3/7: d370ef84a45283976289b39901f48074dd593b17
+
+| Strategy  (fine-tuning examples) | Baseline     | Before       |
+|----------------------------------|--------------|--------------|
+| No Strategy                      | 78.3% ± 3.6% | 63.9% ± 4.3% |
+| Always Cooperate                 | 87.7% ± 2.9% | 78.2% ± 3.7% |
+| Always Defect                    | 72.8% ± 4.0% | 46.7% ± 4.4% |
