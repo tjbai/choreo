@@ -14,7 +14,7 @@ def parse_output(resp: str):
         match = re.search(r'(?:answer is|answer:)\s*(\d+(?:\.\d+)?)', resp.lower())
     return match.group(1).strip() if match else None
 
-def mad_cached(
+def madpar_cached(
     workflow: Workflow,
     problem: str,
     num_agents: int = 3,
@@ -109,7 +109,7 @@ The original math problem is: {problem}
 
 Make sure to state your answer at the end of the response in the form \\boxed{{answer}}."""
 
-def mad_baseline(
+def madpar_baseline(
     workflow: Workflow,
     problem: str,
     num_agents: int = 3,

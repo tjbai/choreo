@@ -243,7 +243,6 @@ class TotTrainer(LoraTrainer[TotDataset]):
         self.workflow.model.train()
         return metrics
 
-
 class PrisonersTrainer(LoraTrainer[PrisonersDataset]):
     def __init__(self, workflow: Workflow, output_dir: str,  learning_rate: float):
         super().__init__(workflow, output_dir, learning_rate)
@@ -469,6 +468,24 @@ class QaTrainer(LoraTrainer[ListDataset]):
         eval_llama.model.reshape_cache(1)
         self.workflow.model.train()
         return metrics
+
+class MadTrainer(LoraTrainer):
+
+    def __init__(self, workflow: Workflow, output_dir: str, learning_rate: float):
+        pass
+
+    def step(...):
+        pass
+
+    @torch.no_grad
+    def evaluate(...):
+        pass
+
+class MadParTrainer(LoraTrainer):
+    pass
+
+class BsmTrainer(LoraTrainer):
+    pass
 
 def get_lr_factor(step, warmup_steps=10, total_steps=100):
     # steps = number of updates != number of samples

@@ -912,12 +912,116 @@ def tot_baseline_faithful(
     return {
         'strategy_tokens': strategy_tokens,
         'strategy_vote_tokens': strategy_vote_tokens,
-        'strategy_votes': strategy_votes,
         'solution_tokens': solution_tokens,
         'solution_vote_tokens': solution_vote_tokens,
+        'final_tokens': final_tokens,
         'solution_votes': solution_votes,
-        'final_tokens': final_tokens
+        'strategy_votes': strategy_votes,
     }
+
+def tot_cached_faithful(
+    workflow: Workflow,
+    problem: str,
+    branching_factor: int = 5,
+    voters: int = 5,
+    seed: int = 42,
+) -> Optional[Dict]:
+    [strategy, strategy_vote, solution, solution_vote] = workflow.insert([
+        {'messages': [
+            {'role': 'user', 'content': strategy_prompt(problem)}
+        ], 'parent_ids': []},
+        {'messages': [
+            {'role': 'user', 'content': vote_prompt(branching_factor)}
+        ], 'parent_ids': []},
+        {'messages': [
+            {'role': 'user', 'content': f'''Solve the following problem using the provided strategy.
+Your answer should end with \'The answer is \\boxed{{answer}}\'
+\nProblem: {problem}'''}
+        ], 'parent_ids': []},
+        {'messages': [
+            {'role': 'user', 'content': f'''You will be shown {branching_factor} different solutions to a problem. Vote on the best solution.
+Your BEST CHOICE should be an index 1 through {branching_factor}.'''}
+        ], 'parent_ids': []}
+    ])
+
+    strategy_tokens, strategy_nodes = get('tokens', 'nodes')(workflow.step([
+            {'header': ('assistant', None),
+            'prefill': f'Strategy #{i+1}:\n\n',
+            'parent_ids': [strategy['id']]}
+            for i in range(branching_factor)
+        ],
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=0.9,
+        seed=seed,
+    ))
+
+    strategy_vote_tokens = get('tokens')(workflow.step([
+            {'header': ('assistant', None),
+            'prefill': 'BEST CHOICE: ',
+            'parent_ids': [strategy_vote['id']] + [n['id'] for n in strategy_nodes]}
+            for _ in range(voters)
+        ],
+        max_gen_len=256,
+        temperature=0.7,
+        top_p=0.9,
+        seed=seed,
+    ))
+
+    strategy_votes = [
+        choice for v in strategy_vote_tokens if
+        (choice := parse_choice(workflow.tokenizer.decode(v))) is not None
+    ]
+
+    if not strategy_votes:
+        return None
+
+    best_strategy_idx = Counter(strategy_votes).most_common(1)[0][0] - 1
+    best_strategy = workflow.tokenizer.decode(strategy_tokens[best_strategy_idx])
+
+    solution_tokens, solution_nodes = get('tokens', 'nodes')(workflow.step([
+            {'header': ('assistant', None),
+            'prefill': f'Solution #{i+1}:\n\n',
+            'parent_ids': [solution['id'], strategy_nodes[best_strategy_idx]['id']]}
+            for i in range(branching_factor)
+        ],
+        max_gen_len=512,
+        temperature=0.7,
+        top_p=0.9,
+        seed=seed,
+    ))
+
+    solution_vote_tokens = get('tokens')(workflow.step([
+            {'header': ('assistant', None),
+            'prefill': 'BEST CHOICE: ',
+            'parent_ids': [solution_vote['id']]}
+            for _ in range(voters)
+        ],
+        max_gen_len=256,
+        temperature=0.7,
+        top_p=0.9,
+        seed=seed,
+    ))
+
+    solution_votes = [
+        choice for v in solution_vote_tokens if
+        (choice := parse_choice(workflow.tokenizer.decode(v))) is not None
+    ]
+
+    final_tokens = None
+    if solution_votes:
+        best_solution_idx = Counter(solution_votes).most_common(1)[0][0] - 1
+        final_tokens = solution_tokens[best_solution_idx]
+
+    return {
+        'strategy_tokens': strategy_tokens,
+        'strategy_vote_tokens': strategy_vote_tokens,
+        'solution_vote_tokens': solution_vote_tokens,
+        'final_tokens': final_tokens,
+        'solution_votes': solution_votes,
+        'solution_tokens': solution_tokens,
+    }
+
 
 def load_math_problems(
     root_dir: str,
@@ -1066,7 +1170,7 @@ def eval_solutions(llama: Llama, solutions: List[str], problems: List[Dict]) -> 
             'content': f"PROBLEM:\n{prob['problem']}\n\nGROUND TRUTH:\n{prob['solution']}\n\nATTEMPT:\n{soln}"
         }]
 
-        outputs = llama.chat_completion(
+
             [dialog] * 3,
             max_gen_len=256,
             temperature=0.25,

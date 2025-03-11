@@ -176,57 +176,6 @@ def parse_decision(_decision: str) -> Dict | str:
 
 def mad_cached(
     workflow: Workflow,
-    source_text: str,
-    agents: List[str],
-    max_rounds: int,
-    temperature: float = 0.7,
-    top_p: float = 0.95,
-    seed: int = 42,
-    debug: bool = True,
-):
-    res = {}
-    agent_contexts = [[a] for a in workflow.insert([
-        {'messages': [{'role': 'system', 'content': agent_prompt(source_text, agent)}], 'parent_ids': []}
-        for agent in agents
-    ])]
-    moderator_context = workflow.insert([{'messages': [{'role': 'system', 'content': moderator_system_prompt(source_text)}], 'parent_ids': []}])
-    for round in range(max_rounds):
-        for agent, context in zip(agents, agent_contexts):
-            [response_tokens], [response] = get('tokens', 'nodes')(workflow.step([{
-                'header': ('assistant', f'debater {agent}'),
-                'prefill': f'Round {round+1}: ',
-                'parent_ids': [n['id'] for n in context]
-            }], temperature=temperature, top_p=top_p, seed=seed))
-
-            if debug:
-                print(workflow.tokenizer.decode(response_tokens))
-
-            for other_context in agent_contexts:
-                other_context.append(response)
-            moderator_context.append(response)
-
-        [check] = workflow.insert([{
-            'messages': [{'role': 'user', 'content': moderator_user_prompt(round, max_rounds, agents)}],
-            'parent_ids': [n['id'] for n in moderator_context]
-        }])
-
-        [decision_tokens], [decision] = get('tokens', 'nodes')(workflow.step([{
-            'header': ('assistant', 'moderator'),
-            'prefill': '{"Preference": ',
-            'parent_ids': [n['id'] for n in moderator_context] + [check['id']]
-        }], temperature=temperature, top_p=top_p, seed=seed))
-
-        if debug:
-            print(workflow.tokenizer.decode(decision_tokens))
-
-        if (decision := parse_decision(workflow.tokenizer.decode(decision_tokens))) or (round + 1) == max_rounds:
-            res['decision'] = decision
-            break
-
-    return res | {'agent_contexts': agent_contexts, 'moderator_context': moderator_context}
-
-def math_mad_cached(
-    workflow: Workflow,
     problem: str,
     max_rounds: int,
     temperature: float = 0.6,
@@ -331,136 +280,6 @@ def math_mad_cached(
 
 def mad_baseline(
     workflow: Workflow,
-    source_text: str,
-    agents: List[str],
-    max_rounds: int,
-    temperature: float = 0.7,
-    top_p: float = 0.9,
-    seed: int = 42,
-    debug: bool = True,
-):
-    res = {}
-    agent_contexts = [[a] for a in workflow.insert([
-        {'messages': [{'role': 'system', 'content': agent_prompt(source_text, agent)}], 'parent_ids': []}
-        for agent in agents
-    ])]
-    stale_messages = [[] for _ in agent_contexts]
-    moderator_context = workflow.insert([{'messages': [{'role': 'system', 'content': moderator_system_prompt(source_text)}], 'parent_ids': []}])
-    moderator_stale = []
-    for round in range(max_rounds):
-        for i, (agent, context, stale) in enumerate(zip(agents, agent_contexts, stale_messages)):
-            if len(stale) > 0:
-                [new_messages] = workflow.insert([{'messages': stale, 'parent_ids': [n['id'] for n in context]}])
-                context.append(new_messages)
-                stale = []
-
-            [response_tokens], [response] = get('tokens', 'nodes')(workflow.step([{
-                'header': ('assistant', f'debater {agent}'),
-                'prefill': f'Round {round+1}: ',
-                'parent_ids': [n['id'] for n in context]
-            }], temperature=temperature, top_p=top_p, seed=seed))
-            context.append(response)
-
-            if debug:
-                print(workflow.tokenizer.decode(response_tokens))
-
-            new_message = {'role': f'assistant:debater {agent}', 'content': workflow.tokenizer.decode(response_tokens)}
-            for j, other_stale in enumerate(stale_messages):
-                if i == j: continue
-                other_stale.append(new_message)
-            moderator_stale.append(new_message)
-
-        [new_messages] = workflow.insert([{'messages': moderator_stale, 'parent_ids': [n['id'] for n in moderator_context]}])
-        moderator_context.append(new_messages)
-        moderator_stale = []
-
-        [check] = workflow.insert([{
-            'messages': [{'role': 'user', 'content': moderator_user_prompt(round, max_rounds, agents)}],
-            'parent_ids': [n['id'] for n in moderator_context]
-        }])
-
-        [decision_tokens], [decision] = get('tokens', 'nodes')(workflow.step([{
-            'header': ('assistant', 'moderator'),
-            'prefill': '{"Preference": ',
-            'parent_ids': [n['id'] for n in moderator_context] + [check['id']]
-        }], temperature=temperature, top_p=top_p, seed=seed))
-
-        if debug:
-            print(workflow.tokenizer.decode(decision_tokens))
-
-        if (decision := parse_decision(workflow.tokenizer.decode(decision_tokens))) or (round + 1) == max_rounds:
-            res['decision'] = decision
-            break
-
-    return res | {'agent_contexts': agent_contexts, 'moderator_context': moderator_context}
-
-def math_mad_baseline(
-    workflow: Workflow,
-    problem: str,
-    agents: List[str],
-    max_rounds: int,
-    temperature: float = 0.7,
-    top_p: float = 0.9,
-    seed: int = 42,
-    debug: bool = True,
-):
-    res = {}
-    agent_contexts = [[a] for a in workflow.insert([
-        {'messages': [{'role': 'system', 'content': math_agent_prompt(problem, agent)}], 'parent_ids': []}
-        for agent in agents
-    ])]
-    stale_messages = [[] for _ in agent_contexts]
-    moderator_context = workflow.insert([{'messages': [{'role': 'system', 'content': math_moderator_system_prompt(problem)}], 'parent_ids': []}])
-    moderator_stale = []
-    for round in range(max_rounds):
-        for i, (agent, context, stale) in enumerate(zip(agents, agent_contexts, stale_messages)):
-            if len(stale) > 0:
-                [new_messages] = workflow.insert([{'messages': stale, 'parent_ids': [n['id'] for n in context]}])
-                context.append(new_messages)
-                stale = []
-
-            [response_tokens], [response] = get('tokens', 'nodes')(workflow.step([{
-                'header': ('assistant', f'debater {agent}'),
-                'prefill': f'Round {round+1}: ',
-                'parent_ids': [n['id'] for n in context]
-            }], temperature=temperature, top_p=top_p, seed=seed))
-            context.append(response)
-
-            if debug:
-                print(workflow.tokenizer.decode(response_tokens))
-
-            new_message = {'role': f'assistant:debater {agent}', 'content': workflow.tokenizer.decode(response_tokens)}
-            for j, other_stale in enumerate(stale_messages):
-                if i == j: continue
-                other_stale.append(new_message)
-            moderator_stale.append(new_message)
-
-        [new_messages] = workflow.insert([{'messages': moderator_stale, 'parent_ids': [n['id'] for n in moderator_context]}])
-        moderator_context.append(new_messages)
-        moderator_stale = []
-
-        [check] = workflow.insert([{
-            'messages': [{'role': 'user', 'content': moderator_user_prompt(round, max_rounds, agents)}],
-            'parent_ids': [n['id'] for n in moderator_context]
-        }])
-
-        [decision_tokens], [decision] = get('tokens', 'nodes')(workflow.step([{
-            'header': ('assistant', 'moderator'),
-            'prefill': '{"Preference": ',
-            'parent_ids': [n['id'] for n in moderator_context] + [check['id']]
-        }], temperature=temperature, top_p=top_p, seed=seed))
-
-        if debug:
-            print(workflow.tokenizer.decode(decision_tokens))
-
-        if (decision := parse_decision(workflow.tokenizer.decode(decision_tokens))) or (round + 1) == max_rounds:
-            res['decision'] = decision
-            break
-
-    return res | {'agent_contexts': agent_contexts, 'moderator_context': moderator_context}
-
-def math_baseline_faithful(
-    workflow: Workflow,
     problem: str,
     max_rounds: int,
     temperature: float = 0.7,
@@ -468,7 +287,7 @@ def math_baseline_faithful(
     seed: int = 42,
     debug: bool = False,
 ) -> Dict:
-    res = {}
+    res = {'aff_tokens': [], 'neg_tokens': [], 'mod_tokens': []}
     dct = {1: 'first', 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth'}
 
     # initial aff
