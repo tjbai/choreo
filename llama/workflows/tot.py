@@ -1170,7 +1170,7 @@ def eval_solutions(llama: Llama, solutions: List[str], problems: List[Dict]) -> 
             'content': f"PROBLEM:\n{prob['problem']}\n\nGROUND TRUTH:\n{prob['solution']}\n\nATTEMPT:\n{soln}"
         }]
 
-
+        outputs = llama.chat_completion(
             [dialog] * 3,
             max_gen_len=256,
             temperature=0.25,

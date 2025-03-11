@@ -95,7 +95,7 @@ for idx, concept_set in enumerate(tqdm(concepts_list, desc="Evaluating")):
         if outputs is None:
             raise ValueError("Method returned None")
 
-        story = workflow.tokenizer.decode(outputs['story_tokens'][0])
+        story = workflow.tokenizer.decode(outputs['merge_tokens'][0])
         concept_present = [concept.lower() in story.lower() for concept in concept_set]
         all_present = all(concept_present)
         coverage = sum(concept_present) / len(concept_set)

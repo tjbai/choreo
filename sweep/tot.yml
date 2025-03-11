@@ -5,6 +5,7 @@ command:
   - "run"
   - "python"
   - ${program}
+  - "--task=tot"
   - "--data-path='/home/tbai4/llama3/dumps/tot/tot_data'"
   - "--ckpt-dir='/scratch4/jeisner1/tjbai/llama_8b'"
   - "--tokenizer-path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model'"
