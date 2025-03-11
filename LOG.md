@@ -436,9 +436,9 @@ Still, much worse than CoT baseline...
 
 ## 3/6: 93a6edbe3edfbafd2088d28313b6525d539fa0cd
 
-bsm_baseline: 0.00% all concepts, 81.00% avg coverage
-bsm_cached: 0.00% all concepts, 71.35% avg coverage
-simple: 0.00% all concepts, 80.77% avg coverage
+`bsm_baseline`: 0.00% all concepts, 81.00% avg coverage
+`bsm_cached`: 0.00% all concepts, 71.35% avg coverage
+`simple`: 0.00% all concepts, 80.77% avg coverage
 
 Started messing with MAD parallel w/ summarization step... we hurt again. Everything hurts.
 
@@ -449,3 +449,10 @@ Started messing with MAD parallel w/ summarization step... we hurt again. Everyt
 | No Strategy                      | 78.3% ± 3.6% | 63.9% ± 4.3% |
 | Always Cooperate                 | 87.7% ± 2.9% | 78.2% ± 3.7% |
 | Always Defect                    | 72.8% ± 4.0% | 46.7% ± 4.4% |
+
+## 3/11: c013dcccb091fd7451c19b8f7b2c32cd7ba37648
+
+`bsm_baseline`: 0.00% all concepts, 81.00% avg coverage
+`bsm_cached`: 0.00% all concepts, 71.35% avg coverage
+`bsm_cached_compact`: 0.00% all concepts, 73.45% avg coverage
+
