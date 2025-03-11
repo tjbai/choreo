@@ -43,8 +43,8 @@ def main(
         model_parallel_size=1,
         max_nodes=100,
         use_lora=True,
-        lora_rank=32,
-        lora_alpha=64,
+        lora_rank=64,
+        lora_alpha=32,
         lora_dropout=0.05,
     )
 
@@ -59,6 +59,8 @@ def main(
     base_path = Path(f'/scratch4/jeisner1/tjbai/checkpoints/prisoners/{strategy if strategy else 'baseline'}')
 
     for ckpt in sorted(os.listdir(base_path)):
+        if 'epoch' in ckpt: # old checkpoints, lazy to move
+            continue
         print(f'Strategy: {strategy}, Checkpoint: {ckpt}')
 
         ckpt_path = base_path / ckpt

@@ -5,7 +5,7 @@ command:
   - "run"
   - "python"
   - ${program}
-  - "--data-path='/home/tbai4/llama3/llama/tot_data_2'"
+  - "--data-path='/home/tbai4/llama3/dumps/tot/tot_data'"
   - "--ckpt-dir='/scratch4/jeisner1/tjbai/llama_8b'"
   - "--tokenizer-path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model'"
   - ${args}
@@ -28,11 +28,11 @@ parameters:
   epochs:
     value: 2
   gradient_accumulation_steps:
-    value: 4
+    values: [4, 8, 16, 32]
   checkpoint_freq:
     value: 1e9 # don't checkpoint
   validation_freq:
-    value: 225 # should eval twice, 900 / 4 = 450 total effective batches
+    value: ${{int(1800 / int(${gradient_accumulation_steps}))}}
   max_seq_len:
     value: 8192
 

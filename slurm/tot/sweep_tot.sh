@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
 #SBATCH --mem=80G
-#SBATCH --array=1-20
+#SBATCH --array=1-32
 #SBATCH --time=12:00:00
 #SBATCH --output=slurm/tot_sweep_%A_%a.out
 
