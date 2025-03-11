@@ -145,6 +145,7 @@ def bsm_cached(
     concepts: List[str],
     branching_factor: int = 2,
     seed: int = 42,
+    compact: bool = False,
 ) -> Optional[Dict]:
     [branch_node, merge_node] = workflow.insert([
         {'messages': [
@@ -205,12 +206,13 @@ def bsm_cached(
              merge_node['id'],
              solve_nodes[0]['id'],
              solve_nodes[1]['id'],
-         ]}
+         ]},
     ],
         max_gen_len=1024,
         temperature=0.7,
         top_p=1.0,
         seed=seed,
+        compact=compact,
     ))
 
     return {

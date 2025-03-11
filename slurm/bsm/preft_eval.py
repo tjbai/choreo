@@ -157,7 +157,7 @@ final_results = {
         },
         'cached_compact': {
             'stories': cached_compact_stories,
-            'all_concepts': cached_compact_concepts,
+            'all_concepts': cached_compact_all_concepts,
             'coverage': cached_compact_coverage
         }
     }
