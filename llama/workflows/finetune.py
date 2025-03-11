@@ -474,11 +474,11 @@ class MadTrainer(LoraTrainer):
     def __init__(self, workflow: Workflow, output_dir: str, learning_rate: float):
         pass
 
-    def step(...):
+    def step(self, *_, **__):
         pass
 
     @torch.no_grad
-    def evaluate(...):
+    def evaluate(self, *_, **__):
         pass
 
 class MadParTrainer(LoraTrainer):

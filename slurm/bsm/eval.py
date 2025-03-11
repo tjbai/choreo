@@ -7,7 +7,6 @@ from llama import Workflow
 from llama.util import find_free_port
 from llama.workflows.bsm import load_concepts
 from llama.workflows.bsm import bsm_baseline, bsm_cached
-from llama.workflows.simple import commongen_baseline
 
 os.environ["RANK"] = "0"
 os.environ["WORLD_SIZE"] = "1"
@@ -40,9 +39,9 @@ cached_stories = []
 cached_all_concepts = []
 cached_coverage = []
 
-simple_stories = []
-simple_all_concepts = []
-simple_coverage = []
+cached_compact_stories = []
+cached_compact_all_concepts = []
+cached_compact_coverage = []
 
 for idx, concept_set in enumerate(tqdm(concepts_list, desc="Evaluating")):
     concepts.append(concept_set)
@@ -89,10 +88,10 @@ for idx, concept_set in enumerate(tqdm(concepts_list, desc="Evaluating")):
         cached_all_concepts.append(False)
         cached_coverage.append(0.0)
 
-    # simple
+    # bsm cached compact
     workflow.reset()
     try:
-        outputs = commongen_baseline(workflow=workflow, concepts=concept_set)
+        outputs = bsm_cached(workflow=workflow, concepts=concept_set, compact=True)
         if outputs is None:
             raise ValueError("Method returned None")
 
@@ -101,14 +100,14 @@ for idx, concept_set in enumerate(tqdm(concepts_list, desc="Evaluating")):
         all_present = all(concept_present)
         coverage = sum(concept_present) / len(concept_set)
 
-        simple_stories.append(story)
-        simple_all_concepts.append(all_present)
-        simple_coverage.append(coverage)
+        cached_compact_stories.append(story)
+        cached_compact_all_concepts.append(all_present)
+        cached_compact_coverage.append(coverage)
     except Exception as e:
-        print(f"Error in simple baseline: {e}")
-        simple_stories.append(f"ERROR: {str(e)}")
-        simple_all_concepts.append(False)
-        simple_coverage.append(0.0)
+        print(f"Error in compact baseline: {e}")
+        cached_compact_stories.append(f"ERROR: {str(e)}")
+        cached_compact_all_concepts.append(False)
+        cached_compact_coverage.append(0.0)
 
     if ((idx + 1) % 10) == 0:
         current = idx + 1
@@ -119,13 +118,13 @@ for idx, concept_set in enumerate(tqdm(concepts_list, desc="Evaluating")):
         cached_all_pct = sum(cached_all_concepts[:current]) / current * 100
         cached_avg_pct = sum(cached_coverage[:current]) / current * 100
 
-        simple_all_pct = sum(simple_all_concepts[:current]) / current * 100
-        simple_avg_pct = sum(simple_coverage[:current]) / current * 100
+        cached_compact_all_pct = sum(cached_compact_all_concepts[:current]) / current * 100
+        cached_compact_avg_pct = sum(cached_compact_coverage[:current]) / current * 100
 
         print(f"\n===== RESULTS ({current} samples) =====")
-        print(f"BSM Baseline: {baseline_all_pct:.2f}% all concepts, {baseline_avg_pct:.2f}% avg coverage")
-        print(f"BSM Cached:   {cached_all_pct:.2f}% all concepts, {cached_avg_pct:.2f}% avg coverage")
-        print(f"Simple:       {simple_all_pct:.2f}% all concepts, {simple_avg_pct:.2f}% avg coverage")
+        print(f"BSM Baseline:         {baseline_all_pct:.2f}% all concepts, {baseline_avg_pct:.2f}% avg coverage")
+        print(f"BSM Cached:           {cached_all_pct:.2f}% all concepts, {cached_avg_pct:.2f}% avg coverage")
+        print(f"BSM Cached Compact:   {cached_compact_all_pct:.2f}% all concepts, {cached_compact_avg_pct:.2f}% avg coverage")
 
 total = len(concepts)
 final_results = {
@@ -139,9 +138,9 @@ final_results = {
             'all_concepts_pct': sum(cached_all_concepts) / total * 100,
             'avg_coverage_pct': sum(cached_coverage) / total * 100
         },
-        'simple': {
-            'all_concepts_pct': sum(simple_all_concepts) / total * 100,
-            'avg_coverage_pct': sum(simple_coverage) / total * 100
+        'bsm_cached_compact': {
+            'all_concepts_pct': sum(cached_compact_all_concepts) / total * 100,
+            'avg_coverage_pct': sum(cached_compact_coverage) / total * 100
         }
     },
     'raw_data': {
@@ -156,10 +155,10 @@ final_results = {
             'all_concepts': cached_all_concepts,
             'coverage': cached_coverage
         },
-        'simple': {
-            'stories': simple_stories,
-            'all_concepts': simple_all_concepts,
-            'coverage': simple_coverage
+        'cached_compact': {
+            'stories': cached_compact_stories,
+            'all_concepts': cached_compact_concepts,
+            'coverage': cached_compact_coverage
         }
     }
 }
@@ -168,7 +167,7 @@ with open('/home/tbai4/llama3/dumps/bsm/initial_eval.json', 'w') as f:
     json.dump(final_results, f)
 
 print("\n===== FINAL RESULTS =====")
-for method in ['bsm_baseline', 'bsm_cached', 'simple']:
+for method in ['bsm_baseline', 'bsm_cached', 'bsm_cached_compact']:
     all_pct = final_results['methods'][method]['all_concepts_pct']
     avg_pct = final_results['methods'][method]['avg_coverage_pct']
     print(f"{method}: {all_pct:.2f}% all concepts, {avg_pct:.2f}% avg coverage")
