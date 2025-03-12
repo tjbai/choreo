@@ -785,6 +785,7 @@ def finetune(
     )
 
     print(f'Epochs: {epochs}, Steps: {steps}, Warmup: {warmup_steps}')
+    print(f'Validation freq: {validation_freq}')
 
     global_step = 0
     for epoch in range(epochs):
@@ -803,12 +804,12 @@ def finetune(
                 trainer.optimizer.step()
                 trainer.optimizer.zero_grad()
                 global_step += 1
-                if (global_step + 1) % validation_freq == 0:
+                if (global_step + 1) % int(validation_freq) == 0:
                     val_metrics = trainer.evaluate(val_dataset)
                     wandb.log(val_metrics)
                 metrics.update({'lr': lr_factor})
                 wandb.log(metrics)
-                if (global_step + 1) % checkpoint_freq == 0:
+                if (global_step + 1) % int(checkpoint_freq) == 0:
                     trainer.save_checkpoint(global_step)
                 if steps is not None and global_step == steps:
                     break
