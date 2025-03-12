@@ -35,5 +35,5 @@ parameters:
   validation_freq:
     value: ${{int(1800 / int(${gradient_accumulation_steps}))}}
   max_seq_len:
-    value: 8192
+    value: 65536
 

@@ -186,7 +186,7 @@ def bsm_cached(
         for concept_group in [group1_concepts, group2_concepts]
     ])
 
-    solve_nodes, solve_tokens = get('tokens')(workflow.step([
+    solve_nodes, solve_tokens = get('nodes', 'tokens')(workflow.step([
         {'header':
             ('assistant', None),
             'prefill': f'Story {i+1}:\n\n',
