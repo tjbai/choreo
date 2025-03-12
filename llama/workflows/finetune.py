@@ -630,7 +630,7 @@ class MadTrainer(LoraTrainer):
 
             def process_initial(with_grad=False):
                 ctx = nullcontext() if with_grad else torch.no_grad()
-                with ctx():
+                with ctx:
                     init_aff_tokens = sample['outputs']['aff_tokens'][0]
                     aff_target_ids = [p + [self.eot_id] for p in init_aff_tokens]
                     [aff_node], logits = self.workflow.train_step(
@@ -657,7 +657,7 @@ class MadTrainer(LoraTrainer):
 
             def process_rounds(start_idx, end_idx, with_grad=False):
                 ctx = nullcontext() if with_grad else torch.no_grad()
-                with ctx():
+                with ctx:
                     losses = []
                     for round_idx in range(start_idx, end_idx):
                         idx = round_idx
@@ -706,7 +706,7 @@ class MadTrainer(LoraTrainer):
                     return None
 
                 ctx = nullcontext() if with_grad else torch.no_grad()
-                with ctx():
+                with ctx:
                     [final_prompt] = self.workflow.insert([
                         {'messages': [
                             {'role': 'user', 'content': (
