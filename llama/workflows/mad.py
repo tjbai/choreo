@@ -169,18 +169,25 @@ def mad_cached(
             {'role': 'user', 'content': moderator_user_prompt}
         ], 'parent_ids': []}
     ])]
-    aff_context.append(get('nodes')(workflow.step(
+    [aff_tokens], [aff_node] = get('tokens', 'nodes')(workflow.step(
         [{'header': ('assistant', ''), 'prefill': 'Affirmative:\n\n', 'parent_ids': [n['id'] for n in aff_context]}],
         temperature=temperature,
         top_p=top_p,
         max_gen_len=512,
-    )))
-    neg_context.append(get('tokens')(workflow.step(
+    ))
+    aff_context.append(aff_node)
+    neg_context.append(aff_node)
+    res['aff_tokens'].append([aff_tokens])
+    
+    [neg_tokens], [neg_node] = get('tokens', 'nodes')(workflow.step(
         [{'header': ('assistant', ''), 'prefill': 'Negative:\n\n', 'parent_ids': [n['id'] for n in neg_context]}],
         temperature=temperature,
         top_p=top_p,
         max_gen_len=512,
-    )))
+    ))
+    aff_context.append(neg_node)
+    neg_context.append(neg_node)
+    res['neg_tokens'].append([neg_tokens])
 
     for round in range(max_rounds - 1):
         [aff_tokens], [aff_response] = get('tokens', 'nodes')(workflow.step([{
@@ -191,6 +198,7 @@ def mad_cached(
         aff_context.append(aff_response)
         neg_context.append(aff_response)
         mod_context.append(aff_response)
+        res['aff_tokens'].append([aff_tokens])
 
         [neg_tokens], [neg_response] = get('tokens', 'nodes')(workflow.step([{
             'header': ('assistant', ''),
@@ -200,6 +208,7 @@ def mad_cached(
         aff_context.append(neg_response)
         neg_context.append(neg_response)
         mod_context.append(neg_response)
+        res['neg_tokens'].append([neg_tokens])
 
         [mod_tokens], [mod_response] = get('tokens', 'nodes')(workflow.step([{
             'header': ('assistant', 'moderator'),
@@ -207,6 +216,7 @@ def mad_cached(
             'parent_ids': [n['id'] for n in mod_context]
         }], temperature=temperature, top_p=top_p, seed=seed))
         mod_context.append(mod_response)
+        res['mod_tokens'].append([mod_tokens])
 
         if decision := parse_decision(workflow.tokenizer.decode(mod_tokens)):
             res['decision'] = decision
