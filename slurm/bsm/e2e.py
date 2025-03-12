@@ -35,7 +35,7 @@ for idx, concept_set in enumerate(tqdm(concepts_list, desc="Evaluating")):
     })
 
     if (idx + 1) % 10 == 0:
-        with open('/home/tbai4/llama3/dumps/bsm/baseline_e2e.json') as f:
+        with open('/home/tbai4/llama3/dumps/bsm/baseline_e2e.json', 'w') as f:
             json.dump(samples, f)
 
 with open('/home/tbai4/llama3/dumps/bsm/baseline_e2e.json') as f:
