@@ -166,7 +166,6 @@ def bsm_cached(
         top_p=1.0,
         seed=seed,
     ))
-
     branch_output = workflow.tokenizer.decode(branch_tokens[0])
     topic_match = re.search(r"Story Topic:\s*(.*?)(?:\n|$)", branch_output)
     group1_match = re.search(r"Group 1:\s*(.*?)(?:\n|$)", branch_output)

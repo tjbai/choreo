@@ -456,3 +456,4 @@ Started messing with MAD parallel w/ summarization step... we hurt again. Everyt
 `bsm_cached`: 0.00% all concepts, 71.35% avg coverage
 `bsm_cached_compact`: 0.00% all concepts, 73.45% avg coverage
 
+Had a bug here so the merge step was only looking at the concept outputs and not the story outputs. Rerunning.
