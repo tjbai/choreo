@@ -47,7 +47,8 @@ def agent_prompt(problem: str, name: str) -> str:
     return f'''
 You are a debater. Hello and welcome to the math competition, which will be conducted in a debate format.
 It's not necessary to fully agree with each other's perspectives, as our objective is to find the correct solution.
-The debate topic will be producing the correct answer to the following problem:\n\"{problem}\"'''
+The debate topic will be producing the correct answer to the following problem:\n\"{problem}\"
+Try to keep your response within 500 words or less.'''
 
 def load_translations(base_path: str, start: int, end: int) -> List[Dict]:
     categories = ['lexical', 'contextual', 'contextless']
@@ -256,7 +257,7 @@ def mad_baseline(
     problem: str,
     max_rounds: int,
     temperature: float = 0.7,
-    top_p: float = 0.9,
+    top_p: float = 1.0,
     seed: int = 42,
     debug: bool = False,
 ) -> Dict:
@@ -271,7 +272,12 @@ def mad_baseline(
             {'role': 'user', 'content': problem},
         ], 'parent_ids': []},
     ])
-    [aff_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in aff_context]}]))
+    [aff_tokens] = get('tokens')(workflow.step(
+        [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in aff_context]}],
+        temperature=temperature,
+        top_p=top_p,
+        max_gen_len=512,
+    ))
     aff_ans = workflow.tokenizer.decode(aff_tokens)
     aff_stale.append({'role': 'assistant', 'content': aff_ans})
     if debug: print(f'Aff ans:\n{aff_ans}')
@@ -285,7 +291,12 @@ def mad_baseline(
             {'role': 'user', 'content': f'{aff_ans}\n\nYou disagree with my answer. Provide your answer and reasons.'},
         ], 'parent_ids': []},
     ])
-    [neg_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in neg_context]}]))
+    [neg_tokens] = get('tokens')(workflow.step(
+        [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in neg_context]}],
+        temperature=temperature,
+        top_p=top_p,
+        max_gen_len=512,
+    ))
     neg_ans = workflow.tokenizer.decode(neg_tokens)
     neg_stale.append({'role': 'assistant', 'content': neg_ans})
     if debug: print(f'Neg ans:\n{neg_ans}')
@@ -296,7 +307,12 @@ def mad_baseline(
     for round in range(max_rounds - 1):
         aff_stale.append({'role': 'user', 'content': f'{neg_ans}\n\nDo you agree with my perspective? Please provide your reasons and answer.'})
         aff_context.extend(workflow.insert([{'messages': aff_stale, 'parent_ids': [n['id'] for n in aff_context]}]))
-        [aff_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in aff_context]}]))
+        [aff_tokens] = get('tokens')(workflow.step(
+            [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in aff_context]}],
+            temperature=temperature,
+            top_p=temperature,
+            max_gen_len=512,
+        ))
         aff_ans = workflow.tokenizer.decode(aff_tokens)
         aff_stale = [{'role': 'assistant', 'content': aff_ans}]
         if debug: print(f'Aff ans:\n{aff_ans}')
@@ -304,7 +320,12 @@ def mad_baseline(
 
         neg_stale.append({'role': 'user', 'content': f'{aff_ans}\n\nDo you agree with my perspective? Please provide your reasons and answer.'})
         neg_context.extend(workflow.insert([{'messages': neg_stale, 'parent_ids': [n['id'] for n in neg_context]}]))
-        [neg_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in neg_context]}]))
+        [neg_tokens] = get('tokens')(workflow.step(
+            [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in neg_context]}],
+            temperature=temperature,
+            top_p=temperature,
+            max_gen_len=512,
+        ))
         neg_ans = workflow.tokenizer.decode(neg_tokens)
         neg_stale = [{'role': 'assistant', 'content': neg_ans}]
         if debug: print(f'Neg ans:\n{neg_ans}')
@@ -322,7 +343,7 @@ def mad_baseline(
             res['decision'] = decision
             break
 
-    if 'decision' not in res:
+    if not res['decision']:
         # "ultimate deadly technique."
         # https://github.com/Skytliang/Multi-Agents-Debate/blob/022a7a8eecda85844d336e9064cc556edb0445b3/code/debate4tran.py#L236
         [judge_prompt] = workflow.insert([
