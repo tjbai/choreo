@@ -179,19 +179,19 @@ def bsm_cached(
     group1_concepts = [c.strip() for c in group1_match.group(1).split(",")]
     group2_concepts = [c.strip() for c in group2_match.group(1).split(",")]
 
-    solve_nodes = workflow.insert([
+    solve_node_prompts = workflow.insert([
         {'messages': [
             {'role': 'user', 'content': solve_prompt(concept_group, story_topic)}
         ], 'parent_ids': []}
         for concept_group in [group1_concepts, group2_concepts]
     ])
 
-    solve_tokens = get('tokens')(workflow.step([
+    solve_nodes, solve_tokens = get('tokens')(workflow.step([
         {'header':
             ('assistant', None),
             'prefill': f'Story {i+1}:\n\n',
-            'parent_ids': [solve_node['id']]}
-        for i, solve_node in enumerate(solve_nodes)
+            'parent_ids': [solve_node_prompt['id']]}
+        for i, solve_node_prompt in enumerate(solve_node_prompts)
     ],
         max_gen_len=512,
         temperature=0.7,
