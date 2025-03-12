@@ -49,6 +49,11 @@ from llama.workflows.bsm import (
     cached_merge_prompt,
     bsm_cached
 )
+from llama.workflows.mad import (
+    agent_prompt as mad_agent_prompt,
+    moderator_system_prompt as mad_moderator_system_prompt,
+    moderator_user_prompt as mad_moderator_user_prompt
+)
 
 class TotDataset(Dataset):
     def __init__(self, data_dir: str | Path):
@@ -578,8 +583,116 @@ class BsmTrainer(LoraTrainer):
         return all_metrics
 
 class MadTrainer(LoraTrainer):
-    def step(self, *_, **__):
-        pass
+    def step(self, sample: Dict, debug=False):
+        problem = sample['inputs']['problem']
+        total_loss = 0
+
+        aff_context, neg_context, mod_context = [[a] for a in self.workflow.insert([
+            {'messages': [
+                {'role': 'system', 'content': mad_agent_prompt(problem, '')},
+                {'role': 'user', 'content': problem},
+            ], 'parent_ids': []},
+            {'messages': [
+                {'role': 'system', 'content': mad_agent_prompt(problem, '')},
+                {'role': 'user', 'content': problem},
+            ], 'parent_ids': []},
+            {'messages': [
+                {'role': 'system', 'content': mad_moderator_system_prompt(problem)},
+                {'role': 'user', 'content': mad_moderator_user_prompt}
+            ], 'parent_ids': []}
+        ], track_gradients=True)]
+
+        init_aff_tokens = sample['outputs']['aff_tokens'][0]
+        aff_target_ids = [p + [self.eot_id] for p in init_aff_tokens]
+        [aff_node], logits = self.workflow.train_step(
+            [{'header': ('assistant', ''), 'prefill': 'Affirmative:\n\n', 'parent_ids': [n['id'] for n in aff_context]}],
+            aff_target_ids,
+        )
+        aff_context.append(aff_node)
+        neg_context.append(aff_node)
+        aff_loss = F.cross_entropy(logits.squeeze(), reorder_targets(aff_target_ids))
+        total_loss += aff_loss
+        if debug:
+            print(f"Initial Affirmative Loss: {aff_loss.item():.4f}")
+
+        init_neg_tokens = sample['outputs']['neg_tokens'][0]
+        neg_target_ids = [p + [self.eot_id] for p in init_neg_tokens]
+        [neg_node], logits = self.workflow.train_step(
+            [{'header': ('assistant', ''), 'prefill': 'Negative:\n\n', 'parent_ids': [n['id'] for n in neg_context]}],
+            neg_target_ids,
+        )
+        neg_loss = F.cross_entropy(logits.squeeze(), reorder_targets(neg_target_ids))
+        total_loss += neg_loss
+        if debug:
+            print(f"Initial Negative Loss: {neg_loss.item():.4f}")
+
+        for round_idx, (aff, neg, mod) in enumerate(zip(
+            sample['outputs']['aff_tokens'][1:],
+            sample['outputs']['neg_tokens'][1:],
+            sample['outputs']['mod_tokens'],
+        )):
+            aff_target_ids = [p + [self.eot_id] for p in aff]
+            [aff_node], logits = self.workflow.train_step(
+                [{'header': ('assistant', None), 'prefill': 'Affirmative Response:\n\n', 'parent_ids': [n['id'] for n in aff_context]}],
+                aff_target_ids
+            )
+            aff_context.append(aff_node)
+            neg_context.append(aff_node)
+            mod_context.append(aff_node)
+            aff_round_loss = F.cross_entropy(logits.squeeze(), reorder_targets(aff_target_ids))
+            total_loss += aff_round_loss
+            if debug:
+                print(f"Round {round_idx+1} Affirmative Loss: {aff_round_loss.item():.4f}")
+
+            neg_target_ids = [p + [self.eot_id] for p in neg]
+            [neg_node], logits = self.workflow.train_step(
+                [{'header': ('assistant', None), 'prefill': 'Negative Response:\n\n', 'parent_ids': [n['id'] for n in aff_context]}],
+                neg_target_ids
+            )
+            aff_context.append(neg_node)
+            neg_context.append(neg_node)
+            mod_context.append(neg_node)
+            neg_round_loss = F.cross_entropy(logits.squeeze(), reorder_targets(neg_target_ids))
+            total_loss += neg_round_loss
+            if debug:
+                print(f"Round {round_idx+1} Negative Loss: {neg_round_loss.item():.4f}")
+
+            mod_target_ids = [p + [self.eot_id] for p in mod]
+            [mod_node], logits = self.workflow.train_step(
+                [{'header': ('assistant', 'moderator'), 'prefill': '{"Reasoning": ', 'parent_ids': [n['id'] for n in mod_context]}],
+                mod_target_ids,
+            )
+            mod_context.append(mod_node)
+            mod_round_loss = F.cross_entropy(logits.squeeze(), reorder_targets(mod_target_ids))
+            total_loss += mod_round_loss
+            if debug:
+                print(f"Round {round_idx+1} Moderator Loss: {mod_round_loss.item():.4f}")
+
+        if 'final_tokens' in sample['outputs']:
+            [final_prompt] = self.workflow.insert([
+                {'messages': [
+                    {'role': 'user', 'content': (
+                        'Please summarize your reasons and give the final answer that you think is correct. '
+                        'Now please output your answer in JSON format, with the format as follows: {{"Reasoning": "", "Answer": ""}}. '
+                        'Please strictly output in JSON format, do not output irrelevant content.'
+                    )}
+                ], 'parent_ids': [n['id'] for n in mod_context]}
+            ], track_gradients=True)
+
+            final_target_ids = [p + [self.eot_id] for p in sample['outputs']['final_tokens']]
+            _, logits = self.workflow.train_step(
+                [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in mod_context]}],
+                final_target_ids
+            )
+            final_loss = F.cross_entropy(logits.squeeze(), reorder_targets(final_target_ids))
+            total_loss += final_loss
+            if debug:
+                print(f"Final Decision Loss: {final_loss.item():.4f}")
+
+        if debug:
+            print(f"Total Loss: {total_loss.item():.4f}")
+
+        return total_loss, {'train/loss': total_loss}
 
     @torch.no_grad
     def evaluate(self, *_, **__):

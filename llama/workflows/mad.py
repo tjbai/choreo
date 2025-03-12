@@ -178,7 +178,7 @@ def mad_cached(
     aff_context.append(aff_node)
     neg_context.append(aff_node)
     res['aff_tokens'].append([aff_tokens])
-    
+
     [neg_tokens], [neg_node] = get('tokens', 'nodes')(workflow.step(
         [{'header': ('assistant', ''), 'prefill': 'Negative:\n\n', 'parent_ids': [n['id'] for n in neg_context]}],
         temperature=temperature,
@@ -239,6 +239,7 @@ def mad_cached(
             top_p=top_p,
         ))
         mod_context.append(final_node)
+        res['final_tokens'] = [final_tokens]
 
     return res | {
         'aff_context': aff_context,
