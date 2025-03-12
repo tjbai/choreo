@@ -153,104 +153,88 @@ def mad_cached(
     seed: int = 42,
     debug: bool = False,
 ) -> Dict:
-    res = {}
+    res = {'aff_tokens': [], 'neg_tokens': [], 'mod_tokens': [], 'decision': None}
 
-    agent_contexts = [[a] for a in workflow.insert([
-        {'messages': [{
-            'role': 'system',
-            'content': agent_prompt(problem, 'Affirmative') + '\nPresent a well-developed solution and defend against critiques.'}],
-        'parent_ids': []},
-        {'messages': [{
-            'role': 'system',
-            'content': agent_prompt(problem, 'Negative') + '\nCritique the opponent\'s response and propose your own strong solution.'}],
-        'parent_ids': []},
+    aff_context, neg_context, mod_context = [[a] for a in workflow.insert([
+        {'messages': [
+            {'role': 'system', 'content': agent_prompt(problem, '')},
+            {'role': 'user', 'content': problem},
+        ], 'parent_ids': []},
+        {'messages': [
+            {'role': 'system', 'content': agent_prompt(problem, '')},
+            {'role': 'user', 'content': problem},
+        ], 'parent_ids': []},
+        {'messages': [
+            {'role': 'system', 'content': moderator_system_prompt(problem)},
+            {'role': 'user', 'content': moderator_user_prompt}
+        ], 'parent_ids': []}
     ])]
+    aff_context.append(get('nodes')(workflow.step(
+        [{'header': ('assistant', ''), 'prefill': 'Affirmative:\n\n', 'parent_ids': [n['id'] for n in aff_context]}],
+        temperature=temperature,
+        top_p=top_p,
+        max_gen_len=512,
+    )))
+    neg_context.append(get('tokens')(workflow.step(
+        [{'header': ('assistant', ''), 'prefill': 'Negative:\n\n', 'parent_ids': [n['id'] for n in neg_context]}],
+        temperature=temperature,
+        top_p=top_p,
+        max_gen_len=512,
+    )))
 
-    moderator_context = workflow.insert([
-        {'messages': [{
-            'role': 'system',
-            'content': moderator_system_prompt(problem)
-        }, {
-            'role': 'user',
-            'content': moderator_user_prompt
-        }],
-        'parent_ids': []}
-    ])
-
-    [aff_tokens], [aff_response] = get('tokens', 'nodes')(workflow.step([{
-        'header': ('assistant', ''),
-        'prefill': 'Affirmative: ',
-        'parent_ids': [agent_contexts[0][0]['id']]
-    }], temperature=temperature, top_p=top_p, seed=seed, max_gen_len=1024))
-    agent_contexts[0].append(aff_response)
-    agent_contexts[1].append(aff_response)
-    moderator_context.append(aff_response)
-
-    if debug:
-        print("Affirmative initial solution:")
-        print(workflow.tokenizer.decode(aff_tokens))
-
-    [neg_tokens], [neg_response] = get('tokens', 'nodes')(workflow.step([{
-        'header': ('assistant', ''),
-        'prefill': 'Negative: ',
-        'parent_ids': [n['id'] for n in agent_contexts[1]]
-    }], temperature=temperature, top_p=top_p, seed=seed, max_gen_len=1024))
-    agent_contexts[0].append(neg_response)
-    agent_contexts[1].append(neg_response)
-    moderator_context.append(neg_response)
-
-    if debug:
-        print("Negative critical evaluation:")
-        print(workflow.tokenizer.decode(neg_tokens))
-
-    for round in range(1, max_rounds):
+    for round in range(max_rounds - 1):
         [aff_tokens], [aff_response] = get('tokens', 'nodes')(workflow.step([{
-            'header': ('user', ''),
-            'prefill': 'Affirmative response: ',
-            'parent_ids': [n['id'] for n in agent_contexts[0]]
+            'header': ('assistant', ''),
+            'prefill': 'Affirmative Response:\n\n',
+            'parent_ids': [n['id'] for n in aff_context]
         }], temperature=temperature, top_p=top_p, seed=seed))
-        agent_contexts[0].append(aff_response)
-        agent_contexts[1].append(aff_response)
-        moderator_context.append(aff_response)
-
-        if debug:
-            print(f"Affirmative (Round {round}):")
-            print(workflow.tokenizer.decode(aff_tokens))
+        aff_context.append(aff_response)
+        neg_context.append(aff_response)
+        mod_context.append(aff_response)
 
         [neg_tokens], [neg_response] = get('tokens', 'nodes')(workflow.step([{
-            'header': ('user', ''),
-            'prefill': 'Negative response: ',
-            'parent_ids': [n['id'] for n in agent_contexts[1]]
+            'header': ('assistant', ''),
+            'prefill': 'Negative Response:\n\n',
+            'parent_ids': [n['id'] for n in neg_context]
         }], temperature=temperature, top_p=top_p, seed=seed))
-        agent_contexts[0].append(neg_response)
-        agent_contexts[1].append(neg_response)
-        moderator_context.append(neg_response)
+        aff_context.append(neg_response)
+        neg_context.append(neg_response)
+        mod_context.append(neg_response)
 
-        if debug:
-            print(f"Negative (Round {round}):")
-            print(workflow.tokenizer.decode(neg_tokens))
-
-        [check] = workflow.insert([{
-            'messages': [{'role': 'user', 'content': moderator_user_prompt(round, max_rounds, ["affirmative", "negative"])}],
-            'parent_ids': [n['id'] for n in moderator_context]
-        }])
-
-        [decision_tokens], [decision_response] = get('tokens', 'nodes')(workflow.step([{
+        [mod_tokens], [mod_response] = get('tokens', 'nodes')(workflow.step([{
             'header': ('assistant', 'moderator'),
             'prefill': '{"Reasoning": ',
-            'parent_ids': [n['id'] for n in moderator_context] + [check['id']]
+            'parent_ids': [n['id'] for n in mod_context]
         }], temperature=temperature, top_p=top_p, seed=seed))
-        moderator_context.append(decision_response)
+        mod_context.append(mod_response)
 
-        if debug:
-            print(f"Moderator round {round} evaluation:")
-            print(workflow.tokenizer.decode(decision_tokens))
-
-        if (decision := parse_decision(workflow.tokenizer.decode(decision_tokens))) or round == max_rounds:
+        if decision := parse_decision(workflow.tokenizer.decode(mod_tokens)):
             res['decision'] = decision
             break
 
-    return res | {'agent_contexts': agent_contexts, 'moderator_context': moderator_context}
+    if not res['decision']:
+        [final_prompt] = workflow.insert([
+            {'messages': [
+                {'role': 'user', 'content': (
+                    'Please summarize your reasons and give the final answer that you think is correct. '
+                    'Now please output your answer in JSON format, with the format as follows: {{"Reasoning": "", "Answer": ""}}. '
+                    'Please strictly output in JSON format, do not output irrelevant content.'
+                )}
+            ], 'parent_ids': [n['id'] for n in mod_context]}
+        ])
+        mod_context.append(final_prompt)
+        [final_tokens], [final_node] = get('tokens', 'nodes')(workflow.step(
+            [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in mod_context]}],
+            temperature=temperature,
+            top_p=top_p,
+        ))
+        mod_context.append(final_node)
+
+    return res | {
+        'aff_context': aff_context,
+        'neg_context': neg_context,
+        'mod_context': mod_context,
+    }
 
 def mad_baseline(
     workflow: Workflow,

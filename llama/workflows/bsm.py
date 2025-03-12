@@ -56,6 +56,8 @@ def bsm_baseline(
     workflow: Workflow,
     concepts: List[str],
     seed: int = 42,
+    temperature: float = 0.7,
+    top_p: float = 1.0,
 ) -> Optional[Dict]:
     [branch_node] = workflow.insert([
         {'messages': [
@@ -70,8 +72,8 @@ def bsm_baseline(
             'parent_ids': [branch_node['id']]}
         ],
         max_gen_len=512,
-        temperature=0.7,
-        top_p=1.0,
+        temperature=temperature,
+        top_p=top_p,
         seed=seed,
     ))
 
@@ -102,8 +104,8 @@ def bsm_baseline(
         for i, solve_node in enumerate(solve_nodes)
     ],
         max_gen_len=512,
-        temperature=0.7,
-        top_p=1.0,
+        temperature=temperature,
+        top_p=top_p,
         seed=seed,
     ))
 
@@ -124,8 +126,8 @@ def bsm_baseline(
             'parent_ids': [merge_node['id']]}
     ],
         max_gen_len=1024,
-        temperature=0.7,
-        top_p=1.0,
+        temperature=temperature,
+        top_p=top_p,
         seed=seed,
     ))
 
@@ -146,6 +148,8 @@ def bsm_cached(
     branching_factor: int = 2,
     seed: int = 42,
     compact: bool = False,
+    temperature: float = 0.7,
+    top_p: float = 1.0,
 ) -> Optional[Dict]:
     [branch_node, merge_node] = workflow.insert([
         {'messages': [
@@ -162,8 +166,8 @@ def bsm_cached(
          'parent_ids': [branch_node['id']]}
     ],
         max_gen_len=512,
-        temperature=0.7,
-        top_p=1.0,
+        temperature=temperature,
+        top_p=top_p,
         seed=seed,
     ))
     branch_output = workflow.tokenizer.decode(branch_tokens[0])
@@ -193,8 +197,8 @@ def bsm_cached(
         for i, solve_node_prompt in enumerate(solve_node_prompts)
     ],
         max_gen_len=512,
-        temperature=0.7,
-        top_p=1.0,
+        temperature=temperature,
+        top_p=top_p,
         seed=seed,
     ))
 
@@ -208,8 +212,8 @@ def bsm_cached(
          ]},
     ],
         max_gen_len=1024,
-        temperature=0.7,
-        top_p=1.0,
+        temperature=temperature,
+        top_p=top_p,
         seed=seed,
         compact=compact,
     ))
