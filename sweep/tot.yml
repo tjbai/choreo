@@ -33,7 +33,6 @@ parameters:
   checkpoint_freq:
     value: 1e9 # don't checkpoint
   validation_freq:
-    value: ${{int(1800 / int(${gradient_accumulation_steps}))}}
+    value: 1e9 # don't validate until very end
   max_seq_len:
     value: 65536
-

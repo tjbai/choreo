@@ -971,6 +971,7 @@ def finetune(
     )
 
     print(f'Epochs: {epochs}, Steps: {steps}, Warmup: {warmup_steps}')
+	validation_freq = min(validation_freq, steps // 2)
     print(f'Validation freq: {validation_freq}')
 
     global_step = 0
