@@ -3,6 +3,7 @@ import math
 import json
 import random
 from pathlib import Path
+from contextlib import nullcontext
 from abc import ABC
 from typing import Dict, Any, List, Tuple, Optional, TypeVar, Generic
 from abc import abstractmethod
@@ -586,20 +587,9 @@ class BsmTrainer(LoraTrainer):
 class MadTrainer(LoraTrainer):
     def step(self, sample: Dict, debug=False):
         problem = sample['inputs']['problem']
-        
-        try:
-            # Define chunks and randomly select one for gradient tracking
-            chunks = ["init_aff", "init_neg", "rounds", "final"]
-            target_chunk = random.choice(chunks)
-            
-            if debug:
-                print(f"Selected chunk for gradient tracking: {target_chunk}")
-            
-            metrics = {}
-            chunk_loss_values = {chunk: 0.0 for chunk in chunks}
-            selected_loss = None
+        metrics = {}
 
-            # Initial setup (always without gradients)
+        try:
             with torch.no_grad():
                 aff_context, neg_context, mod_context = [[a] for a in self.workflow.insert([
                     {'messages': [
@@ -615,176 +605,108 @@ class MadTrainer(LoraTrainer):
                         {'role': 'user', 'content': mad_moderator_user_prompt}
                     ], 'parent_ids': []}
                 ], track_gradients=False)]
-            
-            # Process Initial Affirmative 
-            init_aff_tokens = sample['outputs']['aff_tokens'][0]
-            aff_target_ids = [p + [self.eot_id] for p in init_aff_tokens]
-            
-            if target_chunk == "init_aff":
-                # With gradient tracking
-                [aff_node], logits = self.workflow.train_step(
-                    [{'header': ('assistant', ''), 'prefill': 'Affirmative:\n\n', 'parent_ids': [n['id'] for n in aff_context]}],
-                    aff_target_ids,
-                )
-                aff_loss = F.cross_entropy(logits.squeeze(), reorder_targets(aff_target_ids))
-                selected_loss = aff_loss
-                chunk_loss_values["init_aff"] = aff_loss.item()
-            else:
-                # Without gradient tracking
-                with torch.no_grad():
+
+            # Calculate round splits for chunking
+            num_rounds = len(sample['outputs']['aff_tokens'][1:])
+            mid_point = max(1, num_rounds // 2)
+            has_final = 'final_tokens' in sample['outputs']
+
+            chunks = {
+                "initial": 2,
+                "rounds_first_half": mid_point * 3,
+                "rounds_second_half": (num_rounds - mid_point) * 3,
+                "final": 1 if has_final else 0
+            }
+
+            valid_chunks = {k: v for k, v in chunks.items() if v > 0}
+            selected_chunk = random.choices(
+                list(valid_chunks.keys()),
+                weights=list(valid_chunks.values()),
+                k=1
+            )[0]
+
+            if debug:
+                print(f"Selected chunk: {selected_chunk} (weights: {chunks})")
+
+            def process_initial(with_grad=False):
+                ctx = nullcontext() if with_grad else torch.no_grad()
+                with ctx():
+                    init_aff_tokens = sample['outputs']['aff_tokens'][0]
+                    aff_target_ids = [p + [self.eot_id] for p in init_aff_tokens]
                     [aff_node], logits = self.workflow.train_step(
                         [{'header': ('assistant', ''), 'prefill': 'Affirmative:\n\n', 'parent_ids': [n['id'] for n in aff_context]}],
                         aff_target_ids,
                     )
                     aff_loss = F.cross_entropy(logits.squeeze(), reorder_targets(aff_target_ids))
-                    chunk_loss_values["init_aff"] = aff_loss.item()
-            
-            # Always add the node to context
-            aff_context.append(aff_node)
-            neg_context.append(aff_node)
-            
-            if debug:
-                print(f"Initial Affirmative Loss: {chunk_loss_values['init_aff']:.4f}")
-            metrics['train/aff_init_loss'] = chunk_loss_values["init_aff"]
-            
-            # Process Initial Negative
-            init_neg_tokens = sample['outputs']['neg_tokens'][0]
-            neg_target_ids = [p + [self.eot_id] for p in init_neg_tokens]
-            
-            if target_chunk == "init_neg":
-                # With gradient tracking
-                [neg_node], logits = self.workflow.train_step(
-                    [{'header': ('assistant', ''), 'prefill': 'Negative:\n\n', 'parent_ids': [n['id'] for n in neg_context]}],
-                    neg_target_ids,
-                )
-                neg_loss = F.cross_entropy(logits.squeeze(), reorder_targets(neg_target_ids))
-                selected_loss = neg_loss
-                chunk_loss_values["init_neg"] = neg_loss.item()
-            else:
-                # Without gradient tracking
-                with torch.no_grad():
+                    aff_context.append(aff_node)
+                    neg_context.append(aff_node)
+
+                    init_neg_tokens = sample['outputs']['neg_tokens'][0]
+                    neg_target_ids = [p + [self.eot_id] for p in init_neg_tokens]
                     [neg_node], logits = self.workflow.train_step(
                         [{'header': ('assistant', ''), 'prefill': 'Negative:\n\n', 'parent_ids': [n['id'] for n in neg_context]}],
                         neg_target_ids,
                     )
                     neg_loss = F.cross_entropy(logits.squeeze(), reorder_targets(neg_target_ids))
-                    chunk_loss_values["init_neg"] = neg_loss.item()
-            
-            # Always add the node to context
-            neg_context.append(neg_node)
-            aff_context.append(neg_node)
-            
-            if debug:
-                print(f"Initial Negative Loss: {chunk_loss_values['init_neg']:.4f}")
-            metrics['train/neg_init_loss'] = chunk_loss_values["init_neg"]
-            
-            # Process Debate Rounds
-            rounds_losses = []
-            
-            for round_idx, (aff, neg, mod) in enumerate(zip(
-                sample['outputs']['aff_tokens'][1:],
-                sample['outputs']['neg_tokens'][1:],
-                sample['outputs']['mod_tokens'],
-            )):
-                # Process each round - either all with gradients or all without
-                if target_chunk == "rounds":
-                    # With gradient tracking
-                    # Affirmative response
-                    aff_target_ids = [p + [self.eot_id] for p in aff]
-                    [aff_node], logits = self.workflow.train_step(
-                        [{'header': ('assistant', None), 'prefill': 'Affirmative Response:\n\n', 'parent_ids': [n['id'] for n in aff_context]}],
-                        aff_target_ids
-                    )
-                    aff_round_loss = F.cross_entropy(logits.squeeze(), reorder_targets(aff_target_ids))
-                    rounds_losses.append(aff_round_loss)
-                    chunk_loss_values["rounds"] += aff_round_loss.item()
-                    
-                    # Negative response
-                    neg_target_ids = [p + [self.eot_id] for p in neg]
-                    [neg_node], logits = self.workflow.train_step(
-                        [{'header': ('assistant', None), 'prefill': 'Negative Response:\n\n', 'parent_ids': [n['id'] for n in aff_context]}],
-                        neg_target_ids
-                    )
-                    neg_round_loss = F.cross_entropy(logits.squeeze(), reorder_targets(neg_target_ids))
-                    rounds_losses.append(neg_round_loss)
-                    chunk_loss_values["rounds"] += neg_round_loss.item()
-                    
-                    # Moderator decision
-                    mod_target_ids = [p + [self.eot_id] for p in mod]
-                    [mod_node], logits = self.workflow.train_step(
-                        [{'header': ('assistant', 'moderator'), 'prefill': '{"Reasoning": ', 'parent_ids': [n['id'] for n in mod_context]}],
-                        mod_target_ids,
-                    )
-                    mod_round_loss = F.cross_entropy(logits.squeeze(), reorder_targets(mod_target_ids))
-                    rounds_losses.append(mod_round_loss)
-                    chunk_loss_values["rounds"] += mod_round_loss.item()
-                    
-                    if debug:
-                        print(f"Round {round_idx+1} Affirmative Loss: {aff_round_loss.item():.4f}")
-                        print(f"Round {round_idx+1} Negative Loss: {neg_round_loss.item():.4f}")
-                        print(f"Round {round_idx+1} Moderator Loss: {mod_round_loss.item():.4f}")
-                    
-                    metrics[f'train/aff_round_{round_idx+1}_loss'] = aff_round_loss.item()
-                    metrics[f'train/neg_round_{round_idx+1}_loss'] = neg_round_loss.item()
-                    metrics[f'train/mod_round_{round_idx+1}_loss'] = mod_round_loss.item()
-                else:
-                    # Without gradient tracking
-                    with torch.no_grad():
-                        # Affirmative response
+                    neg_context.append(neg_node)
+                    aff_context.append(neg_node)
+
+                    metrics['train/aff_init_loss'] = aff_loss.item()
+                    metrics['train/neg_init_loss'] = neg_loss.item()
+                    return aff_loss + neg_loss
+
+            def process_rounds(start_idx, end_idx, with_grad=False):
+                ctx = nullcontext() if with_grad else torch.no_grad()
+                with ctx():
+                    losses = []
+                    for round_idx in range(start_idx, end_idx):
+                        idx = round_idx
+                        aff = sample['outputs']['aff_tokens'][1:][idx]
+                        neg = sample['outputs']['neg_tokens'][1:][idx]
+                        mod = sample['outputs']['mod_tokens'][idx]
+
                         aff_target_ids = [p + [self.eot_id] for p in aff]
                         [aff_node], logits = self.workflow.train_step(
                             [{'header': ('assistant', None), 'prefill': 'Affirmative Response:\n\n', 'parent_ids': [n['id'] for n in aff_context]}],
                             aff_target_ids
                         )
-                        aff_round_loss = F.cross_entropy(logits.squeeze(), reorder_targets(aff_target_ids))
-                        
-                        # Negative response
+                        aff_loss = F.cross_entropy(logits.squeeze(), reorder_targets(aff_target_ids))
+                        losses.append(aff_loss)
+                        metrics[f'train/aff_round_{round_idx+1}_loss'] = aff_loss.item()
+                        aff_context.append(aff_node)
+                        neg_context.append(aff_node)
+                        mod_context.append(aff_node)
+
                         neg_target_ids = [p + [self.eot_id] for p in neg]
                         [neg_node], logits = self.workflow.train_step(
                             [{'header': ('assistant', None), 'prefill': 'Negative Response:\n\n', 'parent_ids': [n['id'] for n in aff_context]}],
                             neg_target_ids
                         )
-                        neg_round_loss = F.cross_entropy(logits.squeeze(), reorder_targets(neg_target_ids))
-                        
-                        # Moderator decision
+                        neg_loss = F.cross_entropy(logits.squeeze(), reorder_targets(neg_target_ids))
+                        losses.append(neg_loss)
+                        metrics[f'train/neg_round_{round_idx+1}_loss'] = neg_loss.item()
+                        aff_context.append(neg_node)
+                        neg_context.append(neg_node)
+                        mod_context.append(neg_node)
+
                         mod_target_ids = [p + [self.eot_id] for p in mod]
                         [mod_node], logits = self.workflow.train_step(
                             [{'header': ('assistant', 'moderator'), 'prefill': '{"Reasoning": ', 'parent_ids': [n['id'] for n in mod_context]}],
                             mod_target_ids,
                         )
-                        mod_round_loss = F.cross_entropy(logits.squeeze(), reorder_targets(mod_target_ids))
-                        
-                        chunk_loss_values["rounds"] += aff_round_loss.item() + neg_round_loss.item() + mod_round_loss.item()
-                        
-                        if debug:
-                            print(f"Round {round_idx+1} Affirmative Loss: {aff_round_loss.item():.4f}")
-                            print(f"Round {round_idx+1} Negative Loss: {neg_round_loss.item():.4f}")
-                            print(f"Round {round_idx+1} Moderator Loss: {mod_round_loss.item():.4f}")
-                        
-                        metrics[f'train/aff_round_{round_idx+1}_loss'] = aff_round_loss.item()
-                        metrics[f'train/neg_round_{round_idx+1}_loss'] = neg_round_loss.item()
-                        metrics[f'train/mod_round_{round_idx+1}_loss'] = mod_round_loss.item()
-                
-                # Always add nodes to context
-                aff_context.append(aff_node)
-                neg_context.append(aff_node)
-                mod_context.append(aff_node)
-                
-                aff_context.append(neg_node)
-                neg_context.append(neg_node)
-                mod_context.append(neg_node)
-                
-                mod_context.append(mod_node)
-            
-            # Set selected loss for rounds
-            if target_chunk == "rounds" and rounds_losses:
-                selected_loss = torch.sum(torch.stack(rounds_losses))
-            
-            # Process Final Decision if present
-            if 'final_tokens' in sample['outputs']:
-                # Final prompt insertion
-                if target_chunk == "final":
-                    # With gradient tracking
+                        mod_loss = F.cross_entropy(logits.squeeze(), reorder_targets(mod_target_ids))
+                        losses.append(mod_loss)
+                        metrics[f'train/mod_round_{round_idx+1}_loss'] = mod_loss.item()
+                        mod_context.append(mod_node)
+
+                    return torch.sum(torch.stack(losses)) if losses else None
+
+            def process_final(with_grad=False):
+                if not has_final:
+                    return None
+
+                ctx = nullcontext() if with_grad else torch.no_grad()
+                with ctx():
                     [final_prompt] = self.workflow.insert([
                         {'messages': [
                             {'role': 'user', 'content': (
@@ -793,175 +715,65 @@ class MadTrainer(LoraTrainer):
                                 'Please strictly output in JSON format, do not output irrelevant content.'
                             )}
                         ], 'parent_ids': [n['id'] for n in mod_context]}
-                    ], track_gradients=True)
-    
+                    ], track_gradients=with_grad)
+
                     final_target_ids = [p + [self.eot_id] for p in sample['outputs']['final_tokens']]
                     _, logits = self.workflow.train_step(
                         [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in mod_context] + [final_prompt['id']]}],
                         final_target_ids
                     )
                     final_loss = F.cross_entropy(logits.squeeze(), reorder_targets(final_target_ids))
-                    selected_loss = final_loss
-                    chunk_loss_values["final"] = final_loss.item()
-                else:
-                    # Without gradient tracking
-                    with torch.no_grad():
-                        [final_prompt] = self.workflow.insert([
-                            {'messages': [
-                                {'role': 'user', 'content': (
-                                    'Please summarize your reasons and give the final answer that you think is correct. '
-                                    'Now please output your answer in JSON format, with the format as follows: {{"Reasoning": "", "Answer": ""}}. '
-                                    'Please strictly output in JSON format, do not output irrelevant content.'
-                                )}
-                            ], 'parent_ids': [n['id'] for n in mod_context]}
-                        ], track_gradients=False)
-        
-                        final_target_ids = [p + [self.eot_id] for p in sample['outputs']['final_tokens']]
-                        _, logits = self.workflow.train_step(
-                            [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in mod_context] + [final_prompt['id']]}],
-                            final_target_ids
-                        )
-                        final_loss = F.cross_entropy(logits.squeeze(), reorder_targets(final_target_ids))
-                        chunk_loss_values["final"] = final_loss.item()
-                
-                if debug:
-                    print(f"Final Decision Loss: {chunk_loss_values['final']:.4f}")
-                metrics['train/final_loss'] = chunk_loss_values["final"]
-            
-            # Calculate total loss value for metrics
-            total_loss_value = sum(chunk_loss_values.values())
-            
+                    metrics['train/final_loss'] = final_loss.item()
+                    return final_loss
+
+            selected_loss = None
+            if chunks["initial"] > 0:
+                loss = process_initial(with_grad=(selected_chunk == "initial"))
+                if selected_chunk == "initial":
+                    selected_loss = loss
+
+            if chunks["rounds_first_half"] > 0:
+                loss = process_rounds(0, mid_point, with_grad=(selected_chunk == "rounds_first_half"))
+                if selected_chunk == "rounds_first_half":
+                    selected_loss = loss
+
+            if chunks["rounds_second_half"] > 0:
+                loss = process_rounds(mid_point, num_rounds, with_grad=(selected_chunk == "rounds_second_half"))
+                if selected_chunk == "rounds_second_half":
+                    selected_loss = loss
+
+            if chunks["final"] > 0:
+                loss = process_final(with_grad=(selected_chunk == "final"))
+                if selected_chunk == "final":
+                    selected_loss = loss
+
+            total_loss = sum(v for k, v in metrics.items() if k.startswith('train/') and '_loss' in k)
+
             if debug:
-                print(f"Total Loss Value: {total_loss_value:.4f}")
-                print(f"Selected Chunk: {target_chunk}")
-            
-            metrics['train/selected_chunk'] = target_chunk
-            metrics['train/total_loss'] = total_loss_value
-            
-            # If we somehow didn't select a loss, return a dummy tensor
-            if selected_loss is None:
-                selected_loss = torch.tensor(0.0, requires_grad=True, device=self.workflow.device)
-            
-            # Return selected loss for backpropagation
-            return selected_
-        except:
-            return None
+                print(f"Total loss value: {total_loss:.4f}")
+                print(f"Selected chunk: {selected_chunk} (loss: {selected_loss.item() if selected_loss is not None else 'None'})")
+
+            metrics['train/selected_chunk'] = selected_chunk
+            metrics['train/total_loss'] = total_loss
+
+            return selected_loss, metrics
+
+        except RuntimeError as e:
+            if 'out of memory' in str(e):
+                print(f'Ran out of memory, skipping batch ({str(e)})')
+                torch.cuda.empty_cache()
+                return None
+            else:
+                raise e
 
     @torch.no_grad
-    def evaluate(self, *_, **__):
-        pass
-
-# class MadTrainer(LoraTrainer):
-#     def step(self, sample: Dict, debug=False):
-#         problem = sample['inputs']['problem']
-#         total_loss = 0
-
-#         aff_context, neg_context, mod_context = [[a] for a in self.workflow.insert([
-#             {'messages': [
-#                 {'role': 'system', 'content': mad_agent_prompt(problem, '')},
-#                 {'role': 'user', 'content': problem},
-#             ], 'parent_ids': []},
-#             {'messages': [
-#                 {'role': 'system', 'content': mad_agent_prompt(problem, '')},
-#                 {'role': 'user', 'content': problem},
-#             ], 'parent_ids': []},
-#             {'messages': [
-#                 {'role': 'system', 'content': mad_moderator_system_prompt(problem)},
-#                 {'role': 'user', 'content': mad_moderator_user_prompt}
-#             ], 'parent_ids': []}
-#         ], track_gradients=True)]
-
-#         init_aff_tokens = sample['outputs']['aff_tokens'][0]
-#         aff_target_ids = [p + [self.eot_id] for p in init_aff_tokens]
-#         [aff_node], logits = self.workflow.train_step(
-#             [{'header': ('assistant', ''), 'prefill': 'Affirmative:\n\n', 'parent_ids': [n['id'] for n in aff_context]}],
-#             aff_target_ids,
-#         )
-#         aff_context.append(aff_node)
-#         neg_context.append(aff_node)
-#         aff_loss = F.cross_entropy(logits.squeeze(), reorder_targets(aff_target_ids))
-#         total_loss += aff_loss
-#         if debug:
-#             print(f"Initial Affirmative Loss: {aff_loss.item():.4f}")
-
-#         init_neg_tokens = sample['outputs']['neg_tokens'][0]
-#         neg_target_ids = [p + [self.eot_id] for p in init_neg_tokens]
-#         [neg_node], logits = self.workflow.train_step(
-#             [{'header': ('assistant', ''), 'prefill': 'Negative:\n\n', 'parent_ids': [n['id'] for n in neg_context]}],
-#             neg_target_ids,
-#         )
-#         neg_loss = F.cross_entropy(logits.squeeze(), reorder_targets(neg_target_ids))
-#         total_loss += neg_loss
-#         if debug:
-#             print(f"Initial Negative Loss: {neg_loss.item():.4f}")
-
-#         for round_idx, (aff, neg, mod) in enumerate(zip(
-#             sample['outputs']['aff_tokens'][1:],
-#             sample['outputs']['neg_tokens'][1:],
-#             sample['outputs']['mod_tokens'],
-#         )):
-#             aff_target_ids = [p + [self.eot_id] for p in aff]
-#             [aff_node], logits = self.workflow.train_step(
-#                 [{'header': ('assistant', None), 'prefill': 'Affirmative Response:\n\n', 'parent_ids': [n['id'] for n in aff_context]}],
-#                 aff_target_ids
-#             )
-#             aff_context.append(aff_node)
-#             neg_context.append(aff_node)
-#             mod_context.append(aff_node)
-#             aff_round_loss = F.cross_entropy(logits.squeeze(), reorder_targets(aff_target_ids))
-#             total_loss += aff_round_loss
-#             if debug:
-#                 print(f"Round {round_idx+1} Affirmative Loss: {aff_round_loss.item():.4f}")
-
-#             neg_target_ids = [p + [self.eot_id] for p in neg]
-#             [neg_node], logits = self.workflow.train_step(
-#                 [{'header': ('assistant', None), 'prefill': 'Negative Response:\n\n', 'parent_ids': [n['id'] for n in aff_context]}],
-#                 neg_target_ids
-#             )
-#             aff_context.append(neg_node)
-#             neg_context.append(neg_node)
-#             mod_context.append(neg_node)
-#             neg_round_loss = F.cross_entropy(logits.squeeze(), reorder_targets(neg_target_ids))
-#             total_loss += neg_round_loss
-#             if debug:
-#                 print(f"Round {round_idx+1} Negative Loss: {neg_round_loss.item():.4f}")
-
-#             mod_target_ids = [p + [self.eot_id] for p in mod]
-#             [mod_node], logits = self.workflow.train_step(
-#                 [{'header': ('assistant', 'moderator'), 'prefill': '{"Reasoning": ', 'parent_ids': [n['id'] for n in mod_context]}],
-#                 mod_target_ids,
-#             )
-#             mod_context.append(mod_node)
-#             mod_round_loss = F.cross_entropy(logits.squeeze(), reorder_targets(mod_target_ids))
-#             total_loss += mod_round_loss
-#             if debug:
-#                 print(f"Round {round_idx+1} Moderator Loss: {mod_round_loss.item():.4f}")
-
-#         if 'final_tokens' in sample['outputs']:
-#             [final_prompt] = self.workflow.insert([
-#                 {'messages': [
-#                     {'role': 'user', 'content': (
-#                         'Please summarize your reasons and give the final answer that you think is correct. '
-#                         'Now please output your answer in JSON format, with the format as follows: {{"Reasoning": "", "Answer": ""}}. '
-#                         'Please strictly output in JSON format, do not output irrelevant content.'
-#                     )}
-#                 ], 'parent_ids': [n['id'] for n in mod_context]}
-#             ], track_gradients=True)
-
-#             final_target_ids = [p + [self.eot_id] for p in sample['outputs']['final_tokens']]
-#             _, logits = self.workflow.train_step(
-#                 [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in mod_context]}],
-#                 final_target_ids
-#             )
-#             final_loss = F.cross_entropy(logits.squeeze(), reorder_targets(final_target_ids))
-#             total_loss += final_loss
-#             if debug:
-#                 print(f"Final Decision Loss: {final_loss.item():.4f}")
-
-#         if debug:
-#             print(f"Total Loss: {total_loss.item():.4f}")
-
-#         return total_loss, {'train/loss': total_loss}
+    def evaluate(
+        self,
+        val_dataset: ListDataset,
+        max_steps: Optional[int] = None,
+        max_e2e: int = 20,
+    ):
+        return None
 
 class MadParTrainer(LoraTrainer):
     pass
