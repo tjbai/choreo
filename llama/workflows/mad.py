@@ -1,28 +1,13 @@
 import re
 import csv
 import json
-from typing import List, Optional, Dict
+from typing import List, Dict
 from operator import itemgetter as get
 
 from llama import Workflow
 from llama.tokenizer import Message
 
 # prompts adapted from https://github.com/Skytliang/Multi-Agents-Debate
-
-def moderator_system_prompt(source_text: str) -> str:
-   return f'''
-You are a moderator. There will be two debaters involved in a debate.
-They will present their translations and discuss their perspectives on the correct English translation of the given Chinese text: \"{source_text}\".
-At the end of each round, you will evaluate the translation candidates based on the following criteria:
-1. Accuracy: The degree to which the translation captures the original meaning of the source text.
-2. Fluency: The readability and naturalness of the translation in English.'''
-
-def math_moderator_system_prompt(topic: str) -> str:
-   return f'''
-You are a moderator. There will be two debaters involved in a mathematical reasoning debate.
-They will present their answers and discuss their perspectives on the following topic:\n"{topic}"
-At the end of each round, you will evaluate answers and decide if there is enough information to choose a winner.
-'''
 
 def faithful_mod_prompt(round: str, aff_ans: str, neg_ans: str):
     return f'''Now the {round} round of debate for both sides has ended.
@@ -40,41 +25,25 @@ If not, the debate will continue to the next round. Now please output your answe
 
 Please strictly output in JSON format, do not output irrelevant content.'''
 
-def moderator_user_prompt(round: int, max_rounds: int, agents: List[str]) -> str:
-    dct = {1: 'first', 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth'}
-    is_final_round = (round + 1) == max_rounds
-    agents_str = " or ".join(agents)
+def moderator_system_prompt(topic: str) -> str:
+   return f'''
+You are a moderator. There will be two debaters involved in a mathematical reasoning debate.
+They will present their answers and discuss their perspectives on the following topic:\n"{topic}"
+At the end of each round, you will evaluate answers and decide if there is enough information to choose a winner.
+'''
 
-    if is_final_round:
-        inner = (
-            f"If so, please summarize your reasons for supporting {agents_str}'s side and give "
-            "the final answer that you think is correct, and the debate will conclude. "
-            "If not, the debate will continue to the next round."
-        )
-    else:
-        inner = (
-            "Because all rounds of debate have ended, you must decide on a "
-            "final answer that you think is correct."
-        )
+moderator_user_prompt = (
+    "You, as the moderator, will now evaluate both sides' responses to the debate topic "
+    "and determine if there is enough information to choose a clear winner. "
+    "\nIf so, please summarize your reasons for supporting {agents_str}'s side and give "
+    "the final answer that you think is correct, and the debate will conclude. "
+    "If not, the debate will continue to the next round.\n"
+    "Now please output your answer in JSON format, with the format as follows: "
+    '{"Reasoning": "", "Preference": "Yes or No", "Answer": ""}. '
+    "Please strictly output in JSON format, do not output irrelevant content."
+)
 
-    return (
-        f"Now the {dct[round]} round of debate for both sides has ended. "
-        "You, as the moderator, will evaluate both sides' responses to the debate topic "
-        "and determine if there is enough information to choose a clear winner. "
-        f"\n{inner}\n"
-        "Now please output your answer in JSON format, with the format as follows: "
-        f'{{"Reasoning": "", "Preference": "Yes or No", "Answer": ""}}. '
-        "Please strictly output in JSON format, do not output irrelevant content."
-    )
-
-def agent_prompt(source_text: str, name: str) -> str:
-    return f'''
-You are a debater. Hello and welcome to the translation competition, which will be conducted in a debate format.
-It's not necessary to fully agree with each other's perspectives, as our objective is to find the correct translation.
-The debate topic is stated as follows:
-What is the correct English translation of the following Chinese text: \"{source_text}\"'''
-
-def math_agent_prompt(problem: str, name: str) -> str:
+def agent_prompt(problem: str, name: str) -> str:
     return f'''
 You are a debater. Hello and welcome to the math competition, which will be conducted in a debate format.
 It's not necessary to fully agree with each other's perspectives, as our objective is to find the correct solution.
@@ -188,18 +157,22 @@ def mad_cached(
     agent_contexts = [[a] for a in workflow.insert([
         {'messages': [{
             'role': 'system',
-            'content': math_agent_prompt(problem, 'Affirmative') + '\nPresent a well-developed solution and defend against critiques.'}],
+            'content': agent_prompt(problem, 'Affirmative') + '\nPresent a well-developed solution and defend against critiques.'}],
         'parent_ids': []},
         {'messages': [{
             'role': 'system',
-            'content': math_agent_prompt(problem, 'Negative') + '\nCritique the opponent\'s response and propose your own strong solution.'}],
+            'content': agent_prompt(problem, 'Negative') + '\nCritique the opponent\'s response and propose your own strong solution.'}],
         'parent_ids': []},
     ])]
 
     moderator_context = workflow.insert([
         {'messages': [{
             'role': 'system',
-            'content': math_moderator_system_prompt(problem)}],
+            'content': moderator_system_prompt(problem)
+        }, {
+            'role': 'user',
+            'content': moderator_user_prompt
+        }],
         'parent_ids': []}
     ])
 
@@ -229,7 +202,7 @@ def mad_cached(
         print("Negative critical evaluation:")
         print(workflow.tokenizer.decode(neg_tokens))
 
-    for round in range(1, max_rounds+1):
+    for round in range(1, max_rounds):
         [aff_tokens], [aff_response] = get('tokens', 'nodes')(workflow.step([{
             'header': ('user', ''),
             'prefill': 'Affirmative response: ',
@@ -287,14 +260,14 @@ def mad_baseline(
     seed: int = 42,
     debug: bool = False,
 ) -> Dict:
-    res = {'aff_tokens': [], 'neg_tokens': [], 'mod_tokens': []}
+    res = {'aff_tokens': [], 'neg_tokens': [], 'mod_tokens': [], 'decision': None}
     dct = {1: 'first', 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth'}
 
     # initial aff
     aff_stale: List[Message] = []
     aff_context = workflow.insert([
         {'messages': [
-            {'role': 'system', 'content': math_agent_prompt(problem, '')},
+            {'role': 'system', 'content': agent_prompt(problem, '')},
             {'role': 'user', 'content': problem},
         ], 'parent_ids': []},
     ])
@@ -302,12 +275,13 @@ def mad_baseline(
     aff_ans = workflow.tokenizer.decode(aff_tokens)
     aff_stale.append({'role': 'assistant', 'content': aff_ans})
     if debug: print(f'Aff ans:\n{aff_ans}')
+    res['aff_tokens'].append([aff_tokens])
 
     # initial neg
     neg_stale: List[Message] = []
     neg_context = workflow.insert([
         {'messages': [
-            {'role': 'system', 'content': math_agent_prompt(problem, '')},
+            {'role': 'system', 'content': agent_prompt(problem, '')},
             {'role': 'user', 'content': f'{aff_ans}\n\nYou disagree with my answer. Provide your answer and reasons.'},
         ], 'parent_ids': []},
     ])
@@ -315,37 +289,34 @@ def mad_baseline(
     neg_ans = workflow.tokenizer.decode(neg_tokens)
     neg_stale.append({'role': 'assistant', 'content': neg_ans})
     if debug: print(f'Neg ans:\n{neg_ans}')
+    res['neg_tokens'].append([neg_tokens])
 
-    # initial mod
     mod_stale: List[Message] = []
-    mod_context = workflow.insert([{'messages': [
-        {'role': 'system', 'content': faithful_mod_prompt('first', aff_ans, neg_ans)}
-    ], 'parent_ids': []}])
-    [mod_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in mod_context]}]))
-    mod_stale.append({'role': 'assistant', 'content': workflow.tokenizer.decode(mod_tokens)})
-    if debug: print(f'Mod review:\n{workflow.tokenizer.decode(mod_tokens)}')
-
+    mod_context = []
     for round in range(max_rounds - 1):
         aff_stale.append({'role': 'user', 'content': f'{neg_ans}\n\nDo you agree with my perspective? Please provide your reasons and answer.'})
-        aff_context.extend(workflow.insert([{'messages': aff_stale, 'parent_ids': []}]))
+        aff_context.extend(workflow.insert([{'messages': aff_stale, 'parent_ids': [n['id'] for n in aff_context]}]))
         [aff_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in aff_context]}]))
         aff_ans = workflow.tokenizer.decode(aff_tokens)
         aff_stale = [{'role': 'assistant', 'content': aff_ans}]
         if debug: print(f'Aff ans:\n{aff_ans}')
+        res['aff_tokens'].append([aff_tokens])
 
         neg_stale.append({'role': 'user', 'content': f'{aff_ans}\n\nDo you agree with my perspective? Please provide your reasons and answer.'})
-        neg_context.extend(workflow.insert([{'messages': neg_stale, 'parent_ids': []}]))
+        neg_context.extend(workflow.insert([{'messages': neg_stale, 'parent_ids': [n['id'] for n in neg_context]}]))
         [neg_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in neg_context]}]))
         neg_ans = workflow.tokenizer.decode(neg_tokens)
         neg_stale = [{'role': 'assistant', 'content': neg_ans}]
         if debug: print(f'Neg ans:\n{neg_ans}')
+        res['neg_tokens'].append([neg_tokens])
 
         mod_stale.append({'role': 'user', 'content': faithful_mod_prompt(dct[round+2], aff_ans, neg_ans)})
-        mod_context.extend(workflow.insert([{'messages': mod_stale, 'parent_ids': []}]))
+        mod_context.extend(workflow.insert([{'messages': mod_stale, 'parent_ids': [n['id'] for n in mod_context]}]))
         [mod_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in mod_context]}]))
         mod_ans = workflow.tokenizer.decode(mod_tokens)
         mod_stale = [{'role': 'assistant', 'content': mod_ans}]
         if debug: print(f'Mod review:\n{mod_ans}')
+        res['mod_tokens'].append([mod_tokens])
 
         if isinstance((decision := parse_decision(mod_ans)), dict):
             res['decision'] = decision
@@ -356,7 +327,7 @@ def mad_baseline(
         # https://github.com/Skytliang/Multi-Agents-Debate/blob/022a7a8eecda85844d336e9064cc556edb0445b3/code/debate4tran.py#L236
         [judge_prompt] = workflow.insert([
             {'messages': [
-                {'role': 'system', 'content': math_agent_prompt(problem, '')},
+                {'role': 'system', 'content': agent_prompt(problem, '')},
                 {'role': 'user', 'content': f'Affirmative side arguing:\n{aff_ans}\n\nNegative side arguing:\n{neg_ans}\n\nNow, what answer candidates do we have? Present them without reasons.'},
             ], 'parent_ids': []}
         ])
@@ -375,5 +346,6 @@ def mad_baseline(
 
         [final_tokens] = get('tokens')(workflow.step([{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [judge_prompt['id'], cand_response['id'], final_prompt['id']]}]))
         res['decision'] = parse_decision(workflow.tokenizer.decode(final_tokens))
+        res['final_tokens'] = [final_tokens]
 
-    return res | {}
+    return res

@@ -518,7 +518,7 @@ class BsmTrainer(LoraTrainer):
         metrics['train/solve_loss'] = F.cross_entropy(
             solve_logits.squeeze(),
             reorder_targets(solve_target_ids)
-        )
+        ) / 2 # just some light normalization
 
         merge_target_ids = [p + [self.eot_id] for p in sample['outputs']['merge_tokens']]
         _, merge_logits = self.workflow.train_step([
@@ -578,10 +578,6 @@ class BsmTrainer(LoraTrainer):
         return all_metrics
 
 class MadTrainer(LoraTrainer):
-
-    def __init__(self, workflow: Workflow, output_dir: str, learning_rate: float):
-        pass
-
     def step(self, *_, **__):
         pass
 
