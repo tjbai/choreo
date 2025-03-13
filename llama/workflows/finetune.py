@@ -802,7 +802,23 @@ def init_task(
     learning_rate: float,
     **task_params
 ) -> Tuple[LoraTrainer, Dataset]:
-    if task == 'tot':
+    if task == 'bsm':
+        trainer = BsmTrainer(
+            workflow,
+            output_dir=output_dir,
+            learning_rate=learning_rate
+        )
+        dataset = ListDataset(data_path)
+        wandb.init(
+            project='bsm',
+            config={
+                "lora_rank": lora_rank,
+                "lora_alpha": lora_alpha,
+                "lora_dropout": lora_dropout,
+                "learning_rate": learning_rate,
+            }
+        )
+    elif task == 'tot':
         trainer = TotTrainer(
             workflow,
             output_dir=output_dir,
