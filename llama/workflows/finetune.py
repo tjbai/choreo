@@ -52,6 +52,7 @@ from llama.workflows.bsm import (
     bsm_cached
 )
 from llama.workflows.mad import (
+    mad_cached,
     agent_prompt as mad_agent_prompt,
     moderator_system_prompt as mad_moderator_system_prompt,
     moderator_user_prompt as mad_moderator_user_prompt
@@ -131,130 +132,6 @@ class LoraTrainer(ABC, Generic[DataType]):
         max_e2e: int = 50
     ) -> Any:
         pass
-
-class TotTrainer(LoraTrainer[TotDataset]):
-    def __init__(self, workflow: Workflow, output_dir: str,  learning_rate: float, branching_factor: int, voters: int):
-        super().__init__(workflow, output_dir, learning_rate)
-        self.branching_factor = branching_factor
-        self.voters = voters
-        self.eot_id = self.workflow.tokenizer.eot_id
-
-    def step(self, sample: Dict) -> Tuple[torch.Tensor, Dict]:
-        self.workflow.reset()
-
-        cot, vote, finish = self.workflow.insert([
-            {'messages': [
-                {'role': 'system', 'content': cot_prompt},
-                {'role': 'user', 'content': format_problem(sample['problem'])}
-            ], 'parent_ids': []},
-            {'messages': [
-                {'role': 'system', 'content': format_vote_system_prompt(self.branching_factor)},
-                {'role': 'user', 'content': format_problem(sample['problem'])}
-            ], 'parent_ids': []},
-            {'messages': [
-                {'role': 'system', 'content': finish_prompt},
-                {'role': 'user', 'content': format_problem(sample['problem'])}
-            ], 'parent_ids': []},
-        ], track_gradients=True)
-
-        target_proposal_ids = [p + [self.eot_id] for p in sample['result']['proposal_tokens']]
-        vote_target_ids = [p + [self.eot_id] for p in sample['result']['vote_tokens']]
-        final_target_ids = sample['result']['final_tokens'] + [self.eot_id]
-
-        # hacky. see above comment.
-        proposal_targets = reorder_targets(target_proposal_ids)
-        vote_targets = reorder_targets(vote_target_ids)
-        final_targets = torch.tensor(final_target_ids, device='cuda')
-
-        proposal_tasks = [
-            {'header': ('assistant', None),
-             'prefill': f'Solution #{i+1}:\n\n',
-             'parent_ids': [cot['id']]}
-            for i in range(self.branching_factor)
-        ]
-        proposal_nodes, proposal_logits = self.workflow.train_step(proposal_tasks, target_proposal_ids)
-
-        vote_tasks = [
-            {'header': ('assistant', None),
-             'prefill': 'BEST CHOICE: ',
-             'parent_ids': [vote['id']] + [p['id'] for p in proposal_nodes]}
-            for i in range(self.voters)
-        ]
-        _, vote_logits = self.workflow.train_step(vote_tasks, vote_target_ids)
-
-        votes = [v for v in sample['result']['votes'] if v is not None]
-        best = Counter(votes).most_common(1)[0][0]
-        final_task = {
-            'header': ('assistant', None),
-            'prefill': None,
-            'parent_ids': [finish['id'], proposal_nodes[best - 1]['id']]
-        }
-        _, final_logits = self.workflow.train_step([final_task], [final_target_ids])
-
-        proposal_loss = F.cross_entropy(proposal_logits.squeeze(0), proposal_targets)
-        vote_loss = F.cross_entropy(vote_logits.squeeze(0), vote_targets)
-        final_loss = F.cross_entropy(final_logits.squeeze(0), final_targets)
-
-        total_loss = proposal_loss + vote_loss + final_loss
-
-        metrics = {
-            'train/proposal_ppl': torch.exp(proposal_loss),
-            'train/vote_ppl': torch.exp(vote_loss),
-            'train/final_ppl': torch.exp(final_loss),
-            'train/nll_loss': total_loss,
-        }
-
-        return total_loss, metrics
-
-    @torch.no_grad
-    def evaluate(
-        self,
-        val_dataset: TotDataset,
-        max_steps: Optional[int] = None,
-        max_e2e: int = 100
-    ):
-        self.workflow.model.eval()
-
-        total_loss = 0
-        all_metrics = defaultdict(float)
-
-        for step, sample in enumerate(tqdm(val_dataset, desc="Validating")):
-            if max_steps and step >= max_steps:
-                break
-            loss, metrics = self.step(sample)
-            total_loss += loss
-            for k, v in metrics.items():
-                all_metrics[k] += v.item()
-
-        N = len(val_dataset)
-        metrics = {
-            'val/loss': total_loss / N,
-            **{k.replace('train/', 'val/'): v / N for k, v in all_metrics.items()}
-        }
-
-        solutions = []
-        problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
-        problems = problems[:max_e2e]
-        for problem in tqdm(problems, desc="Running e2e validation"):
-            self.workflow.reset()
-            solutions.append(tot_cached(
-                workflow=self.workflow,
-                problem=problem['problem'],
-                branching_factor=self.branching_factor,
-                voters=self.voters,
-            ))
-
-        self.llama.model.reshape_cache(4)
-        self.llama.model.set_adapter_state(enabled=False)
-        try:
-            correct = eval_solutions(self.llama, solutions, problems)
-            metrics['val/correct'] = sum(correct) / len(correct)
-        finally:
-            self.llama.model.set_adapter_state(enabled=True)
-            self.llama.model.reshape_cache(1)
-
-        self.workflow.model.train()
-        return metrics
 
 class PrisonersTrainer(LoraTrainer[PrisonersDataset]):
     def __init__(self, workflow: Workflow, output_dir: str,  learning_rate: float):
@@ -482,7 +359,7 @@ class QaTrainer(LoraTrainer[ListDataset]):
         self.workflow.model.train()
         return metrics
 
-class BsmTrainer(LoraTrainer):
+class BsmTrainer(LoraTrainer[ListDataset]):
     def step(self, sample: dict) -> Tuple[torch.Tensor, Dict]:
         self.workflow.reset()
         metrics = {}
@@ -583,6 +460,129 @@ class BsmTrainer(LoraTrainer):
 
         self.workflow.model.train()
         return all_metrics
+
+class TotTrainer(LoraTrainer[TotDataset]):
+    def __init__(self, workflow: Workflow, output_dir: str,  learning_rate: float, branching_factor: int, voters: int):
+        super().__init__(workflow, output_dir, learning_rate)
+        self.branching_factor = branching_factor
+        self.voters = voters
+        self.eot_id = self.workflow.tokenizer.eot_id
+
+    def step(self, sample: Dict) -> Tuple[torch.Tensor, Dict]:
+        self.workflow.reset()
+
+        cot, vote, finish = self.workflow.insert([
+            {'messages': [
+                {'role': 'system', 'content': cot_prompt},
+                {'role': 'user', 'content': format_problem(sample['problem'])}
+            ], 'parent_ids': []},
+            {'messages': [
+                {'role': 'system', 'content': format_vote_system_prompt(self.branching_factor)},
+                {'role': 'user', 'content': format_problem(sample['problem'])}
+            ], 'parent_ids': []},
+            {'messages': [
+                {'role': 'system', 'content': finish_prompt},
+                {'role': 'user', 'content': format_problem(sample['problem'])}
+            ], 'parent_ids': []},
+        ], track_gradients=True)
+
+        target_proposal_ids = [p + [self.eot_id] for p in sample['result']['proposal_tokens']]
+        vote_target_ids = [p + [self.eot_id] for p in sample['result']['vote_tokens']]
+        final_target_ids = sample['result']['final_tokens'] + [self.eot_id]
+
+        # hacky. see above comment.
+        proposal_targets = reorder_targets(target_proposal_ids)
+        vote_targets = reorder_targets(vote_target_ids)
+        final_targets = torch.tensor(final_target_ids, device='cuda')
+
+        proposal_tasks = [
+            {'header': ('assistant', None),
+                'prefill': f'Solution #{i+1}:\n\n',
+                'parent_ids': [cot['id']]}
+            for i in range(self.branching_factor)
+        ]
+        proposal_nodes, proposal_logits = self.workflow.train_step(proposal_tasks, target_proposal_ids)
+
+        vote_tasks = [
+            {'header': ('assistant', None),
+                'prefill': 'BEST CHOICE: ',
+                'parent_ids': [vote['id']] + [p['id'] for p in proposal_nodes]}
+            for i in range(self.voters)
+        ]
+        _, vote_logits = self.workflow.train_step(vote_tasks, vote_target_ids)
+
+        votes = [v for v in sample['result']['votes'] if v is not None]
+        best = Counter(votes).most_common(1)[0][0]
+        final_task = {
+            'header': ('assistant', None),
+            'prefill': None,
+            'parent_ids': [finish['id'], proposal_nodes[best - 1]['id']]
+        }
+        _, final_logits = self.workflow.train_step([final_task], [final_target_ids])
+
+        proposal_loss = F.cross_entropy(proposal_logits.squeeze(0), proposal_targets)
+        vote_loss = F.cross_entropy(vote_logits.squeeze(0), vote_targets)
+        final_loss = F.cross_entropy(final_logits.squeeze(0), final_targets)
+
+        total_loss = proposal_loss + vote_loss + final_loss
+
+        metrics = {
+            'train/proposal_ppl': torch.exp(proposal_loss),
+            'train/vote_ppl': torch.exp(vote_loss),
+            'train/final_ppl': torch.exp(final_loss),
+            'train/nll_loss': total_loss,
+        }
+
+        return total_loss, metrics
+
+    @torch.no_grad
+    def evaluate(
+        self,
+        val_dataset: TotDataset,
+        max_steps: Optional[int] = None,
+        max_e2e: int = 100
+    ):
+        self.workflow.model.eval()
+
+        total_loss = 0
+        all_metrics = defaultdict(float)
+        for step, sample in enumerate(tqdm(val_dataset, desc="Validating")):
+            if max_steps and step >= max_steps:
+                break
+            loss, metrics = self.step(sample)
+            total_loss += loss
+            for k, v in metrics.items():
+                all_metrics[k] += v.item()
+
+        N = len(val_dataset)
+        metrics = {
+            'val/loss': total_loss / N,
+            **{k.replace('train/', 'val/'): v / N for k, v in all_metrics.items()}
+        }
+
+        solutions = []
+        problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
+        problems = problems[:max_e2e]
+        for problem in tqdm(problems, desc="Running e2e validation"):
+            self.workflow.reset()
+            solutions.append(tot_cached(
+                workflow=self.workflow,
+                problem=problem['problem'],
+                branching_factor=self.branching_factor,
+                voters=self.voters,
+            ))
+
+        self.llama.model.reshape_cache(4)
+        self.llama.model.set_adapter_state(enabled=False)
+        try:
+            correct = eval_solutions(self.llama, solutions, problems)
+            metrics['val/correct'] = sum(correct) / len(correct)
+        finally:
+            self.llama.model.set_adapter_state(enabled=True)
+            self.llama.model.reshape_cache(1)
+
+        self.workflow.model.train()
+        return metrics
 
 class MadTrainer(LoraTrainer):
     def step(self, sample: Dict, debug=False):
@@ -773,7 +773,48 @@ class MadTrainer(LoraTrainer):
         max_steps: Optional[int] = None,
         max_e2e: int = 20,
     ):
-        return None
+        self.workflow.model.eval()
+
+        total_loss = 0
+        all_metrics = defaultdict(float)
+        for step, sample in enumerate(tqdm(val_dataset, desc="Validating")):
+            if max_steps and step >= max_steps:
+                break
+            loss, metrics = self.step(sample)
+            total_loss += metrics['train/total_loss']
+            for k, v in metrics.items():
+                all_metrics[k] += v.item()
+
+        N = len(val_dataset)
+        metrics = {
+            'val/loss': total_loss / N,
+            **{k.replace('train/', 'val/'): v / N for k, v in all_metrics.items()}
+        }
+
+        solutions = []
+        problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
+        problems = problems[:max_e2e]
+        for problem in tqdm(problems, desc="Running e2e validation"):
+            self.workflow.reset()
+            outputs = mad_cached(
+                workflow=self.workflow,
+                problem=problem['problem'],
+                max_rounds=3,
+                temperature=0.7,
+                top_p=1.0,
+            )
+            solutions.append(outputs['decision']['Answer'])
+
+        self.llama.model.reshape_cache(4)
+        self.llama.model.set_adapter_state(enabled=False)
+        try:
+            correct = eval_solutions(self.llama, solutions, problems)
+            metrics['val/correct'] = sum(correct) / len(correct)
+        finally:
+            self.llama.model.set_adapter_state(enabled=True)
+            self.llama.model.reshape_cache(1)
+
+        self.workflow.model.train()
 
 class MadParTrainer(LoraTrainer):
     pass
@@ -802,6 +843,22 @@ def init_task(
     learning_rate: float,
     **task_params
 ) -> Tuple[LoraTrainer, Dataset]:
+    if task == 'mad':
+        trainer = MadTrainer(
+            workflow,
+            output_dir=output_dir,
+            learning_rate=learning_rate
+        )
+        dataset = ListDataset(data_path)
+        wandb.init(
+            project='mad',
+            config={
+                "lora_rank": lora_rank,
+                "lora_alpha": lora_alpha,
+                "lora_dropout": lora_dropout,
+                "learning_rate": learning_rate,
+            }
+        )
     if task == 'bsm':
         trainer = BsmTrainer(
             workflow,
