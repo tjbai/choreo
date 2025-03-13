@@ -783,7 +783,8 @@ class MadTrainer(LoraTrainer):
             loss, metrics = self.step(sample)
             total_loss += metrics['train/total_loss']
             for k, v in metrics.items():
-                all_metrics[k] += v.item()
+                if isinstance(v, float):
+                    all_metrics[k] += v
 
         N = len(val_dataset)
         metrics = {
@@ -803,13 +804,22 @@ class MadTrainer(LoraTrainer):
                 temperature=0.7,
                 top_p=1.0,
             )
-            solutions.append(outputs['decision']['Answer'])
+            print(outputs['decision'])
+            if isinstance(outputs['decision'], dict):
+                solutions.append(outputs['decision']['Answer'])
+            else:
+                solutions.append(None)
 
         self.llama.model.reshape_cache(4)
         self.llama.model.set_adapter_state(enabled=False)
         try:
-            correct = eval_solutions(self.llama, solutions, problems)
-            metrics['val/correct'] = sum(correct) / len(correct)
+            correct = eval_solutions(
+                self.llama,
+                [s for s in solutions if s],
+                [p for s, p in zip(solutions, problems) if s]
+            )
+            metrics['val/correct'] = sum(correct) / len(solutions)
+            metrics['va/well_formed'] = len(correct) / len(solutions)
         finally:
             self.llama.model.set_adapter_state(enabled=True)
             self.llama.model.reshape_cache(1)
@@ -850,6 +860,11 @@ def init_task(
             learning_rate=learning_rate
         )
         dataset = ListDataset(data_path)
+        dataset = Subset(
+            dataset=dataset,
+            indices=[i for i, d in enumerate(dataset) if isinstance(d['outputs']['decision'], dict)]
+        )
+        print(f'Filtered to {len(dataset)}')
         wandb.init(
             project='mad',
             config={
@@ -859,6 +874,7 @@ def init_task(
                 "learning_rate": learning_rate,
             }
         )
+        return trainer, dataset
     if task == 'bsm':
         trainer = BsmTrainer(
             workflow,
