@@ -782,9 +782,7 @@ class MadTrainer(LoraTrainer):
                 break
             loss, metrics = self.step(sample)
             total_loss += metrics['train/total_loss']
-            for k, v in metrics.items():
-                if isinstance(v, float):
-                    all_metrics[k] += v
+            all_metrics['train/total_loss'] += metrics['train/total_loss']
 
         N = len(val_dataset)
         metrics = {
@@ -804,7 +802,6 @@ class MadTrainer(LoraTrainer):
                 temperature=0.7,
                 top_p=1.0,
             )
-            print(outputs['decision'])
             if isinstance(outputs['decision'], dict):
                 solutions.append(outputs['decision']['Answer'])
             else:
