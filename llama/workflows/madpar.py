@@ -144,11 +144,19 @@ The original math problem is: {problem}
 
 Make sure to state your answer at the end of the response in the form \\boxed{{answer}}."""
 
+def baseline_summary_prompt(problem, responses):
+    return f"""Here are a list of opinions from different agents solving this math problem: "{problem}"
+
+{responses}
+
+Write a summary of the different opinions from each of the individual agents."""
+
+
 def madpar_baseline(
     workflow: Workflow,
     problem: str,
     num_agents: int = 3,
-    num_rounds: int = 2,
+    num_rounds: int = 3,
     temperature: float = 0.7,
     top_p: float = 1.0,
     debug: bool = False,
@@ -158,12 +166,6 @@ def madpar_baseline(
 
     starting_prompt = f"""Can you solve the following math problem? {problem}
 Explain your reasoning. Your final answer should be a single numerical number, in the form \\boxed{{answer}}, at the end of your response."""
-
-    summary_base_prompt = f"""Here are a list of opinions from different agents solving this math problem: "{problem}"
-
-{{agent_responses}}
-
-Write a summary of the different opinions from each of the individual agents."""
 
     [agent_node] = workflow.insert(
         [{"messages": [{"role": "user", "content": starting_prompt}], "parent_ids": []}]
@@ -205,9 +207,7 @@ Write a summary of the different opinions from each of the individual agents."""
                     "messages": [
                         {
                             "role": "user",
-                            "content": summary_base_prompt.format(
-                                agent_responses=all_responses
-                            ),
+                            "content": baseline_summary_prompt(problem, all_responses),
                         }
                     ],
                     "parent_ids": [],

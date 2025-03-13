@@ -7,11 +7,22 @@ fi
 
 python_file="$1"
 full_file_name="${python_file%.*}"
+
+# Get the last two elements of the path
+path_parts=( $(echo "$full_file_name" | tr '/' ' ') )
+num_parts=${#path_parts[@]}
+
+if [ $num_parts -ge 2 ]; then
+    last_two_dirs="${path_parts[$num_parts-2]}/${path_parts[$num_parts-1]}"
+else
+    last_two_dirs="$full_file_name"
+fi
+
 base_file_name=$(basename "$full_file_name")
 
 cat > "${full_file_name}.slurm" << EOL
 #!/bin/bash
-#SBATCH --job-name=${base_file_name}
+#SBATCH --job-name=${last_two_dirs}
 #SBATCH -A jeisner1_gpu
 #SBATCH --partition=ica100
 #SBATCH --nodes=1
@@ -25,4 +36,3 @@ EOL
 
 chmod +x "${full_file_name}.slurm"
 echo "Generated ${full_file_name}.slurm"
-

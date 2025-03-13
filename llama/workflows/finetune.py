@@ -586,6 +586,7 @@ class BsmTrainer(LoraTrainer):
 
 class MadTrainer(LoraTrainer):
     def step(self, sample: Dict, debug=False):
+        self.workflow.reset()
         problem = sample['inputs']['problem']
         metrics = {}
 
@@ -606,7 +607,6 @@ class MadTrainer(LoraTrainer):
                     ], 'parent_ids': []}
                 ], track_gradients=False)]
 
-            # Calculate round splits for chunking
             num_rounds = len(sample['outputs']['aff_tokens'][1:])
             mid_point = max(1, num_rounds // 2)
             has_final = 'final_tokens' in sample['outputs']
@@ -818,6 +818,7 @@ def init_task(
                 "learning_rate": learning_rate,
             }
         )
+        return trainer, dataset
     elif task == 'tot':
         trainer = TotTrainer(
             workflow,

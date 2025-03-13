@@ -27,22 +27,22 @@ llama = Llama(workflow.model, workflow.tokenizer)
 problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='train')[:500]
 
 # MAD baseline on MATH
-samples = []
-for problem in tqdm(problems):
-    workflow.reset()
-    outputs = mad_baseline(
-        workflow=workflow,
-        problem=problem['problem'],
-        max_rounds=3,
-        debug=False,
-    )
-    samples.append({
-        'inputs': {'problem': problem['problem']},
-        'outputs': outputs,
-    })
-
-with open('/home/tbai4/llama3/dumps/mad/math_baseline_e2e.json', 'w') as f:
-    json.dump(samples, f)
+# samples = []
+# for problem in tqdm(problems):
+#     workflow.reset()
+#     outputs = mad_baseline(
+#         workflow=workflow,
+#         problem=problem['problem'],
+#         max_rounds=3,
+#         debug=False,
+#     )
+#     samples.append({
+#         'inputs': {'problem': problem['problem']},
+#         'outputs': outputs,
+#     })
+# 
+# with open('/home/tbai4/llama3/dumps/mad/math_baseline_e2e.json', 'w') as f:
+#     json.dump(samples, f)
 
 # MAD cached on MATH
 samples = []
