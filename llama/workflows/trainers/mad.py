@@ -6,6 +6,7 @@ from collections import defaultdict
 
 import torch
 import torch.nn.functional as F
+import wandb
 
 from llama.workflows.trainers.base import LoraTrainer, ListDataset, reorder_targets
 from llama.workflows.tot import load_math_problems, eval_solutions
@@ -194,6 +195,7 @@ class MadTrainer(LoraTrainer[ListDataset]):
             if 'out of memory' in str(e):
                 print(f'Ran out of memory, skipping batch ({str(e)})')
                 torch.cuda.empty_cache()
+                wandb.log({'train/oom': 1})
                 return None
             else:
                 raise e
