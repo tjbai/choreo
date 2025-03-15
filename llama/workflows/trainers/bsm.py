@@ -66,8 +66,10 @@ class BsmTrainer(LoraTrainer[ListDataset]):
                 'parent_ids': [
                     merge_node['id'],
                     solve_nodes[0]['id'],
+                    solve_nodes[1]['id'],
                 ]}
         ], merge_target_ids)
+
         metrics['train/merge_loss'] = F.cross_entropy(
             merge_logits.squeeze(),
             reorder_targets(merge_target_ids)
