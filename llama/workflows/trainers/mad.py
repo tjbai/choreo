@@ -250,7 +250,7 @@ class MadTrainer(LoraTrainer[ListDataset]):
                 [p for s, p in zip(solutions, problems) if s]
             )
             metrics['val/correct'] = sum(correct) / len(solutions)
-            metrics['va/well_formed'] = len(correct) / len(solutions)
+            metrics['val/well_formed'] = len(correct) / len(solutions)
         finally:
             self.llama.model.set_adapter_state(enabled=True)
             self.llama.model.reshape_cache(1)

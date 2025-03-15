@@ -28,7 +28,7 @@ problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='train')[:50
 
 # MADpar baseline on MATH
 samples = []
-for problem in tqdm(problems):
+for i, problem in enumerate(tqdm(problems)):
     workflow.reset()
     outputs = madpar_baseline(
         workflow=workflow,
@@ -42,8 +42,9 @@ for problem in tqdm(problems):
         'outputs': outputs,
     })
 
-with open('/home/tbai4/llama3/dumps/madpar/math_baseline_e2e.json', 'w') as f:
-    json.dump(samples, f)
+    if (i+1) % 10 == 0:
+        with open('/home/tbai4/llama3/dumps/madpar/math_baseline_e2e.json', 'w') as f:
+            json.dump(samples, f)
 
 # MADpar cached on MATH
 samples = []

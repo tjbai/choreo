@@ -103,7 +103,7 @@ class BsmTrainer(LoraTrainer[ListDataset]):
 
         total_coverage = []
         for step, sample in enumerate(tqdm(val_dataset, desc="Evaluating")):
-            if max_e2e and sample >= max_e2e:
+            if max_e2e and step >= max_e2e:
                 break
             outputs = bsm_cached(workflow=self.workflow, **sample['inputs'])
             if outputs is None:
