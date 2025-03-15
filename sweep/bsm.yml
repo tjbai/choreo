@@ -1,0 +1,44 @@
+program: /home/tbai4/llama3/llama/workflows/finetune.py
+command:
+  - ${env}
+  - "uv"
+  - "run"
+  - "python"
+  - ${program}
+  - "--task=bsm"
+  - "--data-path='/home/tbai4/llama3/dumps/bsm/baseline_e2e.json'"
+  - "--ckpt-dir='/scratch4/jeisner1/tjbai/llama_8b'"
+  - "--tokenizer-path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model'"
+  - ${args}
+
+method: bayes
+metric:
+  name: val/coverage
+  goal: maximize
+parameters:
+  lora_rank:
+    values: [4, 8, 16, 32]
+  lora_alpha:
+    values: [8, 16, 32]
+  lora_dropout:
+    values: [0.05, 0.1, 0.15, 0.2]
+  learning_rate:
+    distribution: log_uniform_values
+    min: 1e-5
+    max: 5e-4
+  epochs:
+    values: [1, 2, 3, 5]
+  batch_size:
+    values: [4, 8, 16]
+  weight_decay:
+    values: [0.01, 0.05, 0.1]
+  gradient_accumulation_steps:
+    value: 2
+  checkpoint_freq:
+    value: 1e9
+  validation_freq:
+    value: 20
+  max_seq_len:
+    value: 8192
+  warmup_steps:
+    values: [10, 20, 50]
