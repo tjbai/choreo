@@ -124,7 +124,7 @@ class MadTrainer(LoraTrainer[ListDataset]):
 
                         mod_target_ids = [p + [self.eot_id] for p in mod]
                         [mod_node], logits = self.workflow.train_step(
-                            [{'header': ('assistant', 'moderator'), 'prefill': '{"Reasoning": ', 'parent_ids': [n['id'] for n in mod_context]}],
+                            [{'header': ('assistant', 'moderator'), 'prefill': '', 'parent_ids': [n['id'] for n in mod_context]}],
                             mod_target_ids,
                         )
                         mod_loss = F.cross_entropy(logits.squeeze(), reorder_targets(mod_target_ids))

@@ -124,11 +124,12 @@ def try_parse(json_str: str) -> str | Dict:
                 except json.JSONDecodeError:
                     pass
 
-    answer_pattern = r'"Answer":\s*([0-9.]+)[^}]*}'
+    answer_pattern = r'"Answer":\s*(?:"([0-9.]+)"|([0-9.]+))'
     matches = re.search(answer_pattern, cleaned_str)
     if matches:
         try:
-            return {"Answer": matches.group(1)}
+            answer = matches.group(1) if matches.group(1) is not None else matches.group(2)
+            return {"Answer": answer}
         except (ValueError, IndexError):
             pass
 
@@ -212,7 +213,7 @@ def mad_cached(
 
         [mod_tokens], [mod_response] = get('tokens', 'nodes')(workflow.step([{
             'header': ('assistant', 'moderator'),
-            'prefill': '{"Reasoning": ',
+            'prefill': '',
             'parent_ids': [n['id'] for n in mod_context]
         }], temperature=temperature, top_p=top_p, seed=seed))
         mod_context.append(mod_response)
