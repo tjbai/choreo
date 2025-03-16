@@ -11,12 +11,12 @@ def append_to_jsonl(data, filename):
 
 def dedup_and_sort(data):
     seen_seeds = set()
-    sorted = []
+    res = []
     for seed, outputs in sorted(data, key=lambda x: x[0]):
         if seed not in seen_seeds:
-            sorted.append((seed, outputs))
+            res.append((seed, outputs))
             seen_seeds.add(seed)
-    return [outputs for _, outputs in data]
+    return [outputs for _, outputs in res]
 
 def load_existing_results(checkpoint_index, output_file):
     existing_results = {}
@@ -34,7 +34,7 @@ def load_existing_results(checkpoint_index, output_file):
 
 def main(strategy=None):
     baseline_path = '/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_large.jsonl'
-    cached_path = 'home/tbai4/llama3/dumps/prisoners/prisoners_cached_paired_large.jsonl'
+    cached_path = '/home/tbai4/llama3/dumps/prisoners/prisoners_cached_paired_large.jsonl'
     ft_data_path = f'/home/tbai4/llama3/dumps/prisoners/prisoners_ft_eval_{strategy if strategy else 'baseline'}_large.jsonl'
     output_file= '/home/tbai4/llama3/dumps/prisoners/bootstrap_large_results.jsonl'
 
@@ -94,9 +94,8 @@ def main(strategy=None):
     print(json.dumps(baseline_bootstrap_results, indent=2))
     print(json.dumps(pre_kl_stats, indent=2))
 
-    for i, ckpt_path in enumerate(os.listdir(
-        f'/scratch4/jeisner1/tjbai/checkpoints/prisoners/{strategy if strategy else 'baseline'}'
-    )):
+    base_path = f'/scratch4/jeisner1/tjbai/checkpoints/prisoners/{strategy if strategy else 'baseline'}'
+    for i, ckpt_path in enumerate(os.listdir(base_path)):
         if 'epoch' in ckpt_path: # old checkpoints, lazy to move
             continue
         existing_results = load_existing_results(i, output_file)
@@ -107,7 +106,7 @@ def main(strategy=None):
             continue
 
         try:
-            load_ckpt(workflow=workflow, ckpt_path=ckpt_path)
+            load_ckpt(workflow=workflow, ckpt_path=f'{base_path}/{ckpt_path}')
             workflow.model.set_adapter_state(enabled=True)
         except Exception as e:
             print(f"Error loading checkpoint {ckpt_path}: {e}")
@@ -116,9 +115,9 @@ def main(strategy=None):
         try:
             with open(ft_data_path) as f:
                 data = [json.loads(line) for line in f]
-                chunk_with_seeds = [(d['seed'], d['outputs']) for d in data if d['strategy'] == strategy]
+                chunk_with_seeds = [(d['seed'], d['outputs']) for d in data if d['strategy'] == strategy and ckpt_path in d['ckpt_path']]
                 chunk = dedup_and_sort(chunk_with_seeds)
-                cached_bob_decisions = [d['bob_final'] for d in chunk]
+                cached_bob_decisions = [workflow.tokenizer.decode(d['decision_ids'][1]) for d in chunk]
                 cached_cooperate = ["COOPERATE" in choice.upper() for choice in cached_bob_decisions]
         except Exception as e:
             print(f"Error loading fine-tuned data for checkpoint {ckpt_path}: {e}")

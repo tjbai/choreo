@@ -105,6 +105,7 @@ class BsmTrainer(LoraTrainer[ListDataset]):
         for step, sample in enumerate(tqdm(val_dataset, desc="Evaluating")):
             if max_e2e and step >= max_e2e:
                 break
+            self.workflow.reset()
             outputs = bsm_cached(workflow=self.workflow, **sample['inputs'])
             if outputs is None:
                 total_coverage.append(0.)
@@ -114,7 +115,7 @@ class BsmTrainer(LoraTrainer[ListDataset]):
                 coverage = sum(concept_present) / len(concept_present)
                 total_coverage.append(coverage)
 
-        metrics['coverage'] = sum(total_coverage) / len(total_coverage)
+        metrics['val/coverage'] = sum(total_coverage) / len(total_coverage)
 
         self.workflow.model.train()
         return metrics
