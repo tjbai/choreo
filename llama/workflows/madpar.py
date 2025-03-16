@@ -15,16 +15,16 @@ def parse_output(resp: str):
 
 def starting_prompt(problem):
     return f"""Can you solve the following math problem? {problem}
-Explain your reasoning. Your final answer should be a single numerical number, in the form \\boxed{{answer}}, at the end of your response."""
+Explain your reasoning and try to fit your response within 500 words.
+Your final answer should be a single numerical number, in the form \\boxed{{answer}}, at the end of your response."""
 
 def debate_prompt(problem):
-    return f"""Using this summary carefully as additional advice, can you provide an updated answer to the math problem?
+    return f"""Using this summary carefully as additional advice, can you provide an updated answer to the math problem within 500 words?
 The original math problem is {problem}. Your final answer should be a single numerical number, in the form \\boxed{{answer}}, at the end of your response."""
 
 def summary_prompt(problem):
     return f"""Here are a list of opinions from different agents solving this math problem: "{problem}"
 Write a summary of the different opinions from each of the individual agents."""
-
 
 def madpar_cached(
     workflow: Workflow,
@@ -133,13 +133,12 @@ def madpar_cached(
     ]
     return result | {"final_answers": final_answers}
 
-
 def baseline_debate_prompt(summary_text, problem):
     return f"""Here is a summary of responses from other agents:
 
 {summary_text}
 
-Using this summary carefully as additional advice, can you provide an updated answer to the math problem?
+Using this summary carefully as additional advice, can you provide an updated answer to the math problem within 500 words?
 The original math problem is: {problem}
 
 Make sure to state your answer at the end of the response in the form \\boxed{{answer}}."""
@@ -150,7 +149,6 @@ def baseline_summary_prompt(problem, responses):
 {responses}
 
 Write a summary of the different opinions from each of the individual agents."""
-
 
 def madpar_baseline(
     workflow: Workflow,
