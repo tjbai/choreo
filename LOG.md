@@ -465,3 +465,44 @@ Actually does worse with the "correct" attention pattern!
 `bsm_baseline`: 0.00% all concepts, 81.00% avg coverage
 `bsm_cached`: 0.00% all concepts, 62.95% avg coverage
 `bsm_cached_compact`: 0.00% all concepts, 65.09% avg coverage
+
+## 3/??:
+
+ToT: 8 branches, 4 voters
+MAD: 3 max rounds
+MADpar: 3 agents, 3 max rounds
+
+MATH Summary of Results:
+  I/O:
+    + ToT:
+    + MAD:
+    + MADpar:
+
+  ToT Baseline:     116/280
+  ToT Before:       88/280
+  ToT After:        111/280
+
+  MAD Baseline:     94/280
+  MAD Before:       57/280
+  MAD After:
+
+  MADpar Baseline:
+  MADpar Before:
+  MADpar After:
+
+## 3/14: 86cd7d70da7faa0b2db52a2b4fc5e1dc233dc729
+
+Is BSM coverage impacted by ordering?
+
+`bsm_baseline`: 0.00% all concepts, 81.00% avg coverage
+  Group 1: 87.58% ± 11.35%
+  Group 2: 82.44% ± 13.79%
+
+`bsm_cached`: 0.00% all concepts, 62.95% avg coverage
+  Group 1: 67.42% ± 24.80%
+  Group 2: 64.96% ± 28.15%
+
+`bsm_cached_compact`: 0.00% all concepts, 65.09% avg coverage
+  Group 1: 80.52% ± 22.53%
+  Group 2: 52.97% ± 30.54%
+
