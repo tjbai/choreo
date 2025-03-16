@@ -29,7 +29,7 @@ class BsmTrainer(LoraTrainer[ListDataset]):
         ])
 
         branch_target_ids = [
-            p[p.index(1473)+1:] + [self.eot_id] # need to truncate the prefill, 1473=':\n\n'
+            p + [self.eot_id]
             for p in sample['outputs']['branch_tokens']
         ]
         _, branch_logits = self.workflow.train_step(
@@ -48,7 +48,7 @@ class BsmTrainer(LoraTrainer[ListDataset]):
         for concept_group in sample['outputs']['concept_groups']], track_gradients=True)
 
         solve_target_ids = [
-            p[p.index(1473)+1:] + [self.eot_id] # see above
+            p[p.index(1473)+1:] + [self.eot_id] # need to truncate the prefill, 1473=':\n\n'
             for p in sample['outputs']['solve_tokens']
         ]
         solve_nodes, solve_logits = self.workflow.train_step(
@@ -64,7 +64,10 @@ class BsmTrainer(LoraTrainer[ListDataset]):
             reorder_targets(solve_target_ids)
         )
 
-        merge_target_ids = [p + [self.eot_id] for p in sample['outputs']['merge_tokens']]
+        merge_target_ids = [
+            p[p.index(1473)+1:] + [self.eot_id]
+            for p in sample['outputs']['merge_tokens']
+        ]
         _, merge_logits = self.workflow.train_step([
             {'header':
                 ('assistant', None),
