@@ -28,7 +28,10 @@ class BsmTrainer(LoraTrainer[ListDataset]):
             ], 'parent_ids': []},
         ])
 
-        branch_target_ids = [p + [self.eot_id] for p in sample['outputs']['branch_tokens']]
+        branch_target_ids = [
+            p[p.index(1473)+1:] + [self.eot_id] # need to truncate the prefill, 1473=':\n\n'
+            for p in sample['outputs']['branch_tokens']
+        ]
         _, branch_logits = self.workflow.train_step(
             [{'header': ('assistant', None), 'prefill': '', 'parent_ids': [branch_node['id']]}],
             branch_target_ids
@@ -38,25 +41,28 @@ class BsmTrainer(LoraTrainer[ListDataset]):
             reorder_targets(branch_target_ids)
         )
 
-        solve_nodes = self.workflow.insert([
+        solve_node_prompts = self.workflow.insert([
             {'messages': [
                 {'role': 'user', 'content': solve_prompt(concept_group, sample['outputs']['story_topic'])}
             ], 'parent_ids': []}
         for concept_group in sample['outputs']['concept_groups']], track_gradients=True)
 
-        solve_target_ids = [p + [self.eot_id] for p in sample['outputs']['solve_tokens']]
-        _, solve_logits = self.workflow.train_step(
+        solve_target_ids = [
+            p[p.index(1473)+1:] + [self.eot_id] # see above
+            for p in sample['outputs']['solve_tokens']
+        ]
+        solve_nodes, solve_logits = self.workflow.train_step(
             [{'header':
                 ('assistant', None),
                 'prefill': f'Story {i+1}:\n\n',
-                'parent_ids': [solve_node['id']]}
-            for i, solve_node in enumerate(solve_nodes)],
+                'parent_ids': [solve_node_prompt['id']]}
+            for i, solve_node_prompt in enumerate(solve_node_prompts)],
             solve_target_ids
         )
         metrics['train/solve_loss'] = F.cross_entropy(
             solve_logits.squeeze(),
             reorder_targets(solve_target_ids)
-        ) / 2 # just some light normalization
+        )
 
         merge_target_ids = [p + [self.eot_id] for p in sample['outputs']['merge_tokens']]
         _, merge_logits = self.workflow.train_step([
