@@ -224,7 +224,7 @@ def mad_cached(
         res['mod_tokens'].append([mod_tokens])
         if debug: print(workflow.tokenizer.decode(mod_tokens))
 
-        if decision := parse_decision(workflow.tokenizer.decode(mod_tokens)):
+        if isinstance((decision := parse_decision(workflow.tokenizer.decode(mod_tokens))), dict):
             res['decision'] = decision
             break
 
