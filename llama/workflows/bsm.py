@@ -2,7 +2,7 @@ import re
 import json
 import time
 from operator import itemgetter as get
-from typing import List, Optional, Dict
+from typing import List, Optional, Dict, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from openai import OpenAI
@@ -233,10 +233,21 @@ def bsm_cached(
         'concept_groups': [group1_concepts, group2_concepts],
     }
 
-def compare_stories(a_stories: List[str], b_stories: List[str]) -> List[bool]:
+def compare_stories(
+    a_stories: List[str],
+    b_stories: List[str]
+) -> Tuple[List[bool], Dict[str, int]]:
     load_dotenv()
     client = OpenAI()
     results = [False] * len(a_stories)
+
+    stats = {
+        "a_wins": 0,
+        "b_wins": 0,
+        "ties": 0,
+        "errors": 0,
+        "total": len(a_stories)
+    }
 
     prompt_template = '''
 Please act as an impartial judge and evaluate the quality of the stories provided by two AI assistants.
@@ -275,13 +286,34 @@ Story B:
         ab_winner = get_verdict(ab_prompt)
         ba_prompt = prompt_template.format(story_a=b_stories[idx], story_b=a_stories[idx])
         ba_winner = get_verdict(ba_prompt)
-        return idx, (ab_winner == "A" and ba_winner == "B")
+
+        if ab_winner == "A" and ba_winner == "B":
+            return idx, True, "a_win"
+        elif ab_winner == "B" and ba_winner == "A":
+            return idx, False, "b_win"
+        else:
+            return idx, False, "tie"
 
     with ThreadPoolExecutor(max_workers=5) as executor:
         futures = [executor.submit(process_pair, i) for i in range(len(a_stories))]
 
         for future in tqdm(as_completed(futures), total=len(futures), desc="Comparing"):
-            idx, a_wins = future.result()
+            idx, a_wins, result_type = future.result()
             results[idx] = a_wins
 
-    return results
+            if result_type == "a_win":
+                stats["a_wins"] += 1
+            elif result_type == "b_win":
+                stats["b_wins"] += 1
+            elif result_type == "tie":
+                stats["ties"] += 1
+            elif result_type == "error":
+                stats["errors"] += 1
+
+    total_valid = stats["total"] - stats["errors"]
+    if total_valid > 0:
+        stats["a_win_percent"] = (stats["a_wins"] / total_valid) * 100
+        stats["b_win_percent"] = (stats["b_wins"] / total_valid) * 100
+        stats["tie_percent"] = (stats["ties"] / total_valid) * 100
+
+    return results, stats
