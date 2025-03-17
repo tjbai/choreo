@@ -23,7 +23,7 @@ def load_concepts(data_path, split='train'):
 
     if split == 'train':
         return data[:train_idx]
-    elif split == 'dev':
+    elif split == 'dev' or split == 'val':
         return data[train_idx:dev_idx]
     elif split == 'test':
         return data[dev_idx:]
@@ -235,7 +235,8 @@ def bsm_cached(
 
 def compare_stories(
     a_stories: List[str],
-    b_stories: List[str]
+    b_stories: List[str],
+    concepts_list: List[List[str]]
 ) -> Tuple[List[bool], Dict[str, int]]:
     load_dotenv()
     client = OpenAI()
@@ -248,27 +249,48 @@ def compare_stories(
         "errors": 0,
         "total": len(a_stories)
     }
-
-    prompt_template = '''
+    
+    prompt_template =  '''
 Please act as an impartial judge and evaluate the quality of the stories provided by two AI assistants.
-Your evaluation should consider factors such as grammaticality, coherence, engagement, etc.
-Begin your evaluation by comparing the two stories and provide a short explanation.
-Avoid any position biases and ensure that the order in which the stories were presented does not influence your decision.
-Do not allow the length of the responses to influence your evaluation. Do not favor certain names of the assistants. Be as objective as possible.
-After providing your explanation, output your final verdict by strictly following this format: "[[A]]" if story A is better, "[[B]]" if story B is better, and "[[C]]" for a tie.
+Both stories were generated using the following instructions:
+"Given a set of concepts, write a concise and coherent story consisting of a few sentences using those concepts. The story should naturally integrate all of the following concepts: {concepts_str}"
+
+Your evaluation should consider TWO primary factors:
+
+1. CONCEPT INTEGRATION (50% weight):
+   - How well does the story naturally incorporate ALL of the required concepts?
+   - Are concepts integrated naturally or are they forced into the narrative?
+   - Does the story cover all required concepts without omissions?
+
+2. OVERALL STORY QUALITY (50% weight):
+   - Coherence and flow of the narrative
+   - Engagement and creativity
+   - Grammatical correctness
+   - Logical consistency
+
+Begin your evaluation by identifying which concepts from the list are included in each story.
+Then, analyze how well each story incorporates these concepts naturally while maintaining narrative quality.
+Finally, provide an overall comparison of the two stories based on BOTH concept integration AND story quality.
+
+Required concepts: {concepts_str}
 
 Story A:
 {story_a}
 
 Story B:
 {story_b}
-    '''
+
+Avoid any position biases and ensure that the order in which the stories were presented does not influence your decision.
+Do not allow the length of the responses to influence your evaluation. Do not favor certain names of the assistants. Be as objective as possible.
+
+After providing your explanation, output your final verdict by strictly following this format: "[[A]]" if story A is better, "[[B]]" if story B is better, and "[[C]]" for a tie.
+'''
 
     def get_verdict(prompt, max_retries=3):
         for attempt in range(max_retries):
             try:
                 response = client.chat.completions.create(
-                    model="gpt-4-turbo",
+                    model="gpt-4o",
                     messages=[{"role": "user", "content": prompt}],
                     temperature=0.0
                 )
@@ -282,9 +304,17 @@ Story B:
                     return "C"
 
     def process_pair(idx):
-        ab_prompt = prompt_template.format(story_a=a_stories[idx], story_b=b_stories[idx])
+        ab_prompt = prompt_template.format(
+            concepts_str=', '.join(concepts_list[idx]),
+            story_a=a_stories[idx],
+            story_b=b_stories[idx]
+        )
         ab_winner = get_verdict(ab_prompt)
-        ba_prompt = prompt_template.format(story_a=b_stories[idx], story_b=a_stories[idx])
+        ba_prompt = prompt_template.format(
+            concepts_str=', '.join(concepts_list[idx]),
+            story_a=b_stories[idx],
+            story_b=a_stories[idx]
+        )
         ba_winner = get_verdict(ba_prompt)
 
         if ab_winner == "A" and ba_winner == "B":
