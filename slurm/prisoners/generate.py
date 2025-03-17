@@ -43,8 +43,8 @@ def main(
         model_parallel_size=1,
         max_nodes=100,
         use_lora=True,
-        lora_rank=64,
-        lora_alpha=32,
+        lora_rank=32,
+        lora_alpha=64,
         lora_dropout=0.05,
     )
 
