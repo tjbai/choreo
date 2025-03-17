@@ -15,11 +15,12 @@ def parse_output(resp: str):
 
 def starting_prompt(problem):
     return f"""Can you solve the following math problem? {problem}
-Explain your reasoning and try to fit your response within 500 words.
-Your final answer should be a single numerical number, in the form \\boxed{{answer}}, at the end of your response."""
+Your final answer should be a single numerical number, in the form \\boxed{{answer}}, at the end of your response.
+Explain your reasoning within 500 words.
+"""
 
 def debate_prompt(problem):
-    return f"""Using this summary carefully as additional advice, can you provide an updated answer to the math problem within 500 words?
+    return f"""Using this summary carefully as additional advice, can you provide an updated answer to the math problem?
 The original math problem is {problem}. Your final answer should be a single numerical number, in the form \\boxed{{answer}}, at the end of your response."""
 
 def summary_prompt(problem):
@@ -162,11 +163,8 @@ def madpar_baseline(
     workflow.reset()
     result = {"debate_tokens": [], "summary_tokens": []}
 
-    starting_prompt = f"""Can you solve the following math problem? {problem}
-Explain your reasoning. Your final answer should be a single numerical number, in the form \\boxed{{answer}}, at the end of your response."""
-
     [agent_node] = workflow.insert(
-        [{"messages": [{"role": "user", "content": starting_prompt}], "parent_ids": []}]
+        [{"messages": [{"role": "user", "content": starting_prompt(problem)}], "parent_ids": []}]
     )
 
     initial_tokens, initial_nodes = get("tokens", "nodes")(
@@ -174,7 +172,7 @@ Explain your reasoning. Your final answer should be a single numerical number, i
             [
                 {
                     "header": ("assistant", None),
-                    "prefill": f"From Agent {i + 1}:\n",
+                    "prefill": "",
                     "parent_ids": [agent_node["id"]],
                 }
                 for i in range(num_agents)
@@ -216,8 +214,8 @@ Explain your reasoning. Your final answer should be a single numerical number, i
             workflow.step(
                 [
                     {
-                        "header": ("assistant", "summarizer"),
-                        "prefill": "Summary of agent responses:\n",
+                        "header": ("assistant", ""),
+                        "prefill": "",
                         "parent_ids": [current_summary_node["id"]],
                     }
                 ],
@@ -226,7 +224,7 @@ Explain your reasoning. Your final answer should be a single numerical number, i
             )
         )
         summary_text = workflow.tokenizer.decode(summary_tokens)
-        result["summary_tokens"].append(summary_tokens)
+        result["summary_tokens"].append([summary_tokens])
 
         if debug:
             print(f"\n\nRound {round_idx + 1} Summary:\n{summary_text}\n")
@@ -254,7 +252,7 @@ Explain your reasoning. Your final answer should be a single numerical number, i
                 [
                     {
                         "header": ("assistant", None),
-                        "prefill": f"From Agent {i + 1}:\n",
+                        "prefill": "",
                         "parent_ids": [n["id"] for n in context],
                     }
                     for i, context in enumerate(contexts)

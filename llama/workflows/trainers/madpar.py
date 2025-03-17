@@ -10,9 +10,9 @@ from llama.workflows.madpar import starting_prompt, debate_prompt, summary_promp
 class MadparTrainer(LoraTrainer[ListDataset]):
     def step(self, sample: Dict, debug=False):
         total_loss = 0
-        debate_tokens = sample['debate_tokens']
-        summary_tokens = sample['summary_tokens']
-        problem = sample['input']['problem']
+        debate_tokens = sample['outputs']['debate_tokens']
+        summary_tokens = sample['outputs']['summary_tokens']
+        problem = sample['inputs']['problem']
 
         [agent_node, debate_node, summary_node] = self.workflow.insert(
             [

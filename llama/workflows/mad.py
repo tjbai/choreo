@@ -179,6 +179,7 @@ def mad_cached(
     aff_context.append(aff_node)
     neg_context.append(aff_node)
     res['aff_tokens'].append([aff_tokens])
+    if debug: print(workflow.tokenizer.decode(aff_tokens))
 
     [neg_tokens], [neg_node] = get('tokens', 'nodes')(workflow.step(
         [{'header': ('assistant', ''), 'prefill': 'Negative:\n\n', 'parent_ids': [n['id'] for n in neg_context]}],
@@ -189,6 +190,7 @@ def mad_cached(
     aff_context.append(neg_node)
     neg_context.append(neg_node)
     res['neg_tokens'].append([neg_tokens])
+    if debug: print(workflow.tokenizer.decode(neg_tokens))
 
     for round in range(max_rounds - 1):
         [aff_tokens], [aff_response] = get('tokens', 'nodes')(workflow.step([{
@@ -200,6 +202,7 @@ def mad_cached(
         neg_context.append(aff_response)
         mod_context.append(aff_response)
         res['aff_tokens'].append([aff_tokens])
+        if debug: print(workflow.tokenizer.decode(aff_tokens))
 
         [neg_tokens], [neg_response] = get('tokens', 'nodes')(workflow.step([{
             'header': ('assistant', ''),
@@ -210,6 +213,7 @@ def mad_cached(
         neg_context.append(neg_response)
         mod_context.append(neg_response)
         res['neg_tokens'].append([neg_tokens])
+        if debug: print(workflow.tokenizer.decode(neg_tokens))
 
         [mod_tokens], [mod_response] = get('tokens', 'nodes')(workflow.step([{
             'header': ('assistant', 'moderator'),
@@ -218,6 +222,7 @@ def mad_cached(
         }], temperature=temperature, top_p=top_p, seed=seed))
         mod_context.append(mod_response)
         res['mod_tokens'].append([mod_tokens])
+        if debug: print(workflow.tokenizer.decode(mod_tokens))
 
         if decision := parse_decision(workflow.tokenizer.decode(mod_tokens)):
             res['decision'] = decision
