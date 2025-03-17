@@ -550,7 +550,7 @@ baseline vs. cached compact:
 }
 ```
 
-baselien vs. ft500:
+baseline vs. ft500:
 ```
 {
   "a_wins": 15,
