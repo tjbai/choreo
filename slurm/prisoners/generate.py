@@ -59,8 +59,17 @@ def main(
     base_path = Path(f'/scratch4/jeisner1/tjbai/checkpoints/prisoners/{strategy if strategy else 'baseline'}')
 
     for ckpt in sorted(os.listdir(base_path)):
-        if 'epoch' in ckpt: # old checkpoints, lazy to move
+        # if 'epoch' in ckpt: # old checkpoints, lazy to move
+        #     continue
+
+        # choose the ckpts from previous training run
+        if strategy is None and ckpt != 'lora_epoch-1_step-155.pt':
             continue
+        elif strategy == 'always_cooperate' and ckpt != 'lora_epoch-0_step-95.pt':
+            continue
+        elif strategy == 'always_defect' and ckpt != 'lora_epoch-0_step-95.pt':
+            continue
+
         print(f'Strategy: {strategy}, Checkpoint: {ckpt}')
 
         ckpt_path = base_path / ckpt
