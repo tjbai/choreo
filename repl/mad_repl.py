@@ -19,3 +19,7 @@ for attempt, b, problem in zip(ours, baseline, ciar):
     print('Baseline', b['Answer'])
     print('Ground truth', problem['answer'])
     print('###')
+
+# %%
+
+# what is percent well-formed for baseline? around 471/500 ~= 94%

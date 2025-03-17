@@ -21,3 +21,5 @@ print(np.mean(covered) / 15, np.std(np.array(covered) / 15))
 # %%
 with open('dumps/bsm/initial_eval.json') as f:
     data = json.load(f)['raw_data']
+
+for d in data:
