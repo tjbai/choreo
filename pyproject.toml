@@ -11,6 +11,7 @@ dependencies = [
     "ipykernel>=6.29.5",
     "llama-stack>=0.0.63",
     "matplotlib>=3.10.0",
+    "openai>=1.66.3",
     "seaborn>=0.13.2",
     "statsmodels>=0.14.4",
     "tiktoken>=0.8.0",

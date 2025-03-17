@@ -1,7 +1,14 @@
 import re
 import json
+import time
 from operator import itemgetter as get
 from typing import List, Optional, Dict
+from concurrent.futures import ThreadPoolExecutor, as_completed
+
+from openai import OpenAI
+from dotenv import load_dotenv
+from tqdm import tqdm
+
 from llama import Workflow
 
 def load_concepts(data_path, split='train'):
@@ -225,3 +232,56 @@ def bsm_cached(
         'story_topic': story_topic,
         'concept_groups': [group1_concepts, group2_concepts],
     }
+
+def compare_stories(a_stories: List[str], b_stories: List[str]) -> List[bool]:
+    load_dotenv()
+    client = OpenAI()
+    results = [False] * len(a_stories)
+
+    prompt_template = '''
+Please act as an impartial judge and evaluate the quality of the stories provided by two AI assistants.
+Your evaluation should consider factors such as grammaticality, coherence, engagement, etc.
+Begin your evaluation by comparing the two stories and provide a short explanation.
+Avoid any position biases and ensure that the order in which the stories were presented does not influence your decision.
+Do not allow the length of the responses to influence your evaluation. Do not favor certain names of the assistants. Be as objective as possible.
+After providing your explanation, output your final verdict by strictly following this format: "[[A]]" if story A is better, "[[B]]" if story B is better, and "[[C]]" for a tie.
+
+Story A:
+{story_a}
+
+Story B:
+{story_b}
+    '''
+
+    def get_verdict(prompt, max_retries=3):
+        for attempt in range(max_retries):
+            try:
+                response = client.chat.completions.create(
+                    model="gpt-4-turbo",
+                    messages=[{"role": "user", "content": prompt}],
+                    temperature=0.0
+                )
+                content = response.choices[0].message.content
+                match = re.search(r"\[\[(A|B|C)\]\]", content)
+                return match.group(1) if match else "C"
+            except:
+                if attempt < max_retries - 1:
+                    time.sleep(2 ** attempt)
+                else:
+                    return "C"
+
+    def process_pair(idx):
+        ab_prompt = prompt_template.format(story_a=a_stories[idx], story_b=b_stories[idx])
+        ab_winner = get_verdict(ab_prompt)
+        ba_prompt = prompt_template.format(story_a=b_stories[idx], story_b=a_stories[idx])
+        ba_winner = get_verdict(ba_prompt)
+        return idx, (ab_winner == "A" and ba_winner == "B")
+
+    with ThreadPoolExecutor(max_workers=5) as executor:
+        futures = [executor.submit(process_pair, i) for i in range(len(a_stories))]
+
+        for future in tqdm(as_completed(futures), total=len(futures), desc="Comparing"):
+            idx, a_wins = future.result()
+            results[idx] = a_wins
+
+    return results
