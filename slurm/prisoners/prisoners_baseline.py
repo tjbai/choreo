@@ -35,12 +35,14 @@ def load_existing_results(filename):
                     continue
     return existing
 
+TOTAL_GAMES = 100
+
 llama.model.reshape_cache(2)
 llama.model.eval()
 payoff = (5, 3, 1, 0)
 
 strategies = [None, 'always_cooperate', 'always_defect']
-output_file = '/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_large.jsonl'
+output_file = '/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_predict.jsonl'
 existing_results = load_existing_results(output_file)
 
 for strategy in strategies:
@@ -52,7 +54,7 @@ for strategy in strategies:
             alice_decisions.append(data['alice_final'])
             bob_decisions.append(data['bob_final'])
 
-    for seed in tqdm(range(500)):
+    for seed in tqdm(range(TOTAL_GAMES)):
         if (strategy, seed) in existing_results:
             continue
 
@@ -60,11 +62,12 @@ for strategy in strategies:
             result = prisoners_baseline(
                 llama,
                 payoff,
-                alice_first=(seed < 250),
+                alice_first=(seed < (TOTAL_GAMES // 2)),
                 alice_strategy=strategy,
                 seed=seed,
                 temperature=1.0,
                 top_p=1.0,
+                with_prediction=True,
             )
 
             output_data = {
