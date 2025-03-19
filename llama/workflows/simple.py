@@ -4,7 +4,30 @@ from operator import itemgetter as get
 from llama import Workflow
 from .mad import try_parse
 
-def math_simple_baseline(
+def math_direct(
+    workflow: Workflow,
+    problem: str,
+    temperature: float = 1.0,
+    top_p: float = 1.0,
+    seed: int = 42,
+    debug: bool = False,
+):
+    solve_prompt = f'Solve this math problem. Just output the final answer without explanations or workings:\n\n{problem}'
+
+    [sys] = workflow.insert([{'messages': [{'role': 'user', 'content': solve_prompt}], 'parent_ids': []}])
+
+    [answer_tokens], [answer] = get('tokens', 'nodes')(workflow.step([{
+        'header': ('assistant', None),
+        'prefill': 'Answer: ',
+        'parent_ids': [sys['id']]
+    }], temperature=temperature, top_p=top_p, seed=seed, max_gen_len=512))
+
+    if debug:
+        print(workflow.tokenizer.decode(answer_tokens))
+
+    return workflow.tokenizer.decode(answer_tokens)
+
+def math_cot(
     workflow: Workflow,
     problem: str,
     best_of_n: Optional[int] = None,
