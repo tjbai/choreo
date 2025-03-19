@@ -51,8 +51,8 @@ def main(strategy=None):
         model_parallel_size=1,
         max_nodes=100,
         use_lora=True,
-        lora_rank=64,
-        lora_alpha=32,
+        lora_rank=32,
+        lora_alpha=64,
         lora_dropout=0.05,
     )
 
@@ -62,41 +62,44 @@ def main(strategy=None):
     with open(baseline_path) as f:
         data = [json.loads(line) for line in f][0]
         baseline_with_seeds = [(d['seed'], d['outputs']) for d in data if d['strategy'] == strategy]
+        assert baseline_with_seeds[0][0] == 0
         baseline = dedup_and_sort(baseline_with_seeds)
 
     with open(cached_path) as f:
         data = [json.loads(line) for line in f]
         cached_with_seeds = [(d['seed'], d['outputs']) for d in data if d['strategy'] == strategy]
+        assert cached_with_seeds[0][0] == 0
         cached = dedup_and_sort(cached_with_seeds)
 
-    workflow.model.set_adapter_state(enabled=False)
+    # workflow.model.set_adapter_state(enabled=False)
     baseline_cooperate = ["COOPERATE" in workflow.tokenizer.decode(c['decision_ids'][1]).upper() for c in baseline]
-    cached_cooperate = ["COOPERATE" in workflow.tokenizer.decode(c['decision_ids'][1]).upper() for c in cached]
-    baseline_bootstrap_results = bootstrap_binary(baseline_cooperate, cached_cooperate)
+    # cached_cooperate = ["COOPERATE" in workflow.tokenizer.decode(c['decision_ids'][1]).upper() for c in cached]
+    # baseline_bootstrap_results = bootstrap_binary(baseline_cooperate, cached_cooperate)
 
-    nll = get_likelihoods(
-        workflow=workflow,
-        llama=llama,
-        outputs=baseline,
-        differences=[b != c for (b, c) in zip(baseline_cooperate, cached_cooperate)]
-    )
-    pre_kl_stats = bootstrap_continuous(nll['baseline_first_means'], nll['cached_first_means'])
+    # nll = get_likelihoods(
+    #     workflow=workflow,
+    #     llama=llama,
+    #     outputs=baseline,
+    #     differences=[b != c for (b, c) in zip(baseline_cooperate, cached_cooperate)]
+    # )
+    # pre_kl_stats = bootstrap_continuous(nll['baseline_first_means'], nll['cached_first_means'])
 
-    baseline_output_data = {
-        'checkpoint': 'pre_ft',
-        'strategy': strategy,
-        'bootstrap_results': baseline_bootstrap_results,
-        'kl_stats': pre_kl_stats
-    }
-    append_to_jsonl(baseline_output_data, output_file)
+    # baseline_output_data = {
+    #     'checkpoint': 'pre_ft',
+    #     'strategy': strategy,
+    #     'bootstrap_results': baseline_bootstrap_results,
+    #     'kl_stats': pre_kl_stats
+    # }
+    # append_to_jsonl(baseline_output_data, output_file)
 
-    print('=== Baseline ===:')
-    print(json.dumps(baseline_bootstrap_results, indent=2))
-    print(json.dumps(pre_kl_stats, indent=2))
+    # print('=== Baseline ===:')
+    # print(json.dumps(baseline_bootstrap_results, indent=2))
+    # print(json.dumps(pre_kl_stats, indent=2))
 
     base_path = f'/scratch4/jeisner1/tjbai/checkpoints/prisoners/{strategy if strategy else 'baseline'}'
     for i, ckpt_path in enumerate(os.listdir(base_path)):
-        if 'epoch' in ckpt_path: # old checkpoints, lazy to move
+        # temp inverse for the extra ones
+        if 'epoch' not in ckpt_path: # old checkpoints, lazy to move
             continue
         existing_results = load_existing_results(i, output_file)
         if existing_results:
@@ -116,6 +119,7 @@ def main(strategy=None):
             with open(ft_data_path) as f:
                 data = [json.loads(line) for line in f]
                 chunk_with_seeds = [(d['seed'], d['outputs']) for d in data if d['strategy'] == strategy and ckpt_path in d['ckpt_path']]
+                assert chunk_with_seeds[0][0] == 0
                 chunk = dedup_and_sort(chunk_with_seeds)
                 cached_bob_decisions = [workflow.tokenizer.decode(d['decision_ids'][1]) for d in chunk]
                 cached_cooperate = ["COOPERATE" in choice.upper() for choice in cached_bob_decisions]
@@ -123,9 +127,13 @@ def main(strategy=None):
             print(f"Error loading fine-tuned data for checkpoint {ckpt_path}: {e}")
             continue
 
+        if not cached_cooperate:
+            print('skipping!')
+            continue    
+
         bootstrap_results = bootstrap_binary(
-            baseline_cooperate[:max(len(baseline_cooperate), len(cached_cooperate))],
-            cached_cooperate[:max(len(baseline_cooperate), len(cached_cooperate))]
+            baseline_cooperate[:min(len(baseline_cooperate), len(cached_cooperate))],
+            cached_cooperate[:min(len(baseline_cooperate), len(cached_cooperate))]
         )
 
         try:
