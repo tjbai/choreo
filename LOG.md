@@ -482,7 +482,7 @@ MATH Summary of Results:
   ToT Before:       88/280
   ToT After:        111/280
 
-  MAD Baseline:     94/280
+  MAD Baseline:     94/280 (194/500 on train set)
   MAD Before:       57/280
   MAD After:
 
