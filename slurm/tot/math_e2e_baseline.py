@@ -1,13 +1,12 @@
 import os
 import json
 
-import torch
 from tqdm import tqdm
 
 from llama import Workflow, Llama
 from llama.util import find_free_port
 from llama.workflows.tot import eval_solutions
-from llama.workflows.tot import load_math_problems, tot_baseline, tot_baseline_shuffled, tot_baseline_faithful
+from llama.workflows.tot import load_math_problems, tot_baseline
 
 os.environ["RANK"] = "0"
 os.environ["WORLD_SIZE"] = "1"
@@ -26,7 +25,7 @@ workflow = Workflow.build(
 
 llama = Llama(workflow.model, workflow.tokenizer)
 
-problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
+problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='test')[:500]
 
 solutions = []
 for problem in tqdm(problems):
@@ -35,11 +34,11 @@ for problem in tqdm(problems):
         workflow=workflow,
         problem=problem['problem'],
         branching_factor=8,
-        voters=5,
+        voters=4,
     ))
 
-with open(f'/home/tbai4/llama3/dumps/tot/baseline_faithful_e2e_b8v5.json', 'w') as f:
-    json.dump({'solutions': solutions}, f)
+with open('/home/tbai4/llama3/dumps/tot/tot_b8v4/baseline_test.json', 'w') as f:
+    json.dump(solutions, f)
 
 llama.model.reshape_cache(4)
 all_correct = eval_solutions(
@@ -48,45 +47,3 @@ all_correct = eval_solutions(
     problems=problems
 )
 print(f'Correct: {sum(all_correct)} / {len(all_correct)}')
-llama.model.reshape_cache(1)
-
-solutions = []
-for problem in tqdm(problems):
-    workflow.reset()
-    solutions.append(tot_baseline(
-        workflow=workflow,
-        problem=problem['problem'],
-        branching_factor=8,
-        voters=8,
-    ))
-
-with open(f'/home/tbai4/llama3/dumps/tot/baseline_faithful_e2e_b8v8.json', 'w') as f:
-    json.dump({'solutions': solutions}, f)
-
-llama.model.reshape_cache(4)
-all_correct = eval_solutions(
-    llama=llama,
-    solutions=[workflow.tokenizer.decode(s['final_tokens']) for s in solutions],
-    problems=problems
-)
-print(f'Correct: {sum(all_correct)} / {len(all_correct)}')
-llama.model.reshape_cache(1)
-
-# solutions = []
-# for problem in tqdm(problems):
-#     workflow.reset()
-#     solutions.append(tot_baseline_shuffled(
-#         workflow=workflow,
-#         problem=problem['problem'],
-#         branching_factor=8,
-#         voters=4,
-#     ))
-# 
-# llama.model.reshape_cache(4)
-# all_correct = eval_solutions(llama, solutions, problems)
-# print(f'Correct: {sum(all_correct)} / {len(all_correct)}')
-# llama.model.reshape_cache(1)
-# 
-# with open(f'/home/tbai4/llama3/dumps/tot/tot_b8v4/baseline_e2e_shuffled.json', 'w') as f:
-#     json.dump({'solutions': solutions, 'all_correct': all_correct}, f)
-
