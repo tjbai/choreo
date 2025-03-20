@@ -541,11 +541,12 @@ baseline vs. ft500:
 
 ## 3/19: bc5aa88abd0cd65335e86220ada12fc8b2118940
 
-| Strategy  (fine-tuning examples) | Baseline     | Before       | After         | p-value |
-|----------------------------------|--------------|--------------|---------------|---------|
-| No Strategy                      | 78.3% ± 3.6% | 63.9% ± 4.3% | 76.75% ± 2.6% | 0.82    |
-| Always Cooperate                 | 87.7% ± 2.9% | 78.2% ± 3.7% | 83.9% ± 2.1%  | 0.51    |
-| Always Defect                    | 72.8% ± 4.0% | 46.7% ± 4.4% | 68.3% ± 2.9%  | 0.49    |
+
+| Strategy         | Baseline Cooperate | Choreographed | Choreographed (fine-tuning examples) | p-value before | p-value after |
+|------------------|--------------------|---------------|--------------------------------------|----------------|---------------|
+| No Strategy      | 78.3% ± 3.6%       | 63.9% ± 4.3%  | 76.75% ± 2.6% (800)                  | 5.8e-8         | 0.82          |
+| Always Cooperate | 87.7% ± 2.9%       | 78.2% ± 3.7%  | 83.9% ± 2.1% (400)                   | 2.4e-4         | 0.51          |
+| Always Defect    | 72.8% ± 4.0%       | 46.7% ± 4.4%  | 68.3% ± 2.9% (800)                   | 4.4e-16        | 0.49          |
 
 ## 3/20: 3c46de1cde4e36315e1236894157fd82c076d9f0
 
@@ -572,11 +573,27 @@ MATH Summary:
 
 ## 3/20: 1db73ab813fb3a8faf2327643672b638d6da09b1
 
-Grabbed these from a subset of 100 games.
+Grabbed these from a subset of 100 games. Note that prediction is not part of the fine-tuning objective.
 
 Baseline:
-| Strategy         | Alice Actual Cooperate | Bob Predicted Cooperate | Correct |
-|------------------|------------------------|-------------------------|---------|
-| No Strategy      | 82%                    | 84%                     | 80%     |
-| Always Cooperate | 100%                   | 96%                     | 98%     |
-| Always Defect    | 0%                     | 70%                     | 30%     |
+| Strategy         | Alice Actual Cooperate | Bob Predicted Cooperate | Correct | Exploited | Defended |
+|------------------|------------------------|-------------------------|---------|-----------|----------|
+| No Strategy      | 82%                    | 84%                     | 80%     | 13%       | 6%       |
+| Always Cooperate | 100%                   | 96%                     | 98%     | 14%       | 3%       |
+| Always Defect    | 0%                     | 70%                     | 30%     | 17%       | 13%      |
+
+Choreographed:
+| Strategy         | Alice Actual Cooperate | Bob Predicted Cooperate | Correct | Exploited | Defended |
+|------------------|------------------------|-------------------------|---------|-----------|----------|
+| No Strategy      | 76%                    | 76%                     | 79%     | 18%       | 5%       |
+| Always Cooperate | 99%                    | 88%                     | 89%     | 15%       | 4%       |
+| Always Defect    | 2%                     | 55%                     | 45%     | 27%       | 32%      |
+
+Choreographed + Fine-tuned:
+| Strategy         | Alice Actual Cooperate | Bob Predicted Cooperate | Correct | Exploited | Defended |
+|------------------|------------------------|-------------------------|---------|-----------|----------|
+| No Strategy      | 79%                    | 87%                     | 80%     | 19%       | 8%       |
+| Always Cooperate | 98%                    | 84%                     | 92%     | 20%       | 4%       |
+| Always Defect    | 1%                     | 60%                     | 41%     | 14%       | 23%      |
+
+Accuracy doesn't change much between baseline and choreographed versions... except in the always defect setting. We see that in both choreographed implementations, Bob can better predict Alice's strategy, but the choreographed version learns to be _less_ exploitative and _less_ defensive than the untrained version.

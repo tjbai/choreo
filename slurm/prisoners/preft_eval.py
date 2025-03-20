@@ -28,7 +28,7 @@ def load_existing_results(output_file):
     return existing_results
 
 def load_baseline_data():
-    with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_predict.jsonl') as f:
+    with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_large.jsonl') as f:
         baseline_data = [json.loads(line) for line in f]
         baseline = [d for d in baseline_data if d['strategy'] is None]
         coop = [d for d in baseline_data if d['strategy'] == 'always_cooperate']
@@ -39,7 +39,11 @@ def load_baseline_data():
             'always_defect': defect
         }
 
-def process_strategy(strategy=None):
+def process_strategy(
+    strategy=None,
+    only_leak_plan=False,
+    only_leak_sys=False
+):
     os.environ["RANK"] = "0"
     os.environ["WORLD_SIZE"] = "1"
     os.environ["MASTER_ADDR"] = "localhost"
@@ -57,7 +61,7 @@ def process_strategy(strategy=None):
     workflow.model.eval()
 
     payoff = (5, 3, 1, 0)
-    output_file = '/home/tbai4/llama3/dumps/prisoners/prisoners_cached_paired_predict.jsonl'
+    output_file = '/home/tbai4/llama3/dumps/prisoners/prisoners_cached_paired_ablations.jsonl'
     existing_results = load_existing_results(output_file)
 
     data_dict = load_baseline_data()
@@ -68,6 +72,8 @@ def process_strategy(strategy=None):
     data = data_dict[strategy]
     strategy_str = strategy if strategy else 'baseline'
     print(f"Processing strategy: {strategy_str}")
+    print(f'Only leak sys: {only_leak_sys}')
+    print(f'Only leak plan: {only_leak_plan}')
 
     alice_decisions = []
     bob_decisions = []
@@ -95,7 +101,8 @@ def process_strategy(strategy=None):
                 temperature=1.0,
                 top_p=1.0,
                 plan_force=plan_force,
-                with_prediction=True,
+                only_leak_plan=only_leak_plan,
+                only_leak_sys=only_leak_sys,
             )
 
             alice_decision = workflow.tokenizer.decode(cached_outputs['alice_context'][-1]['output_tokens'])
@@ -111,6 +118,7 @@ def process_strategy(strategy=None):
                 'outputs': cached_outputs,
                 'alice_final': alice_decision,
                 'bob_final': bob_decision,
+                'leak_setting': (only_leak_sys, only_leak_plan)
             }
             append_to_jsonl(output_data, output_file)
 
