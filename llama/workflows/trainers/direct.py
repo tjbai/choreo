@@ -61,7 +61,10 @@ class DirectTrainer(LoraTrainer[ListDataset]):
             correct = eval_solutions(
                 self.llama,
                 solutions=solutions,
-                problems=[d['inputs']['solution'] for d in val_dataset]
+                problems=[{
+                    'solution': d['inputs']['solution'],
+                    'problem': d['inputs']['problem'],
+                } for d in val_dataset]
             )
         finally:
             self.llama.model.set_adapter_state(enabled=True)
