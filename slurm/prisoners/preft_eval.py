@@ -1,14 +1,18 @@
 import os
 import json
 import torch
+from filelock import FileLock
 from tqdm import tqdm
+import fire
 from llama.workflows.prisoners import prisoners_cached
 from llama import Workflow
 from llama.util import find_free_port
 
 def append_to_jsonl(data, filename):
-   with open(filename, 'a') as f:
-       f.write(json.dumps(data) + '\n')
+    lock_file = f"{filename}.lock"
+    with FileLock(lock_file):
+        with open(filename, 'a') as f:
+            f.write(json.dumps(data) + '\n')
 
 def load_existing_results(output_file):
     existing_results = {}
@@ -23,41 +27,50 @@ def load_existing_results(output_file):
                     continue
     return existing_results
 
-os.environ["RANK"] = "0"
-os.environ["WORLD_SIZE"] = "1"
-os.environ["MASTER_ADDR"] = "localhost"
-os.environ["MASTER_PORT"] = str(find_free_port())
+def load_baseline_data():
+    with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_large.jsonl') as f:
+        baseline_data = json.load(f)
+        baseline = [d for d in baseline_data if d['strategy'] is None]
+        coop = [d for d in baseline_data if d['strategy'] == 'always_cooperate']
+        defect = [d for d in baseline_data if d['strategy'] == 'always_defect']
+        return {
+            None: baseline,
+            'always_cooperate': coop,
+            'always_defect': defect
+        }
 
-workflow = Workflow.build(
-    ckpt_dir='/scratch4/jeisner1/tjbai/llama_8b',
-    tokenizer_path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model',
-    max_seq_len=8*8192,
-    max_batch_size=1,
-    model_parallel_size=1,
-    max_nodes=100,
-)
+def process_strategy(strategy=None):
+    os.environ["RANK"] = "0"
+    os.environ["WORLD_SIZE"] = "1"
+    os.environ["MASTER_ADDR"] = "localhost"
+    os.environ["MASTER_PORT"] = str(find_free_port())
 
-workflow.model.reshape_cache(1)
-workflow.model.eval()
-payoff = (5, 3, 1, 0)
-output_file = '/home/tbai4/llama3/dumps/prisoners/prisoners_cached_paired_predict.jsonl'
-existing_results = load_existing_results(output_file)
+    workflow = Workflow.build(
+        ckpt_dir='/scratch4/jeisner1/tjbai/llama_8b',
+        tokenizer_path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model',
+        max_seq_len=8*8192,
+        max_batch_size=1,
+        model_parallel_size=1,
+        max_nodes=100,
+    )
+    workflow.model.reshape_cache(1)
+    workflow.model.eval()
 
-with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_large.jsonl') as f:
-    baseline_data = json.load(f)
-    baseline = [d for d in baseline_data if d['strategy'] is None]
-    coop = [d for d in baseline_data if d['strategy'] == 'always_cooperate']
-    defect = [d for d in baseline_data if d['strategy'] == 'always_defect']
-    print(len(baseline), len(coop), len(defect))
+    payoff = (5, 3, 1, 0)
+    output_file = '/home/tbai4/llama3/dumps/prisoners/prisoners_cached_paired_predict.jsonl'
+    existing_results = load_existing_results(output_file)
 
-for strategy, data in zip(
-    [None, 'always_cooperate', 'always_defect'],
-    [baseline, coop, defect]
-):
-    alice_decisions = []
-    bob_decisions = []
+    data_dict = load_baseline_data()
+    if strategy not in data_dict:
+        print(f"Invalid strategy: {strategy}. Choose from: None, always_cooperate, always_defect")
+        return
+
+    data = data_dict[strategy]
     strategy_str = strategy if strategy else 'baseline'
     print(f"Processing strategy: {strategy_str}")
+
+    alice_decisions = []
+    bob_decisions = []
 
     for seed, example in enumerate(tqdm(data, total=len(data))):
         if (key := (strategy, seed)) in existing_results:
@@ -115,3 +128,6 @@ for strategy, data in zip(
         f"\nalice: {alice_coop} COOPERATE, {alice_defect} DEFECT",
         f"\nbob: {bob_coop} COOPERATE, {bob_defect} DEFECT",
     )
+
+if __name__ == "__main__":
+    fire.Fire(process_strategy)
