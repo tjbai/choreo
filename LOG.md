@@ -466,30 +466,6 @@ Actually does worse with the "correct" attention pattern!
 `bsm_cached`: 0.00% all concepts, 62.95% avg coverage
 `bsm_cached_compact`: 0.00% all concepts, 65.09% avg coverage
 
-## 3/??:
-
-ToT: 8 branches, 4 voters
-MAD: 3 max rounds
-MADpar: 3 agents, 3 max rounds
-
-MATH Summary of Results:
-  I/O:
-    + ToT:
-    + MAD:
-    + MADpar:
-
-  ToT Baseline:     116/280
-  ToT Before:       88/280
-  ToT After:        111/280
-
-  MAD Baseline:     94/280 (194/500 on train set)
-  MAD Before:       57/280
-  MAD After:
-
-  MADpar Baseline:
-  MADpar Before:
-  MADpar After:
-
 ## 3/14: 86cd7d70da7faa0b2db52a2b4fc5e1dc233dc729
 
 Is BSM coverage impacted by ordering?
@@ -562,3 +538,34 @@ baseline vs. ft500:
   "b_win_percent": 28.0,
 }
 ```
+
+## 3/19: bc5aa88abd0cd65335e86220ada12fc8b2118940
+
+| Strategy  (fine-tuning examples) | Baseline     | Before       | After         | p-value |
+|----------------------------------|--------------|--------------|---------------|---------|
+| No Strategy                      | 78.3% ± 3.6% | 63.9% ± 4.3% | 76.75% ± 2.6% | 0.82    |
+| Always Cooperate                 | 87.7% ± 2.9% | 78.2% ± 3.7% | 83.9% ± 2.1%  | 0.51    |
+| Always Defect                    | 72.8% ± 4.0% | 46.7% ± 4.4% | 68.3% ± 2.9%  | 0.49    |
+
+## 3/20: 3c46de1cde4e36315e1236894157fd82c076d9f0
+
+ToT: 8 branches, 4 voters
+MAD: 3 max rounds
+MADpar: 3 agents, 3 max rounds
+
+MATH Summary:
+  I/O:                          52/280
+    + ToT fine-tuning:          53/280
+    + MAD fine-tuning:          5/280
+
+  ToT Baseline:     116/280
+  ToT Before:       88/280
+  ToT After:        111/280
+
+  MAD Baseline:     94/280 (194/500 on train set)
+  MAD Before:       57/280
+  MAD After:        99/240
+
+  MADpar Baseline:
+  MADpar Before:
+  MADpar After:
