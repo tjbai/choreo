@@ -2,11 +2,11 @@
 
 #SBATCH --job-name=prisoners/prediction
 #SBATCH -A jeisner1_gpu
-#SBATCH --partition=ica100
+#SBATCH --partition=a100
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
-#SBATCH --mem=80G
-#SBATCH --time=8:00:00
+#SBATCH --mem=40G
+#SBATCH --time=4:00:00
 #SBATCH --output=slurm/prisoners/prediction_%a.out
 #SBATCH --array=0-2
 
