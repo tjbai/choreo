@@ -21,7 +21,8 @@ from llama.workflows.trainers import (
     PrisonersDataset,
     QaTrainer,
     TotTrainer,
-    TotDataset
+    TotDataset,
+    DirectTrainer
 )
 
 def get_lr_factor(step, warmup_steps=10, total_steps=100):
@@ -48,6 +49,29 @@ def init_task(
     learning_rate: float,
     **task_params
 ) -> Tuple[LoraTrainer, Dataset]:
+    if task == 'direct':
+        trainer = DirectTrainer(
+            workflow,
+            output_dir=output_dir,
+            learning_rate=learning_rate
+        )
+        dataset = ListDataset(data_path)
+        dataset = Subset(
+            dataset=dataset,
+            indices=[i for i, d in enumerate(dataset) if len(d['outputs']['solution'])]
+        )
+        wandb.init(
+            project='direct',
+            config={
+                "data_path": data_path,
+                "lora_rank": lora_rank,
+                "lora_alpha": lora_alpha,
+                "lora_dropout": lora_dropout,
+                "learning_rate": learning_rate,
+            }
+        )
+        return trainer, dataset
+
     if task == 'mad':
         trainer = MadTrainer(
             workflow,

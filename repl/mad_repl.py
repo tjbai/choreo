@@ -21,5 +21,4 @@ for attempt, b, problem in zip(ours, baseline, ciar):
     print('###')
 
 # %%
-
 # what is percent well-formed for baseline? around 471/500 ~= 94%
