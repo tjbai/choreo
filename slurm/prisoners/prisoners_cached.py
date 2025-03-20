@@ -82,6 +82,7 @@ for strategy, data in zip(
                 temperature=1.0,
                 top_p=1.0,
                 plan_force=plan_force,
+                with_prediction=True,
             )
 
             alice_decision = workflow.tokenizer.decode(cached_outputs['alice_context'][-1]['output_tokens'])
