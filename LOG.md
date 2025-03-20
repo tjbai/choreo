@@ -569,3 +569,14 @@ MATH Summary:
   MADpar Baseline:
   MADpar Before:
   MADpar After:
+
+## 3/20: 1db73ab813fb3a8faf2327643672b638d6da09b1
+
+Grabbed these from a subset of 100 games.
+
+Baseline:
+| Strategy         | Alice Actual Cooperate | Bob Predicted Cooperate | Correct |
+|------------------|------------------------|-------------------------|---------|
+| No Strategy      | 82%                    | 84%                     | 80%     |
+| Always Cooperate | 100%                   | 96%                     | 98%     |
+| Always Defect    | 0%                     | 70%                     | 30%     |
