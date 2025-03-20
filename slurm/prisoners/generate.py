@@ -65,7 +65,7 @@ def main(
         # choose the ckpts from previous training run
         if strategy is None and ckpt != 'lora_epoch-1_step-155.pt':
             continue
-        elif strategy == 'always_cooperate' and ckpt != 'lora_epoch-0_step-95.pt':
+        elif strategy == 'always_cooperate' and ckpt != 'lora_epoch-0_step-195.pt':
             continue
         elif strategy == 'always_defect' and ckpt != 'lora_epoch-0_step-95.pt':
             continue

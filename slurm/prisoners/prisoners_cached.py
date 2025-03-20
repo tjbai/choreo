@@ -40,7 +40,7 @@ workflow = Workflow.build(
 workflow.model.reshape_cache(1)
 workflow.model.eval()
 payoff = (5, 3, 1, 0)
-output_file = '/home/tbai4/llama3/dumps/prisoners/prisoners_cached_paired_large.jsonl'
+output_file = '/home/tbai4/llama3/dumps/prisoners/prisoners_cached_paired_predict.jsonl'
 existing_results = load_existing_results(output_file)
 
 with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_large.jsonl') as f:
@@ -76,7 +76,7 @@ for strategy, data in zip(
             cached_outputs = prisoners_cached(
                 workflow,
                 payoff,
-                alice_first=(seed < 250),
+                alice_first=(seed < (len(data) // 2)),
                 alice_strategy=strategy,
                 seed=seed,
                 temperature=1.0,
@@ -93,7 +93,7 @@ for strategy, data in zip(
                 'seed': seed,
                 'strategy': strategy,
                 'payoff': payoff,
-                'alice_first': (seed < 250),
+                'alice_first': (seed < (len(data) // 2)),
                 'outputs': cached_outputs,
                 'alice_final': alice_decision,
                 'bob_final': bob_decision,
