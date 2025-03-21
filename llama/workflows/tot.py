@@ -118,6 +118,8 @@ def tot_cached(
     voter_force: Optional[torch.Tensor] = None,    # (voters, N)
     final_force: Optional[torch.Tensor] = None,    # (1, N)
     hotswap: bool = False,
+    temperature: float = 0.7,
+    top_p: float = 1.0,
 ) -> TotResult:
     if hasattr(workflow.model, 'set_adapter_state') and hotswap:
         workflow.model.set_adapter_state(enabled=False)
@@ -146,8 +148,8 @@ def tot_cached(
         teacher_force=proposal_force,
         compact=False,
         max_gen_len=512,
-        temperature=0.7,
-        top_p=0.9,
+        temperature=temperature,
+        top_p=top_p,
         seed=42,
         debug=False,
     ))
@@ -165,8 +167,8 @@ def tot_cached(
         stateless=False,
         compact=False,
         max_gen_len=256,
-        temperature=0.7,
-        top_p=0.9,
+        temperature=temperature,
+        top_p=top_p,
         seed=42,
         debug=False
     ))
@@ -188,8 +190,8 @@ def tot_cached(
             stateless=False,
             compact=compact,
             max_gen_len=256,
-            temperature=0.7,
-            top_p=0.9,
+            temperature=temperature,
+            top_p=top_p,
             seed=42,
             debug=False
         ))
@@ -291,6 +293,8 @@ def tot_baseline(
     branching_factor: int,
     voters: int,
     log_probs: bool = False,
+    temperature: float = 0.7,
+    top_p: float = 1.0,
 ) -> TotResult:
     [cot] = workflow.insert([
         {'messages': [
@@ -306,8 +310,8 @@ def tot_baseline(
         ],
         compact=False,
         max_gen_len=512,
-        temperature=0.7,
-        top_p=0.9,
+        temperature=temperature,
+        top_p=top_p,
         seed=42,
     ))
 
@@ -329,8 +333,8 @@ def tot_baseline(
         ],
         compact=False,
         max_gen_len=256,
-        temperature=0.7,
-        top_p=0.9,
+        temperature=temperature,
+        top_p=top_p,
         seed=42,
     ))
     votes = [
@@ -354,8 +358,8 @@ def tot_baseline(
                 'parent_ids': [finish['id']]}
             ],
             max_gen_len=256,
-            temperature=0.7,
-            top_p=0.9,
+            temperature=temperature,
+            top_p=top_p
         ))
 
     return {

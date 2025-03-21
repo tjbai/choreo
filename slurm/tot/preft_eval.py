@@ -1,8 +1,7 @@
 import os
-import json
+import torch
 from tqdm import tqdm
-from llama.workflows.mad import mad_baseline, mad_cached
-from llama.workflows.tot import eval_solutions
+from llama.workflows.tot import eval_solutions, tot_baseline, tot_cached
 from llama.util import find_free_port
 from llama import Workflow, Llama
 from datasets import load_dataset
@@ -26,30 +25,35 @@ llama = Llama(workflow.model, workflow.tokenizer)
 
 problems = load_dataset('openai/gsm8k', 'main', split='train')[:500]
 
-samples = []
-for problem, solution in tqdm(zip(problems['question'], problems['solution'])):
+for i, (problem, solution) in enumerate(tqdm(zip(problems['question'], problems['solution']))):
     workflow.reset()
-    outputs = mad_baseline(
+    outputs = tot_baseline(
         workflow=workflow,
         problem=problem,
-        max_rounds=3,
+        branching_factor=8,
+        voters=4,
+        temperature=0.7,
+        top_p=1.0,
     )
-    samples.append({
-        'inputs': {'problem': problem, 'solution': solution},
-        'outputs': outputs,
-    })
-    with open('/home/tbai4/llama3/dumps/mad/gsm8k_baseline_e2e.json', 'w') as f:
-        json.dump(samples, f)
+    example = {
+        'problem_idx': i,
+        'problem': problem,
+        'result': outputs,
+    }
+    torch.save(example, f'/home/tbai4/llama3/dumps/tot/tot_gsm8k/problem_{i}.pt')
 
 problems = load_dataset('openai/gsm8k', 'main', split='test')[:500]
 
 samples = []
 for problem, solution in tqdm(zip(problems['question'], problems['solution'])):
     workflow.reset()
-    outputs = mad_baseline(
+    outputs = tot_baseline(
         workflow=workflow,
         problem=problem,
-        max_rounds=3,
+        branching_factor=8,
+        voters=4,
+        temperature=0.7,
+        top_p=1.0,
     )
     samples.append({
         'inputs': {'problem': problem, 'solution': solution},
@@ -57,25 +61,27 @@ for problem, solution in tqdm(zip(problems['question'], problems['solution'])):
     })
 print('baseline correct', sum(eval_solutions(
     llama,
-    [d['outputs']['decision']['Answer'] for d in samples if isinstance(d['outputs']['decision'], dict)],
-    [d['inputs']['problem'] for d in samples if isinstance(d['outputs']['decision'], dict)],
+    [workflow.tokenizer.decode(d['outputs']['final_tokens']) for d in samples],
+    [d['inputs']['solution'] for d in samples],
 )))
 
 samples = []
 for problem, solution in tqdm(zip(problems['question'], problems['solution'])):
     workflow.reset()
-    outputs = mad_cached(
+    outputs = tot_cached(
         workflow=workflow,
         problem=problem,
-        max_rounds=3,
+        branching_factor=8,
+        voters=4,
+        temperature=0.7,
+        top_p=1.0,
     )
     samples.append({
         'inputs': {'problem': problem, 'solution': solution},
         'outputs': outputs,
     })
-
 print('cached correct', sum(eval_solutions(
     llama,
-    [d['outputs']['decision']['Answer'] for d in samples if isinstance(d['outputs']['decision'], dict)],
-    [d['inputs']['problem'] for d in samples if isinstance(d['outputs']['decision'], dict)],
+    [workflow.tokenizer.decode(d['outputs']['final_tokens']) for d in samples],
+    [d['inputs']['solution'] for d in samples],
 )))
