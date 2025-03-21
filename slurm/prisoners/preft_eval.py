@@ -29,7 +29,7 @@ def load_existing_results(output_file):
 
 def load_baseline_data():
     with open('/home/tbai4/llama3/dumps/prisoners/prisoners_baseline_large.jsonl') as f:
-        baseline_data = [json.loads(line) for line in f]
+        baseline_data = [json.loads(line) for line in f][0] # stupid thing for baseline_large
         baseline = [d for d in baseline_data if d['strategy'] is None]
         coop = [d for d in baseline_data if d['strategy'] == 'always_cooperate']
         defect = [d for d in baseline_data if d['strategy'] == 'always_defect']

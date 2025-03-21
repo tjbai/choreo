@@ -1,8 +1,9 @@
 import os
 import json
+import torch
 from tqdm import tqdm
 from llama import Workflow, Llama
-from llama.util import find_free_port, load_ckpt
+from llama.util import find_free_port
 from llama.workflows.tot import eval_solutions, load_math_problems, tot_cached
 
 os.environ["RANK"] = "0"
@@ -30,7 +31,8 @@ for ckpt_path in [
    "lora_epoch-0_step-795.pt",
    "lora_epoch-1_step-295.pt",
 ]:
-    load_ckpt(workflow, f'/scratch4/jeisner1/tjbai/checkpoints/tot_3/{ckpt_path}')
+    ckpt = torch.load(f'/scratch4/jeisner1/tjbai/checkpoints/tot_3/{ckpt_path}', weights_only=True)
+    workflow.model.load_state_dict(ckpt['lora'])
     workflow.model.eval()
     workflow.model.reshape_cache(1)
     workflow.model.set_adapter_state(enabled=True)

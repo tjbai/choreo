@@ -5,7 +5,7 @@
 #SBATCH --nodes=1
 #SBATCH --gres=gpu:1
 #SBATCH --mem=40G
-#SBATCH --time=4:00:00
+#SBATCH --time=12:00:00
 #SBATCH --output=slurm/prisoners/ablations_%a.out
 #SBATCH --array=0-5
 

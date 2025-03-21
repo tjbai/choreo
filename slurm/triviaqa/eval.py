@@ -1,6 +1,7 @@
 import os
 import json
 import random
+from tqdm import tqdm
 from collections import defaultdict
 
 from llama import Workflow, Llama
@@ -37,7 +38,7 @@ workflow.model.eval()
 llama = Llama(workflow.model, workflow.tokenizer)
 answers = defaultdict(list)
 
-for seed in range(N):
+for seed in tqdm(range(N)):
     workflow.reset()
     random.seed(seed)
     subset = random.sample(problems, k=2)
@@ -47,7 +48,7 @@ for seed in range(N):
     answer = ask_sequential(workflow, subset)
     answers['baseline'].append((subset, workflow.tokenizer.decode(answer['output_tokens'])))
 
-    answer = ask_parallel(workflow, subset, annotate=True, compact=False)
+    answer = ask_parallel(workflow, subset, annotate=False, compact=False)
     answers['choreographed'].append((subset, workflow.tokenizer.decode(answer['output_tokens'])))
 
     answer = ask_parallel(workflow, subset, annotate=True, compact=True)
@@ -63,22 +64,7 @@ workflow.model.set_adapter_state(enabled=False)
 for setting in ['baseline', 'choreographed+finetuned']:
     first_correct = 0
     second_correct = 0
-    for subset, answer in answers[setting]:
-        items = parse_items(answers)
-        resps = llama.chat_completion([
-            [{'role': 'system', 'content': eval_system_prompt},
-                {'role': 'user', 'content': format_eval_user(subset[0], items[0])}],
-            [{'role': 'system', 'content': eval_system_prompt},
-                {'role': 'user', 'content': format_eval_user(subset[1], items[1])}],
-        ], content_prefills=['{"correct": "'] * 2)
-        first_correct += 'true' in resps[0]['generation']['content'].lower()
-        second_correct += 'true' in resps[1]['generation']['content'].lower()
-    print(setting, first_correct, second_correct)
-
-for setting in ['choreographed', 'choreographed+linearized']:
-    first_correct = 0
-    second_correct = 0
-    for subset, answer in answers[setting]:
+    for subset, answer in tqdm(answers[setting]):
         items = parse_items(answer)
         if len(items) == 2:
             resps = llama.chat_completion([
@@ -89,7 +75,23 @@ for setting in ['choreographed', 'choreographed+linearized']:
             ], content_prefills=['{"correct": "'] * 2)
             first_correct += 'true' in resps[0]['generation']['content'].lower()
             second_correct += 'true' in resps[1]['generation']['content'].lower()
-        elif len(items) == 0:
+    print(setting, first_correct, second_correct)
+
+for setting in ['choreographed', 'choreographed+linearized']:
+    first_correct = 0
+    second_correct = 0
+    for subset, answer in tqdm(answers[setting]):
+        items = parse_items(answer)
+        if len(items) == 2:
+            resps = llama.chat_completion([
+                [{'role': 'system', 'content': eval_system_prompt},
+                    {'role': 'user', 'content': format_eval_user(subset[0], items[0])}],
+                [{'role': 'system', 'content': eval_system_prompt},
+                    {'role': 'user', 'content': format_eval_user(subset[1], items[1])}],
+            ], content_prefills=['{"correct": "'] * 2)
+            first_correct += 'true' in resps[0]['generation']['content'].lower()
+            second_correct += 'true' in resps[1]['generation']['content'].lower()
+        elif len(items) == 1:
             resps = llama.chat_completion([
                 [{'role': 'system', 'content': eval_system_prompt},
                     {'role': 'user', 'content': format_eval_user(subset[0], items[0])}],
