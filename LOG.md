@@ -597,3 +597,12 @@ Choreographed + Fine-tuned:
 | Always Defect    | 1%                     | 60%                     | 41%     | 14%       | 23%      |
 
 Accuracy doesn't change much between baseline and choreographed versions... except in the always defect setting. We see that in both choreographed implementations, Bob can better predict Alice's strategy, but the choreographed version learns to be _less_ exploitative and _less_ defensive than the untrained version.
+
+## 3/20: f89004b93b9b2f3cab71d684114477b8daf8eab9
+
+| Condition                | Q1 | Q2 |
+|--------------------------|----|----|
+| Baseline                 | 73 | 78 |
+| Parallel                 | 41 | 27 |
+| Parallel + Linearization | 2  | 69 |
+| Parallel + Fine-tuning   | 71 | 81 |

@@ -1106,7 +1106,7 @@ def sweep_tot(
     return data
 
 def collect_samples(
-    llama: Llama,
+    workflow: Workflow,
     save_dir: str,
     n_problems: int = 500,
     branching_factor: int = 8,
@@ -1138,7 +1138,7 @@ def collect_samples(
     examples = []
     for i, problem in enumerate(tqdm(problems, desc="Problems")):
         tot_result = tot_baseline(
-            llama=llama,
+            workflow=workflow,
             problem=problem,
             branching_factor=branching_factor,
             voters=voters,

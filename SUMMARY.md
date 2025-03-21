@@ -45,14 +45,12 @@ Can we truly isolate that this effect comes from Bob "sniffing out" Alice's stra
 
 As a simple example, blockage can create problems even if you split the prompt into multiple seemingly independent components. This is a practical concern and an argument we make in favor of blockage in the paper, for example when attending over documents or messages that were not encoded serially.
 
-**Results are pending at larger sample size here too...**
-
-| Condition                | Both | Q1 | Q2 | None |
-|--------------------------|------|----|----|------|
-| Baseline                 | 14   | 8  | 3  | 5    |
-| Parallel                 | 0    | 10 | 6  | 14   |
-| Parallel + Linearization | x    | x  | x  | x    |
-| Parallel + Fine-tuning   | 14   | 6  | 7  | 3    |
+| Condition                | Q1 | Q2 |
+|--------------------------|----|----|
+| Baseline                 | 73 | 78 |
+| Parallel                 | 41 | 27 |
+| Parallel + Linearization | 2  | 69 |
+| Parallel + Fine-tuning   | 71 | 81 |
 
 As an admittedly contrived example, consider prompting an LLM to answer 2 questions at once in a standard QA setting. When these 2 questions appear serially in the prompt, with the correct attention pattern, the LLM answers both with relatively high success. But, when the questions are encoded _separately_ without attention over one another, the LLM only manages to answer one or the other (seemingly uniformly at random). If we linearize the questions, the question that appears later in the context is unilaterally answered, while the other is left behind. Meanwhile, we can recover the correct behavior with fine-tuning on just 200 examples.
 
