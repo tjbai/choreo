@@ -17,13 +17,35 @@ To examine the effects of leakage, we intervene on Alice's system prompt, instru
 | Always Cooperate | 87.7% ± 2.9%       | 78.2% ± 3.7%  | 83.9% ± 2.1% (400)                   | 2.4e-4         | 0.51          |
 | Always Defect    | 72.8% ± 4.0%       | 46.7% ± 4.4%  | 68.3% ± 2.9% (800)                   | 4.4e-16        | 0.49          |
 
-Can we truly isolate that this effect comes from Bob "sniffing out" Alice's strategy?
+Can we truly isolate that this effect comes from Bob "sniffing out" Alice's strategy? To try answering this question:
+
+  1. We compare settings where _only_ Alice's system prompt or _only_ Alice's private chain-of-thought are leaked in her public messages. Does "more" leakage impact Bob's behavior?
+
+  We looked at this previously, but there wasn't a clear trend. I'm re-running the experiments with 5x the sample size.
+
+  2. We ask Bob to _predict_ Alice's decision at the end of the conversation, to see if his predictions are 1) more accurate and 2) result in more exploitative or defensive behavior. We define _exploitation_ as cases where Bob predicts that Alice will cooperate, so he decides to defect. We define _defense_ as cases where Bob predicts that Alice will defect, so he defects as well.
+
+  | Strategy         | Model                   | Alice Actual Cooperate | Bob Predicted Cooperate | Correct | Exploited | Defended |
+  |------------------|-------------------------|------------------------|-------------------------|---------|-----------|----------|
+  | No Strategy      | Baseline                | 82%                    | 84%                     | 80%     | 13%       | 6%       |
+  |                  | Choreographed           | 76%                    | 76%                     | 79%     | 18%       | 5%       |
+  |                  | Choreographed + FT      | 79%                    | 87%                     | 80%     | 19%       | 8%       |
+  | Always Cooperate | Baseline                | 100%                   | 96%                     | 98%     | 14%       | 3%       |
+  |                  | Choreographed           | 99%                    | 88%                     | 89%     | 15%       | 4%       |
+  |                  | Choreographed + FT      | 98%                    | 84%                     | 92%     | 20%       | 4%       |
+  | Always Defect    | Baseline                | 0%                     | 70%                     | 30%     | 17%       | 13%      |
+  |                  | Choreographed           | 2%                     | 55%                     | 45%     | 27%       | 32%      |
+  |                  | Choreographed + FT      | 1%                     | 60%                     | 41%     | 14%       | 23%      |
+
+**tl;dr There's an interesting change in behavior in the choreographed implementation, which we appear to eliminate with fine-tuning. Further ablations/experiments reveal that the cause might be more complex in nature than we originally expected.**
 
 ## Information Blockage
 
 ### (Contrived) MultiQA
 
-As a simple example, blockage can create problems if you split the prompt into multiple seemingly independent components.
+As a simple example, blockage can create problems even if you split the prompt into multiple seemingly independent components. This is a practical concern and an argument we make in favor of blockage in the paper, for example when attending over documents or messages that were not encoded serially.
+
+**Results are pending at larger sample size here too...**
 
 | Condition                | Both | Q1 | Q2 | None |
 |--------------------------|------|----|----|------|
@@ -32,16 +54,16 @@ As a simple example, blockage can create problems if you split the prompt into m
 | Parallel + Linearization | x    | x  | x  | x    |
 | Parallel + Fine-tuning   | 14   | 6  | 7  | 3    |
 
-Consider prompting the LLM to answer 2 questions at once in a standard QA setting. When these 2 questions appear serially in the prompt, with the correct attention pattern, the LLM answers both with relatively high success. But, when the questions are encoded _separately_ without attention over one another, the LLM only manages to answer one or the other (seemingly at random). If we linearize the questions, the question that appears later in the context is unilaterally answered, while the other is left behind. We can recover the correct behavior with fine-tuning on just 200 examples.
+As an admittedly contrived example, consider prompting an LLM to answer 2 questions at once in a standard QA setting. When these 2 questions appear serially in the prompt, with the correct attention pattern, the LLM answers both with relatively high success. But, when the questions are encoded _separately_ without attention over one another, the LLM only manages to answer one or the other (seemingly uniformly at random). If we linearize the questions, the question that appears later in the context is unilaterally answered, while the other is left behind. Meanwhile, we can recover the correct behavior with fine-tuning on just 200 examples.
 
 ### Constrained Story Generation
 
-Task is to generate a _coherent_ story that incorporates a large number of _concepts_ (keywords).
+As another example, we adopt this task from rXiv:2310.15123. The goal is to generate a _coherent_ story that incorporates a large number of provided _concepts_ (keywords).
 
 The "branch-solve-merge" workflow has 3 steps:
-1. A _branch_ module creates a story topic and splits the concept set into N smaller subsets.
-2. N _solve_ modules generate part of a story corresponding to a concept subset.
-3. A _merge_ module combines the N stories into a final story.
+1. A _branch_ module decides on a story topic and splits the concept set into N smaller subsets.
+2. N _solve_ modules generate substories in parallel for each subset.
+3. A _merge_ module combines the substories into a final story.
 
 We evaluate along 2 dimensions:
 1. Coverage (%), the percentage of concepts that are successfully integrated into the final story. This is evaluated just by checking for string overlap.
@@ -56,10 +78,44 @@ We evaluate along 2 dimensions:
 
 We evaluate with 2 branches and 30 concepts. The baseline implementation constructs a new prompt that encodes the 2 sub-stories serially, while the choreographed implementation directly attends over the outputs of the solve step. We also evaluate with linearization, where the 2 sub-stories are rotated to no longer overlap, which yields a small increase in performance and reveals substantial positional bias. Finally, we generate a dataset with 100 example stories and fine-tune for 4 epochs.
 
+| Comparison                                 | A Wins | Ties | B Wins | Total | A Win % | Tie % | B Win % |
+|--------------------------------------------|--------|------|--------|-------|---------|-------|---------|
+| Baseline vs. Choreographed                 | 31     | 16   | 3      | 50    | 62.0%   | 32.0% | 6.0%    |
+| Baseline vs. Choreographed + Linearization | 28     | 16   | 6      | 50    | 56.0%   | 32.0% | 12.0%   |
+| Baseline vs. Choreographed + Fine-tuning   | 15     | 21   | 14     | 50    | 30.0%   | 42.0% | 28.0%   |
+
+In the head-to-head comparisons, the fine-tuned workflow wins ~50% of the time, compared to ~10% previously.
+
+**tl;dr There's significant performance degradation when we naively implement workflows with information blockage, but it appears that fine-tuning is very effective at remedying this issue. Intuitively, blockage seems easier to remedy than leakage.**
+
 ## Other Applications
 
-### Tree of Thoughts
+In this section of the paper, I will consider a broader set of experiments where we mostly care about evaluating end-to-end performance. So far, I've looked at Tree of Thoughts (arXiv:2305.10601) and Multi-agent Debate (arXiv:2305.19118) with pending results for another Multi-agent Debate paper (arXiv:2305.14325).
 
-### Multi-agent Debate
+All evaluation so far is on the MATH dataset. We generate a training dataset of 500 examples, which is split 90/10 for train/dev, and checkpoints are selected after 4 epochs by best dev accuracy. As baseline, we compare against a "direct-prompted" LLM, which queries the LLM for an answer without any intermediate reasoning, self-consistency, best@N, etc. While stronger comparisons may exist, the goal here is to isolate whether we can have the choreographed implementation match the baseline, not whether the workflow itself is stronger than a single LLM system. Thus, we also fine-tune these direct-prompted LLMs with the final answer step of all workflows, to determine whether the performance recovery is from fine-tuning the entire workflow, or simply training on the baseline solutions. THe baseline is fine-tuned with the same LoRA parameters and epochs.
+
+| Method            | Accuracy |
+|-------------------|----------|
+| I/O:              | 52/280   |
+| + ToT fine-tuning | 53/280   |
+| + MAD fine-tuning | 5/280    |
+|                   |          |
+| ToT Baseline      | 116/280  |
+| ToT Before        | 88/280   |
+| ToT After         | 111/280  |
+|                   |          |
+| MAD Baseline      | 94/280   |
+| MAD Before        | 57/280   |
+| MAD After         | 99/240   |
+
+**tl;dr We can fine-tune workflows end-to-end to recover baseline-level performance. Fine-tuning the workflow is more effective/sample efficient than simply fine-tuning a single LLM call with the final answer.**
 
 ## Performance
+
+1. Throughput (TPS)
+
+2. Latency (End-to-end wall clock time, where both workflows generate the same number of tokens via teacher-forcing.)
+
+3. Peak memory consumption
+
+**TODO TODO TODO**

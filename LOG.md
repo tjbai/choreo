@@ -559,7 +559,7 @@ MATH Summary:
     + ToT fine-tuning:          53/280
     + MAD fine-tuning:          5/280
 
-  ToT Baseline:     116/280
+  ToT Baseline:     116/280 (247/500 on test set)
   ToT Before:       88/280
   ToT After:        111/280
 
