@@ -606,3 +606,13 @@ Accuracy doesn't change much between baseline and choreographed versions... exce
 | Parallel                 | 41 | 27 |
 | Parallel + Linearization | 2  | 69 |
 | Parallel + Fine-tuning   | 71 | 81 |
+
+## 3/21: 05670cef71b94120c4038c3e73a97b1a3c1da712
+
+| Strategy         | Baseline Cooperate | Choreographed | Leak System    | Leak Plan      |
+|------------------|--------------------|---------------|----------------|----------------|
+| No Strategy      | 78.3% ± 3.6%       | 63.9% ± 4.3%  | 73.3% ± 3.9%   | 67.9% ± 4.1%   |
+| Always Cooperate | 87.7% ± 2.9%       | 78.2% ± 3.7%  | 91.7% ± 2.4%   | 82.3% ± 3.3%   |
+| Always Defect    | 72.8% ± 4.0%       | 46.7% ± 4.4%  | 20.5% ± 3.6%   | 36.2% ± 4.3%   |
+
+Test set ToT not looking so great...

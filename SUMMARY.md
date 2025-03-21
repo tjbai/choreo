@@ -11,31 +11,41 @@ We consider a conversational game between 2 agents, Alice and Bob, which has 3 s
 
 To examine the effects of leakage, we intervene on Alice's system prompt, instructing her to "ALWAYS DEFECT" or "ALWAYS COOPERATE."
 
+```
 | Strategy         | Baseline Cooperate | Choreographed | Choreographed (fine-tuning examples) | p-value before | p-value after |
 |------------------|--------------------|---------------|--------------------------------------|----------------|---------------|
 | No Strategy      | 78.3% ± 3.6%       | 63.9% ± 4.3%  | 76.75% ± 2.6% (800)                  | 5.8e-8         | 0.82          |
 | Always Cooperate | 87.7% ± 2.9%       | 78.2% ± 3.7%  | 83.9% ± 2.1% (400)                   | 2.4e-4         | 0.51          |
 | Always Defect    | 72.8% ± 4.0%       | 46.7% ± 4.4%  | 68.3% ± 2.9% (800)                   | 4.4e-16        | 0.49          |
+```
 
 Can we truly isolate that this effect comes from Bob "sniffing out" Alice's strategy? To try answering this question:
 
   1. We compare settings where _only_ Alice's system prompt or _only_ Alice's private chain-of-thought are leaked in her public messages. Does "more" leakage impact Bob's behavior?
 
-  We looked at this previously, but there wasn't a clear trend. I'm re-running the experiments with 5x the sample size.
+```
+| Strategy         | Baseline Cooperate | Choreographed | Leak System    | Leak Plan      |
+|------------------|--------------------|---------------|----------------|----------------|
+| No Strategy      | 78.3% ± 3.6%       | 63.9% ± 4.3%  | 73.3% ± 3.9%   | 67.9% ± 4.1%   |
+| Always Cooperate | 87.7% ± 2.9%       | 78.2% ± 3.7%  | 91.7% ± 2.4%   | 82.3% ± 3.3%   |
+| Always Defect    | 72.8% ± 4.0%       | 46.7% ± 4.4%  | 20.5% ± 3.6%   | 36.2% ± 4.3%   |
+```
 
   2. We ask Bob to _predict_ Alice's decision at the end of the conversation, to see if his predictions are 1) more accurate and 2) result in more exploitative or defensive behavior. We define _exploitation_ as cases where Bob predicts that Alice will cooperate, so he decides to defect. We define _defense_ as cases where Bob predicts that Alice will defect, so he defects as well.
 
-  | Strategy         | Model                   | Alice Actual Cooperate | Bob Predicted Cooperate | Correct | Exploited | Defended |
-  |------------------|-------------------------|------------------------|-------------------------|---------|-----------|----------|
-  | No Strategy      | Baseline                | 82%                    | 84%                     | 80%     | 13%       | 6%       |
-  |                  | Choreographed           | 76%                    | 76%                     | 79%     | 18%       | 5%       |
-  |                  | Choreographed + FT      | 79%                    | 87%                     | 80%     | 19%       | 8%       |
-  | Always Cooperate | Baseline                | 100%                   | 96%                     | 98%     | 14%       | 3%       |
-  |                  | Choreographed           | 99%                    | 88%                     | 89%     | 15%       | 4%       |
-  |                  | Choreographed + FT      | 98%                    | 84%                     | 92%     | 20%       | 4%       |
-  | Always Defect    | Baseline                | 0%                     | 70%                     | 30%     | 17%       | 13%      |
-  |                  | Choreographed           | 2%                     | 55%                     | 45%     | 27%       | 32%      |
-  |                  | Choreographed + FT      | 1%                     | 60%                     | 41%     | 14%       | 23%      |
+```
+| Strategy         | Model                   | Alice Actual Cooperate | Bob Predicted Cooperate | Correct | Exploited | Defended |
+|------------------|-------------------------|------------------------|-------------------------|---------|-----------|----------|
+| No Strategy      | Baseline                | 82%                    | 84%                     | 80%     | 13%       | 6%       |
+|                  | Choreographed           | 76%                    | 76%                     | 79%     | 18%       | 5%       |
+|                  | Choreographed + FT      | 79%                    | 87%                     | 80%     | 19%       | 8%       |
+| Always Cooperate | Baseline                | 100%                   | 96%                     | 98%     | 14%       | 3%       |
+|                  | Choreographed           | 99%                    | 88%                     | 89%     | 15%       | 4%       |
+|                  | Choreographed + FT      | 98%                    | 84%                     | 92%     | 20%       | 4%       |
+| Always Defect    | Baseline                | 0%                     | 70%                     | 30%     | 17%       | 13%      |
+|                  | Choreographed           | 2%                     | 55%                     | 45%     | 27%       | 32%      |
+|                  | Choreographed + FT      | 1%                     | 60%                     | 41%     | 14%       | 23%      |
+```
 
 **tl;dr There's an interesting change in behavior in the choreographed implementation, which we appear to eliminate with fine-tuning. Further ablations/experiments reveal that the cause might be more complex in nature than we originally expected.**
 
@@ -45,12 +55,14 @@ Can we truly isolate that this effect comes from Bob "sniffing out" Alice's stra
 
 As a simple example, blockage can create problems even if you split the prompt into multiple seemingly independent components. This is a practical concern and an argument we make in favor of blockage in the paper, for example when attending over documents or messages that were not encoded serially.
 
+```
 | Condition                | Q1 | Q2 |
 |--------------------------|----|----|
 | Baseline                 | 73 | 78 |
 | Parallel                 | 41 | 27 |
 | Parallel + Linearization | 2  | 69 |
 | Parallel + Fine-tuning   | 71 | 81 |
+```
 
 As an admittedly contrived example, consider prompting an LLM to answer 2 questions at once in a standard QA setting. When these 2 questions appear serially in the prompt, with the correct attention pattern, the LLM answers both with relatively high success. But, when the questions are encoded _separately_ without attention over one another, the LLM only manages to answer one or the other (seemingly uniformly at random). If we linearize the questions, the question that appears later in the context is unilaterally answered, while the other is left behind. Meanwhile, we can recover the correct behavior with fine-tuning on just 200 examples.
 
@@ -67,20 +79,24 @@ We evaluate along 2 dimensions:
 1. Coverage (%), the percentage of concepts that are successfully integrated into the final story. This is evaluated just by checking for string overlap.
 2. Coherence, evaluated by head-to-head comparisons between the final stories as evaluated by GPT-4o. Stories are presented in both permutations, AB and BA, so a winner is only declared if the LLM judge prefers it in both.
 
+```
 | Implementation                | Avg Coverage | Group 1 | Group 2 |
 |-------------------------------|--------------|---------|---------|
 | Baseline                      | 81.00%       | 87.58%  | 82.44%  |
 | Choreographed                 | 62.95%       | 67.42%  | 64.96%  |
 | Choreographed + Linearization | 65.09%       | 80.52%  | 52.97%  |
 | Choreographed + Fine-tuning   | 81.55%       | 85.64%  | 85.34%  |
+```
 
 We evaluate with 2 branches and 30 concepts. The baseline implementation constructs a new prompt that encodes the 2 sub-stories serially, while the choreographed implementation directly attends over the outputs of the solve step. We also evaluate with linearization, where the 2 sub-stories are rotated to no longer overlap, which yields a small increase in performance and reveals substantial positional bias. Finally, we generate a dataset with 100 example stories and fine-tune for 4 epochs.
 
+```
 | Comparison                                 | A Wins | Ties | B Wins | Total | A Win % | Tie % | B Win % |
 |--------------------------------------------|--------|------|--------|-------|---------|-------|---------|
 | Baseline vs. Choreographed                 | 31     | 16   | 3      | 50    | 62.0%   | 32.0% | 6.0%    |
 | Baseline vs. Choreographed + Linearization | 28     | 16   | 6      | 50    | 56.0%   | 32.0% | 12.0%   |
 | Baseline vs. Choreographed + Fine-tuning   | 15     | 21   | 14     | 50    | 30.0%   | 42.0% | 28.0%   |
+```
 
 In the head-to-head comparisons, the fine-tuned workflow wins ~50% of the time, compared to ~10% previously.
 
@@ -92,6 +108,7 @@ In this section of the paper, I will consider a broader set of experiments where
 
 All evaluation so far is on the MATH dataset. We generate a training dataset of 500 examples, which is split 90/10 for train/dev, and checkpoints are selected after 4 epochs by best dev accuracy. As baseline, we compare against a "direct-prompted" LLM, which queries the LLM for an answer without any intermediate reasoning, self-consistency, best@N, etc. While stronger comparisons may exist, the goal here is to isolate whether we can have the choreographed implementation match the baseline, not whether the workflow itself is stronger than a single LLM system. Thus, we also fine-tune these direct-prompted LLMs with the final answer step of all workflows, to determine whether the performance recovery is from fine-tuning the entire workflow, or simply training on the baseline solutions. THe baseline is fine-tuned with the same LoRA parameters and epochs.
 
+```
 | Method            | Accuracy |
 |-------------------|----------|
 | I/O:              | 52/280   |
@@ -105,6 +122,7 @@ All evaluation so far is on the MATH dataset. We generate a training dataset of 
 | MAD Baseline      | 94/280   |
 | MAD Before        | 57/280   |
 | MAD After         | 99/240   |
+```
 
 **tl;dr We can fine-tune workflows end-to-end to recover baseline-level performance. Fine-tuning the workflow is more effective/sample efficient than simply fine-tuning a single LLM call with the final answer.**
 
