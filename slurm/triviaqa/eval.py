@@ -8,7 +8,7 @@ from llama import Workflow, Llama
 from llama.util import find_free_port, load_ckpt
 from llama.workflows.qa import ask_sequential, ask_parallel, eval_system_prompt, parse_items, format_eval_user
 
-N = 100
+N = 500
 DATA_PATH = '/home/tbai4/llama3/data/triviaqa/unfiltered-web-dev.json'
 CKPT_PATH = '/scratch4/jeisner1/tjbai/checkpoints/triviaqa/lora_step-199.pt'
 
