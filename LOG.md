@@ -616,3 +616,11 @@ Accuracy doesn't change much between baseline and choreographed versions... exce
 | Always Defect    | 72.8% ± 4.0%       | 46.7% ± 4.4%  | 20.5% ± 3.6%   | 36.2% ± 4.3%   |
 
 Test set ToT not looking so great...
+
+## 3/23: 4be02a64c585201d9be1a3caef82ab0e3e328fb7
+
+| Condition                   | Q1           | Q2           |
+|-----------------------------|--------------|--------------|
+| Baseline                    | 71.8% ± 3.9% | 74.8% ± 3.8% |
+| Choreographed + Fine-tuning | 69.0% ± 4.1% | 72.8% ± 3.9% |
+

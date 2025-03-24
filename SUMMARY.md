@@ -111,9 +111,9 @@ All evaluation so far is on the MATH dataset. We generate a training dataset of 
 ```
 | Method            | Accuracy |
 |-------------------|----------|
-| I/O:              | 52/280   |
+| Direct:           | 52/280   |
 | + ToT fine-tuning | 53/280   |
-| + MAD fine-tuning | 5/280    |
+| + MAD fine-tuning | 5/280*   |
 |                   |          |
 | ToT Baseline      | 116/280  |
 | ToT Before        | 88/280   |
@@ -122,6 +122,11 @@ All evaluation so far is on the MATH dataset. We generate a training dataset of 
 | MAD Baseline      | 94/280   |
 | MAD Before        | 57/280   |
 | MAD After         | 99/240   |
+
+*This is very low but there's nothing funny going on!
+The MAD final outputs have a domain-specific format.
+I tried fine-tuning both on the full output and just
+on the final answer provided.
 ```
 
 **tl;dr We can fine-tune workflows end-to-end to recover baseline-level performance. Fine-tuning the workflow is more effective/sample efficient than simply fine-tuning a single LLM call with the final answer.**
