@@ -54,3 +54,5 @@ data/triviaqa.tar.gz
 !slurm/**/*.sh
 !sweep/
 !sweep/*.yml
+**.lock
+**gsm8k**
