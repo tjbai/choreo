@@ -289,7 +289,13 @@ def finetune(
             lr_factor = get_lr_factor(global_step, warmup_steps, steps)
             for param_group in trainer.optimizer.param_groups:
                 param_group['lr'] = learning_rate * lr_factor
-            step_result = trainer.step(dataset[idx])
+            try:
+                step_result = trainer.step(dataset[idx])
+            except RuntimeError as e:
+                if 'cuda out of memory' in str(e).lower():
+                    step_result = None
+                else:
+                    raise
             if step_result is None:
                 continue # will create jagged batches
             loss, metrics = step_result
