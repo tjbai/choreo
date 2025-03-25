@@ -27,12 +27,12 @@ parameters:
     min: 1e-6
     max: 3e-4
   epochs:
-    value: 2
+    value: 4
   gradient_accumulation_steps:
-    values: [4, 8, 16, 32]
+    value: 4
   checkpoint_freq:
     value: 1e9 # don't checkpoint
   validation_freq:
-    value: 1e9 # don't validate until very end
+    value: 450
   max_seq_len:
     value: 65536

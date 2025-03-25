@@ -111,7 +111,7 @@ class TotTrainer(LoraTrainer[TotDataset]):
         self,
         val_dataset: TotDataset,
         max_steps: Optional[int] = None,
-        max_e2e: int = 100
+        max_e2e: int = 50,
     ):
         self.workflow.model.eval()
 
@@ -132,13 +132,11 @@ class TotTrainer(LoraTrainer[TotDataset]):
         }
 
         solutions = []
-        problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
-        problems = problems[:max_e2e]
-        for problem in tqdm(problems, desc="Running e2e validation"):
+        for step, sample in enumerate(tqdm(val_dataset, desc="Running e2e validation")):
             self.workflow.reset()
             solutions.append(tot_cached(
                 workflow=self.workflow,
-                problem=problem['problem'],
+                problem=sample['problem']['problem'],
                 branching_factor=self.branching_factor,
                 voters=self.voters,
             ))
@@ -146,7 +144,11 @@ class TotTrainer(LoraTrainer[TotDataset]):
         self.llama.model.reshape_cache(4)
         self.llama.model.set_adapter_state(enabled=False)
         try:
-            correct = eval_solutions(self.llama, solutions, problems)
+            correct = eval_solutions(
+                self.llama,
+                [self.workflow.tokenizer.decode(s) for s in solutions],
+                [sample['problem']['solution'] for sample in val_dataset],
+            )
             metrics['val/correct'] = sum(correct) / len(correct)
         finally:
             self.llama.model.set_adapter_state(enabled=True)
