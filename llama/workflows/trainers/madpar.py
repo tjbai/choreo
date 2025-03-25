@@ -18,9 +18,17 @@ class MadparTrainer(LoraTrainer[ListDataset]):
         metrics = {}
 
         num_rounds = len(summary_tokens)
+        initial_token_count = sum(len(tokens) for tokens in debate_tokens[0])
+
+        round_token_counts = {}
+        for i in range(num_rounds):
+            summary_count = len(summary_tokens[i])
+            debate_count = sum(len(tokens) for tokens in debate_tokens[i+1])
+            round_token_counts[f"round_{i}"] = summary_count + debate_count
+
         chunks = {
-            "initial": 3,
-            **{f"round_{i}": 4 for i in range(num_rounds)}
+            "initial": initial_token_count,
+            **round_token_counts
         }
 
         weighted_chunks = list(chunks.items())
