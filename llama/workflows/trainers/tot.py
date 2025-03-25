@@ -6,6 +6,7 @@ from collections import Counter, defaultdict
 import torch
 import torch.nn.functional as F
 from torch.utils.data import Dataset
+from tqdm import tqdm
 
 from llama import Workflow
 from llama.workflows.trainers.base import LoraTrainer, reorder_targets
@@ -22,8 +23,6 @@ from llama.workflows.tot import (
 class TotDataset(Dataset):
     def __init__(self, data_dir: str | Path):
         self.data_dir = Path(data_dir)
-        with open(self.data_dir / 'metadata.json') as f:
-            self.metadata = json.load(f)
         self.problem_paths = sorted(self.data_dir.glob('problem_*.pt'))
 
     def __len__(self):
@@ -133,21 +132,28 @@ class TotTrainer(LoraTrainer[TotDataset]):
 
         solutions = []
         for step, sample in enumerate(tqdm(val_dataset, desc="Running e2e validation")):
+            if max_e2e and step >= max_e2e:
+                break
             self.workflow.reset()
             solutions.append(tot_cached(
                 workflow=self.workflow,
-                problem=sample['problem']['problem'],
+                problem=sample['problem'],
                 branching_factor=self.branching_factor,
                 voters=self.voters,
             ))
 
         self.llama.model.reshape_cache(4)
         self.llama.model.set_adapter_state(enabled=False)
+        problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='train')
+        p2s = {d['problem']: d['solution'] for d in problems}
         try:
             correct = eval_solutions(
                 self.llama,
-                [self.workflow.tokenizer.decode(s) for s in solutions],
-                [sample['problem']['solution'] for sample in val_dataset],
+                [self.workflow.tokenizer.decode(s['final_tokens']) for s in solutions],
+                [{
+                    'problem': sample['problem'],
+                    'solution': p2s[sample['problem']],
+                } for sample in val_dataset],
             )
             metrics['val/correct'] = sum(correct) / len(correct)
         finally:

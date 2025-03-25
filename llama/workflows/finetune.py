@@ -71,7 +71,6 @@ def init_task(
             }
         )
         return trainer, dataset
-
     if task == 'mad':
         trainer = MadTrainer(
             workflow,
@@ -111,7 +110,7 @@ def init_task(
             }
         )
         return trainer, dataset
-    elif task == 'tot':
+    if task == 'tot':
         trainer = TotTrainer(
             workflow,
             output_dir=output_dir,
@@ -132,7 +131,7 @@ def init_task(
             }
         )
         return trainer, dataset
-    elif task == 'prisoners':
+    if task == 'prisoners':
         trainer = PrisonersTrainer(
             workflow=workflow,
             output_dir=output_dir,
