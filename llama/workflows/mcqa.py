@@ -1,7 +1,8 @@
 from typing import Dict
 from itertools import permutations
-import numpy as np
 
+import numpy as np
+from tqdm import tqdm
 from datasets import load_dataset, Dataset as HfDataset
 
 from llama import Llama
@@ -81,15 +82,15 @@ def answer_single(
 
     return None
 
-def answer_dataset(llama: Llama, dataset: HfDataset) -> Dict:
+def answer_dataset(llama: Llama, dataset: Dict) -> Dict:
     answers = []
     correct = []
 
-    for example in dataset:
-        article = example['article']
-        question = example['question']
-        options = example['options']
-        true_answer = example['answer']
+    for i in tqdm(range(len(dataset['article']))):
+        article = dataset['article'][i]
+        question = dataset['question'][i]
+        options = dataset['options'][i]
+        true_answer = dataset['answer'][i]
 
         pred_answer = answer_single(llama, article, question, options)
         is_correct = pred_answer == true_answer
@@ -105,18 +106,18 @@ def answer_dataset(llama: Llama, dataset: HfDataset) -> Dict:
 
 def answer_with_permutations(
     llama: Llama,
-    dataset: HfDataset,
+    dataset: Dict,
     num_samples: int | None = None
 ) -> Dict:
     all_answers = []
     all_correct = []
     permutation_answers = []
 
-    for idx, example in enumerate(dataset):
-        article = example['article']
-        question = example['question']
-        options = example['options']
-        true_answer = example['answer']
+    for i in tqdm(range(len(dataset['article']))):
+        article = dataset['article'][i]
+        question = dataset['question'][i]
+        options = dataset['options'][i]
+        true_answer = dataset['answer'][i]
 
         orig_order = list(range(len(options)))
 
