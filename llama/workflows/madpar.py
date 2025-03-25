@@ -39,7 +39,7 @@ def madpar_cached(
 ) -> Dict:
     result = {"debate_tokens": [], "summary_tokens": []}
 
-    [agent_node, debate_node, summary_node] = workflow.insert(
+    [agent_node, debate_node, summary_prompt_node] = workflow.insert(
         [
             {
                 "messages": [{"role": "user", "content": starting_prompt(problem)}],
@@ -86,7 +86,7 @@ def madpar_cached(
                     {
                         "header": ("assistant", None),
                         "prefill": "Summary of agent responses:\n",
-                        "parent_ids": [summary_node["id"]]
+                        "parent_ids": [summary_prompt_node["id"]]
                         + [n["id"] for n in last_round],
                     }
                 ],
