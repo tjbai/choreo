@@ -116,6 +116,7 @@ def madpar_cached(
                 ],
                 temperature=temperature,
                 top_p=top_p,
+                max_gen_len=1024 if (round_idx == num_rounds - 1) else 512,
             )
         )
         for update, context in zip(update_nodes, contexts):
@@ -259,6 +260,7 @@ def madpar_baseline(
                 ],
                 temperature=temperature,
                 top_p=top_p,
+                max_gen_len=1024 if (round_idx == num_rounds - 1) else 512,
             )
         )
         for update, context in zip(update_nodes, contexts):
