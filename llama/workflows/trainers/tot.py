@@ -41,69 +41,74 @@ class TotTrainer(LoraTrainer[TotDataset]):
     def step(self, sample: Dict) -> Tuple[torch.Tensor, Dict]:
         self.workflow.reset()
 
-        cot, vote, finish = self.workflow.insert([
-            {'messages': [
-                {'role': 'system', 'content': cot_prompt},
-                {'role': 'user', 'content': format_problem(sample['problem'])}
-            ], 'parent_ids': []},
-            {'messages': [
-                {'role': 'system', 'content': format_vote_system_prompt(self.branching_factor)},
-                {'role': 'user', 'content': format_problem(sample['problem'])}
-            ], 'parent_ids': []},
-            {'messages': [
-                {'role': 'system', 'content': finish_prompt},
-                {'role': 'user', 'content': format_problem(sample['problem'])}
-            ], 'parent_ids': []},
-        ], track_gradients=True)
+        try:
+            cot, vote, finish = self.workflow.insert([
+                {'messages': [
+                    {'role': 'system', 'content': cot_prompt},
+                    {'role': 'user', 'content': format_problem(sample['problem'])}
+                ], 'parent_ids': []},
+                {'messages': [
+                    {'role': 'system', 'content': format_vote_system_prompt(self.branching_factor)},
+                    {'role': 'user', 'content': format_problem(sample['problem'])}
+                ], 'parent_ids': []},
+                {'messages': [
+                    {'role': 'system', 'content': finish_prompt},
+                    {'role': 'user', 'content': format_problem(sample['problem'])}
+                ], 'parent_ids': []},
+            ], track_gradients=True)
 
-        target_proposal_ids = [p + [self.eot_id] for p in sample['result']['proposal_tokens']]
-        vote_target_ids = [p + [self.eot_id] for p in sample['result']['vote_tokens']]
-        final_target_ids = sample['result']['final_tokens'] + [self.eot_id]
+            target_proposal_ids = [p + [self.eot_id] for p in sample['result']['proposal_tokens']]
+            vote_target_ids = [p + [self.eot_id] for p in sample['result']['vote_tokens']]
+            final_target_ids = sample['result']['final_tokens'] + [self.eot_id]
 
-        # hacky. see above comment.
-        proposal_targets = reorder_targets(target_proposal_ids)
-        vote_targets = reorder_targets(vote_target_ids)
-        final_targets = torch.tensor(final_target_ids, device='cuda')
+            # hacky. see above comment.
+            proposal_targets = reorder_targets(target_proposal_ids)
+            vote_targets = reorder_targets(vote_target_ids)
+            final_targets = torch.tensor(final_target_ids, device='cuda')
 
-        proposal_tasks = [
-            {'header': ('assistant', None),
-                'prefill': f'Solution #{i+1}:\n\n',
-                'parent_ids': [cot['id']]}
-            for i in range(self.branching_factor)
-        ]
-        proposal_nodes, proposal_logits = self.workflow.train_step(proposal_tasks, target_proposal_ids)
+            proposal_tasks = [
+                {'header': ('assistant', None),
+                    'prefill': f'Solution #{i+1}:\n\n',
+                    'parent_ids': [cot['id']]}
+                for i in range(self.branching_factor)
+            ]
+            proposal_nodes, proposal_logits = self.workflow.train_step(proposal_tasks, target_proposal_ids)
 
-        vote_tasks = [
-            {'header': ('assistant', None),
-                'prefill': 'BEST CHOICE: ',
-                'parent_ids': [vote['id']] + [p['id'] for p in proposal_nodes]}
-            for i in range(self.voters)
-        ]
-        _, vote_logits = self.workflow.train_step(vote_tasks, vote_target_ids)
+            vote_tasks = [
+                {'header': ('assistant', None),
+                    'prefill': 'BEST CHOICE: ',
+                    'parent_ids': [vote['id']] + [p['id'] for p in proposal_nodes]}
+                for i in range(self.voters)
+            ]
+            _, vote_logits = self.workflow.train_step(vote_tasks, vote_target_ids)
 
-        votes = [v for v in sample['result']['votes'] if v is not None]
-        best = Counter(votes).most_common(1)[0][0]
-        final_task = {
-            'header': ('assistant', None),
-            'prefill': None,
-            'parent_ids': [finish['id'], proposal_nodes[best - 1]['id']]
-        }
-        _, final_logits = self.workflow.train_step([final_task], [final_target_ids])
+            votes = [v for v in sample['result']['votes'] if v is not None]
+            best = Counter(votes).most_common(1)[0][0]
+            final_task = {
+                'header': ('assistant', None),
+                'prefill': None,
+                'parent_ids': [finish['id'], proposal_nodes[best - 1]['id']]
+            }
+            _, final_logits = self.workflow.train_step([final_task], [final_target_ids])
 
-        proposal_loss = F.cross_entropy(proposal_logits.squeeze(0), proposal_targets)
-        vote_loss = F.cross_entropy(vote_logits.squeeze(0), vote_targets)
-        final_loss = F.cross_entropy(final_logits.squeeze(0), final_targets)
+            proposal_loss = F.cross_entropy(proposal_logits.squeeze(0), proposal_targets)
+            vote_loss = F.cross_entropy(vote_logits.squeeze(0), vote_targets)
+            final_loss = F.cross_entropy(final_logits.squeeze(0), final_targets)
 
-        total_loss = proposal_loss + vote_loss + final_loss
+            total_loss = proposal_loss + vote_loss + final_loss
 
-        metrics = {
-            'train/proposal_ppl': torch.exp(proposal_loss),
-            'train/vote_ppl': torch.exp(vote_loss),
-            'train/final_ppl': torch.exp(final_loss),
-            'train/nll_loss': total_loss,
-        }
+            metrics = {
+                'train/proposal_ppl': torch.exp(proposal_loss),
+                'train/vote_ppl': torch.exp(vote_loss),
+                'train/final_ppl': torch.exp(final_loss),
+                'train/nll_loss': total_loss,
+            }
 
-        return total_loss, metrics
+            return total_loss, metrics
+        except Exception as e:
+            if 'cuda out of memory' in e.lower():
+                return None
+            raise e
 
     @torch.no_grad
     def evaluate(
