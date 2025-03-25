@@ -107,11 +107,17 @@ def answer_dataset(llama: Llama, dataset: Dict) -> Dict:
 def answer_with_permutations(
     llama: Llama,
     dataset: Dict,
-    num_samples: int | None = None
+    num_samples: int | None = None,
+    batch_size: int | None = None
 ) -> Dict:
     all_answers = []
     all_correct = []
     permutation_answers = []
+
+    if not batch_size and num_samples:
+        batch_size = num_samples
+    elif not batch_size:
+        batch_size = 24
 
     for i in tqdm(range(len(dataset['article']))):
         article = dataset['article'][i]
@@ -125,24 +131,54 @@ def answer_with_permutations(
         if num_samples and num_samples < len(all_perms):
             np.random.seed(42)
             perm_subset = np.random.choice(len(all_perms), size=num_samples, replace=False)
-            selected_perms = [all_perms[i] for i in perm_subset]
+            selected_perms = [all_perms[j] for j in perm_subset]
         else:
             selected_perms = all_perms
 
         preds = []
-        for perm in selected_perms:
-            pred_letter = answer_single(llama, article, question, options, perm)
+        for batch_start in range(0, len(selected_perms), batch_size):
+            batch_end = min(batch_start + batch_size, len(selected_perms))
+            batch_perms = selected_perms[batch_start:batch_end]
 
-            if pred_letter:
-                letter_idx = ord(pred_letter) - ord('A')
-                if 0 <= letter_idx < len(perm):
-                    orig_idx = perm[letter_idx]
-                    orig_letter = chr(orig_idx + ord('A'))
-                    preds.append(orig_letter)
+            dialogs = []
+            for perm in batch_perms:
+                reordered_options = [options[j] for j in perm]
+
+                system_prompt = "You are solving a multiple-choice question based on a reading passage. Answer with just a single letter (A, B, C, or D)."
+
+                prompt = f"Article: {article}\n\nQuestion: {question}\n\nOptions:\n"
+                for j, option in enumerate(reordered_options):
+                    prompt += f"{chr(65 + j)}. {option}\n"
+                prompt += "\nGive your answer as a single letter (A, B, C, or D):"
+
+                dialog = [
+                    {"role": "system", "content": system_prompt},
+                    {"role": "user", "content": prompt}
+                ]
+                dialogs.append(dialog)
+
+            batch_predictions = llama.chat_completion(dialogs, temperature=0.0, seed=42)
+
+            for k, prediction in enumerate(batch_predictions):
+                perm = batch_perms[k]
+                pred_text = prediction.generation.content.strip()
+                pred_letter = None
+
+                for char in pred_text:
+                    if char in "ABCD":
+                        pred_letter = char
+                        break
+
+                if pred_letter:
+                    letter_idx = ord(pred_letter) - ord('A')
+                    if 0 <= letter_idx < len(perm):
+                        orig_idx = perm[letter_idx]
+                        orig_letter = chr(orig_idx + ord('A'))
+                        preds.append(orig_letter)
+                    else:
+                        preds.append(None)
                 else:
                     preds.append(None)
-            else:
-                preds.append(None)
 
         valid_preds = [p for p in preds if p]
         if valid_preds:
