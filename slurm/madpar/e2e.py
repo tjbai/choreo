@@ -41,14 +41,15 @@ for i, problem in enumerate(tqdm(problems)):
         'inputs': {'problem': problem['problem']},
         'outputs': outputs,
     })
-
     if (i+1) % 10 == 0:
         with open('/home/tbai4/llama3/dumps/madpar/math_baseline_e2e.json', 'w') as f:
             json.dump(samples, f)
+with open('/home/tbai4/llama3/dumps/madpar/math_baseline_e2e.json', 'w') as f:
+    json.dump(samples, f)
 
 # MADpar cached on MATH
 samples = []
-for problem in tqdm(problems):
+for i, problem in enumerate(tqdm(problems)):
     workflow.reset()
     outputs = madpar_cached(
         workflow=workflow,
@@ -61,6 +62,8 @@ for problem in tqdm(problems):
         'inputs': {'problem': problem['problem']},
         'outputs': outputs,
     })
-
+    if (i+1) % 10 == 0:
+        with open('/home/tbai4/llama3/dumps/madpar/math_cached_e2e.json', 'w') as f:
+            json.dump(samples, f)
 with open('/home/tbai4/llama3/dumps/madpar/math_cached_e2e.json', 'w') as f:
     json.dump(samples, f)
