@@ -624,3 +624,18 @@ Test set ToT not looking so great...
 | Baseline                    | 71.8% ± 3.9% | 74.8% ± 3.8% |
 | Choreographed + Fine-tuning | 69.0% ± 4.1% | 72.8% ± 3.9% |
 
+
+## 3/24: b3edc6a2204d03ecf13602d9fe2ea4615c93794d
+
+RACE Dataset, n=500:
+  No shuffling: 0.81
+
+  Averaging permutations:
+    4 permutations: 0.828
+    24 permutations: 0.822
+
+  Averaging:
+    4 samples: n/a
+    24 samples: n/a
+
+Discovered arXiv:2407.01100 (bi-directional attention between documents and importance score ordering), which is training-free??? They also destroy PCW. The only angle here is to show that with fine-tuning, the choreographed workflow is more efficient at inference-time.

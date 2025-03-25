@@ -108,16 +108,17 @@ def answer_with_permutations(
     llama: Llama,
     dataset: Dict,
     num_samples: int | None = None,
-    batch_size: int | None = None
+    batch_size: int | None = None,
+    use_orig_order_only: bool = False  # New flag
 ) -> Dict:
     all_answers = []
     all_correct = []
     permutation_answers = []
 
-    if not batch_size and num_samples:
+    if not num_samples:
+        num_samples = 24
+    if not batch_size:
         batch_size = num_samples
-    elif not batch_size:
-        batch_size = 24
 
     for i in tqdm(range(len(dataset['article']))):
         article = dataset['article'][i]
@@ -127,13 +128,16 @@ def answer_with_permutations(
 
         orig_order = list(range(len(options)))
 
-        all_perms = list(permutations(orig_order))
-        if num_samples and num_samples < len(all_perms):
-            np.random.seed(42)
-            perm_subset = np.random.choice(len(all_perms), size=num_samples, replace=False)
-            selected_perms = [all_perms[j] for j in perm_subset]
+        if use_orig_order_only:
+            selected_perms = [orig_order] * num_samples
         else:
-            selected_perms = all_perms
+            all_perms = list(permutations(orig_order))
+            if num_samples and num_samples < len(all_perms):
+                np.random.seed(42)
+                perm_subset = np.random.choice(len(all_perms), size=num_samples, replace=False)
+                selected_perms = [all_perms[j] for j in perm_subset]
+            else:
+                selected_perms = all_perms
 
         preds = []
         for batch_start in range(0, len(selected_perms), batch_size):
@@ -161,7 +165,7 @@ def answer_with_permutations(
 
             for k, prediction in enumerate(batch_predictions):
                 perm = batch_perms[k]
-                pred_text = prediction.generation.content.strip()
+                pred_text = prediction['generation']['content'].strip()
                 pred_letter = None
 
                 for char in pred_text:
@@ -170,13 +174,16 @@ def answer_with_permutations(
                         break
 
                 if pred_letter:
-                    letter_idx = ord(pred_letter) - ord('A')
-                    if 0 <= letter_idx < len(perm):
-                        orig_idx = perm[letter_idx]
-                        orig_letter = chr(orig_idx + ord('A'))
-                        preds.append(orig_letter)
+                    if use_orig_order_only:
+                        preds.append(pred_letter)
                     else:
-                        preds.append(None)
+                        letter_idx = ord(pred_letter) - ord('A')
+                        if 0 <= letter_idx < len(perm):
+                            orig_idx = perm[letter_idx]
+                            orig_letter = chr(orig_idx + ord('A'))
+                            preds.append(orig_letter)
+                        else:
+                            preds.append(None)
                 else:
                     preds.append(None)
 
