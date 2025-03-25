@@ -7,7 +7,15 @@ import torch
 import torch.nn.functional as F
 
 from llama.workflows.trainers.base import LoraTrainer, ListDataset, reorder_targets
-from llama.workflows.madpar import starting_prompt, debate_prompt, summary_prompt
+from llama.workflows.tot import load_math_problems
+from llama.workflows.madpar import (
+    starting_prompt,
+    debate_prompt,
+    summary_prompt,
+    madpar_cached,
+    eval_debate_solutions,
+    parse_output
+)
 
 class MadparTrainer(LoraTrainer[ListDataset]):
     def step(self, sample: Dict, debug=False):
@@ -143,8 +151,46 @@ class MadparTrainer(LoraTrainer[ListDataset]):
         max_steps: Optional[int] = None,
         max_e2e: int = 20,
     ):
-        for _ in tqdm(val_dataset):
-            continue
+        self.workflow.model.eval()
 
-        for _ in tqdm(max_steps):
-            continue
+        losses = []
+        for step, sample in enumerate(tqdm(val_dataset)):
+            if max_steps and step >= max_steps:
+                break
+            loss, metrics = self.step(sample)
+            losses.append(metrics['train/total_loss'])
+
+        outputs = []
+        for step, sample in enumerate(tqdm(val_dataset)):
+            if max_e2e and step >= max_e2e:
+                break
+            outputs.append(madpar_cached(
+                self.workflow,
+                problem=sample['inputs']['problem'],
+            ))
+
+        self.llama.model.reshape_cache(4)
+        self.llama.model.set_adapter_state(enabled=False)
+        problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='train')
+        p2s = {d['problem']: d['solution'] for d in problems}
+        try:
+            correct = eval_debate_solutions(
+                self.llama,
+                agent_solutions=[
+                    [parse_output(a) for a in d['debate_tokens'][-1]]
+                    for d in outputs
+                ],
+                problems=[{
+                    'problem': sample['inputs']['problem'],
+                    'solution': p2s[sample['inputs']['problem']]
+                } for sample in val_dataset]
+            )
+        finally:
+            self.llama.model.set_adapter_state(enabled=True)
+            self.llama.model.reshape_cache(1)
+
+        self.workflow.model.train()
+        return {
+            'val/total_loss': sum(losses) / len(losses),
+            'val/correct': sum(correct) / len(correct)
+        }

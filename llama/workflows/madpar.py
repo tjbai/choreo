@@ -1,17 +1,33 @@
 import re
-from typing import Dict
+from typing import Dict, List
 from operator import itemgetter as get
-from llama import Workflow
+from tqdm import tqdm
+from llama import Workflow, Llama
 
 def parse_output(resp: str):
-    match = re.search(r"\\boxed{([^}]+)}", resp)
-    if not match:
-        match = re.search(r"\boxed{([^}]+)}", resp)
-    if not match:
-        match = re.search(r"boxed{([^}]+)}", resp)
-    if not match:
-        match = re.search(r"(?:answer is|answer:)\s*(\d+(?:\.\d+)?)", resp.lower())
-    return match.group(1).strip() if match else None
+    def extract_boxed(text, pattern):
+        match = re.search(pattern, text)
+        if not match:
+            return None
+
+        start_pos = match.end()
+        brace_count = 1
+        for i in range(start_pos, len(text)):
+            if text[i] == '{':
+                brace_count += 1
+            elif text[i] == '}':
+                brace_count -= 1
+                if brace_count == 0:
+                    return text[start_pos:i]
+        return None
+
+    for pattern in [r"\\boxed\{", r"\boxed\{", r"boxed\{"]:
+        content = extract_boxed(resp, pattern)
+        if content:
+            return content.strip()
+
+    match = re.search(r"(?:answer is|answer:)\s*(\d+(?:\.\d+)?(?:/\d+)?)", resp.lower())
+    return match.group(1).strip() if match else None)
 
 def starting_prompt(problem):
     return f"""Can you solve the following math problem? {problem}
@@ -278,3 +294,51 @@ def madpar_baseline(
         for resp in result["debate_tokens"][-1]
     ]
     return result | {"final_answers": final_answers}
+
+debate_evaluator_prompt = '''
+You are a strict evaluator for mathematics problems. You will assess:
+1. Problem statement
+2. Official solution
+3. Three attempted solutions from different agents
+
+Evaluation criteria:
+- Final answers must be mathematically equivalent to the official solution
+- All valid equivalent expressions are correct (e.g., 1/2 vs 0.5 vs 2^-1)
+- For a solution to be accepted, there must be consensus (at least 2/3 agents giving correct answers)
+- If any answer is missing, evaluate only the provided answers, still requiring a majority to be correct
+
+Output: Respond with ONLY "correct" if at least 2 agents gave a correct answer, otherwise "incorrect".
+'''
+
+def eval_debate_solutions(
+    llama: Llama,
+    agent_solutions: List[List[str]],
+    problems: List[Dict]
+) -> List[bool]:
+    results = []
+    for agent_answers, prob in tqdm(zip(agent_solutions, problems), total=len(problems)):
+        formatted_answers = "\n\n".join([
+            f"Agent {i+1}'s answer: {ans if ans is not None else 'No answer provided'}"
+            for i, ans in enumerate(agent_answers)
+        ])
+
+        dialog = [{
+            'role': 'system',
+            'content': debate_evaluator_prompt
+        }, {
+            'role': 'user',
+            'content': f"PROBLEM:\n{prob['problem']}\n\nGROUND TRUTH:\n{prob['solution']}\n\nAGENT ANSWERS:\n{formatted_answers}"
+        }]
+
+        outputs = llama.chat_completion(
+            [dialog] * 3,
+            max_gen_len=256,
+            temperature=0.25,
+            top_p=0.9,
+            seed=42
+        )
+
+        incorrect_votes = sum(1 for o in outputs if 'incorrect' in o['generation']['content'].lower())
+        results.append(incorrect_votes <= 1)
+
+    return results
