@@ -24,7 +24,7 @@ workflow = Workflow.build(
 llama = Llama(workflow.model, workflow.tokenizer)
 
 # MATH dataset
-problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='train')[:500]
+problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
 
 # MADpar baseline on MATH
 samples = []
@@ -42,9 +42,9 @@ for i, problem in enumerate(tqdm(problems)):
         'outputs': outputs,
     })
     if (i+1) % 10 == 0:
-        with open('/home/tbai4/llama3/dumps/madpar/math_baseline_e2e.json', 'w') as f:
+        with open('/home/tbai4/llama3/dumps/madpar/math_baseline_preft.json', 'w') as f:
             json.dump(samples, f)
-with open('/home/tbai4/llama3/dumps/madpar/math_baseline_e2e.json', 'w') as f:
+with open('/home/tbai4/llama3/dumps/madpar/math_baseline_preft.json', 'w') as f:
     json.dump(samples, f)
 
 # MADpar cached on MATH
@@ -63,7 +63,7 @@ for i, problem in enumerate(tqdm(problems)):
         'outputs': outputs,
     })
     if (i+1) % 10 == 0:
-        with open('/home/tbai4/llama3/dumps/madpar/math_cached_e2e.json', 'w') as f:
+        with open('/home/tbai4/llama3/dumps/madpar/math_cached_preft.json', 'w') as f:
             json.dump(samples, f)
-with open('/home/tbai4/llama3/dumps/madpar/math_cached_e2e.json', 'w') as f:
+with open('/home/tbai4/llama3/dumps/madpar/math_cached_preft.json', 'w') as f:
     json.dump(samples, f)
