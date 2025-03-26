@@ -128,6 +128,11 @@ All evaluation so far is on the MATH dataset. We generate a training dataset of 
 | MAD Baseline      | 94/280  | 33.6% ± 6.2% |
 | MAD Before        | 57/280  | 20.4% ± 5.4% |
 | MAD After         | 99/240  | 41.3% ± 7.0% |
+|                   |         |              |
+| MADpar Baseline   | 176/280 | 62.9% ± 5.7% |
+| MADpar Before     | 153/280 | 54.6% ± 5.8% |
+| MADpar After      |         |              |
+
 *This is very low but there's nothing funny going on!
 The MAD final outputs have a domain-specific format.
 I tried fine-tuning both on the full output and just
