@@ -164,6 +164,7 @@ class MadparTrainer(LoraTrainer[ListDataset]):
         for step, sample in enumerate(tqdm(val_dataset)):
             if max_e2e and step >= max_e2e:
                 break
+            self.workflow.reset()
             outputs.append(madpar_cached(
                 self.workflow,
                 problem=sample['inputs']['problem'],

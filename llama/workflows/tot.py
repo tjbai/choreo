@@ -1052,6 +1052,10 @@ def load_math_problems(
                 problem = json.load(f)
                 problems.append(problem)
 
+    if split == 'test':
+        random.seed(42)
+        random.shuffle(problems)
+
     return problems
 
 def sweep_tot(
