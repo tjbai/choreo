@@ -79,14 +79,12 @@ We evaluate along 2 dimensions:
 1. Coverage (%), the percentage of concepts that are successfully integrated into the final story. This is evaluated just by checking for string overlap.
 2. Coherence, evaluated by head-to-head comparisons between the final stories as evaluated by GPT-4o. Stories are presented in both permutations, AB and BA, so a winner is only declared if the LLM judge prefers it in both.
 
-```
-| Implementation                | Avg Coverage | Group 1 | Group 2 |
-|-------------------------------|--------------|---------|---------|
-| Baseline                      | 81.00%       | 87.58%  | 82.44%  |
-| Choreographed                 | 62.95%       | 67.42%  | 64.96%  |
-| Choreographed + Linearization | 65.09%       | 80.52%  | 52.97%  |
-| Choreographed + Fine-tuning   | 81.55%       | 85.64%  | 85.34%  |
-```
+| Implementation                | Avg Coverage         | Group1               | Group 2              |
+|-------------------------------|----------------------|----------------------|----------------------|
+| Baseline                      | 81.00 ± 1.99         | 87.58 ± 2.36         | 82.44 ± 2.72         |
+| Choreographed                 | 62.95 ± 2.44         | 67.42 ± 3.35         | 64.96 ± 3.41         |
+| Choreographed + Linearization | 65.09 ± 2.41         | 80.52 ± 2.83         | 52.97 ± 3.57         |
+| Choreographed + Fine-tuning   | 81.55 ± 1.96         | 85.64 ± 2.51         | 85.34 ± 2.53         |
 
 We evaluate with 2 branches and 30 concepts. The baseline implementation constructs a new prompt that encodes the 2 sub-stories serially, while the choreographed implementation directly attends over the outputs of the solve step. We also evaluate with linearization, where the 2 sub-stories are rotated to no longer overlap, which yields a small increase in performance and reveals substantial positional bias. Finally, we generate a dataset with 100 example stories and fine-tune for 4 epochs.
 
