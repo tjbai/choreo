@@ -27,7 +27,7 @@ def parse_output(resp: str):
             return content.strip()
 
     match = re.search(r"(?:answer is|answer:)\s*(\d+(?:\.\d+)?(?:/\d+)?)", resp.lower())
-    return match.group(1).strip() if match else None)
+    return match.group(1).strip() if match else None
 
 def starting_prompt(problem):
     return f"""Can you solve the following math problem? {problem}

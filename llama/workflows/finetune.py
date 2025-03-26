@@ -16,13 +16,14 @@ from llama.workflows.trainers import (
     LoraTrainer,
     ListDataset,
     MadTrainer,
+    MadparTrainer,
     BsmTrainer,
     PrisonersTrainer,
     PrisonersDataset,
     QaTrainer,
     TotTrainer,
     TotDataset,
-    DirectTrainer
+    DirectTrainer,
 )
 
 def get_lr_factor(step, warmup_steps=10, total_steps=100):
@@ -85,6 +86,31 @@ def init_task(
         print(f'Filtered to {len(dataset)}')
         wandb.init(
             project='mad',
+            config={
+                "lora_rank": lora_rank,
+                "lora_alpha": lora_alpha,
+                "lora_dropout": lora_dropout,
+                "learning_rate": learning_rate,
+            }
+        )
+        return trainer, dataset
+    if task == 'madpar':
+        trainer =  MadparTrainer(
+            workflow,
+            output_dir=output_dir,
+            learning_rate=learning_rate,
+        )
+        dataset = ListDataset(data_path)
+        dataset = Subset(
+            dataset=dataset,
+            indices=[
+                i for i, d in enumerate(dataset)
+                if sum(a is None for a in d['outputs']['final_answers']) <= 1
+            ]
+        )
+        print(f'Filtered to {len(dataset)}')
+        wandb.init(
+            project='madpar',
             config={
                 "lora_rank": lora_rank,
                 "lora_alpha": lora_alpha,

@@ -5,3 +5,4 @@ from .prisoners import PrisonersTrainer, PrisonersDataset
 from .qa import QaTrainer
 from .tot import TotTrainer, TotDataset
 from .direct import DirectTrainer
+from .madpar import MadparTrainer

@@ -177,7 +177,7 @@ class MadparTrainer(LoraTrainer[ListDataset]):
             correct = eval_debate_solutions(
                 self.llama,
                 agent_solutions=[
-                    [parse_output(a) for a in d['debate_tokens'][-1]]
+                    [parse_output(self.llama.tokenizer.decode(a)) for a in d['debate_tokens'][-1]]
                     for d in outputs
                 ],
                 problems=[{
