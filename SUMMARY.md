@@ -62,6 +62,14 @@ As a simple example, blockage can create problems even if you split the prompt i
 | Parallel                 | 41 | 27 |
 | Parallel + Linearization | 2  | 69 |
 | Parallel + Fine-tuning   | 71 | 81 |
+
+Larger sample size:
+| Model                    | Q1             | Q2             | Both           |
+|--------------------------|----------------|----------------|----------------|
+| baseline                 | 71.8 ± 3.9     | 74.8 ± 3.8     | 56.4 ± 4.3     |
+| choreographed            | 32.8 ± 4.1     | 26.2 ± 3.9     | 0.4 ± 0.5      |
+| choreographed+linearized | 2.0 ± 1.2      | 61.0 ± 4.3     | 0.4 ± 0.5      |
+| choreographed+finetuned  | 67.4 ± 4.1     | 71.2 ± 4.0     | 48.8 ± 4.4     |
 ```
 
 As an admittedly contrived example, consider prompting an LLM to answer 2 questions at once in a standard QA setting. When these 2 questions appear serially in the prompt, with the correct attention pattern, the LLM answers both with relatively high success. But, when the questions are encoded _separately_ without attention over one another, the LLM only manages to answer one or the other (seemingly uniformly at random). If we linearize the questions, the question that appears later in the context is unilaterally answered, while the other is left behind. Meanwhile, we can recover the correct behavior with fine-tuning on just 200 examples.
@@ -120,7 +128,6 @@ All evaluation so far is on the MATH dataset. We generate a training dataset of 
 | MAD Baseline      | 94/280  | 33.6% ± 6.2% |
 | MAD Before        | 57/280  | 20.4% ± 5.4% |
 | MAD After         | 99/240  | 41.3% ± 7.0% |
-
 *This is very low but there's nothing funny going on!
 The MAD final outputs have a domain-specific format.
 I tried fine-tuning both on the full output and just

@@ -639,3 +639,14 @@ RACE Dataset, n=500:
     24 samples: n/a
 
 Discovered arXiv:2407.01100 (bi-directional attention between documents and importance score ordering), which is training-free??? They also destroy PCW. The only angle here is to show that with fine-tuning, the choreographed workflow is more efficient at inference-time.
+
+## 3/26: a0a6668a66d312a69ef2b6f7e00d469c8d14e552
+
+Evaluate "BOTH" for multiQA on n=500:
+
+| Model                    | Q1             | Q2             | Both           |
+|--------------------------|----------------|----------------|----------------|
+| baseline                 | 71.8 ± 3.9     | 74.8 ± 3.8     | 56.4 ± 4.3     |
+| choreographed            | 32.8 ± 4.1     | 26.2 ± 3.9     | 0.4 ± 0.5      |
+| choreographed+linearized | 2.0 ± 1.2      | 61.0 ± 4.3     | 0.4 ± 0.5      |
+| choreographed+finetuned  | 67.4 ± 4.1     | 71.2 ± 4.0     | 48.8 ± 4.4     |
