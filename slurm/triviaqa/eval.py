@@ -8,7 +8,7 @@ from llama import Workflow, Llama
 from llama.util import find_free_port, load_ckpt
 from llama.workflows.qa import ask_sequential, ask_parallel, eval_system_prompt, parse_items, format_eval_user
 
-N = 1500
+N = 500
 DATA_PATH = '/home/tbai4/llama3/data/triviaqa/unfiltered-web-dev.json'
 CKPT_PATH = '/scratch4/jeisner1/tjbai/checkpoints/triviaqa/lora_step-199.pt'
 
@@ -64,6 +64,7 @@ workflow.model.set_adapter_state(enabled=False)
 for setting in ['baseline', 'choreographed+finetuned']:
     first_correct = 0
     second_correct = 0
+    both = 0
     for subset, answer in tqdm(answers[setting]):
         items = parse_items(answer)
         if len(items) == 2:
@@ -75,11 +76,14 @@ for setting in ['baseline', 'choreographed+finetuned']:
             ], content_prefills=['{"correct": "'] * 2)
             first_correct += 'true' in resps[0]['generation']['content'].lower()
             second_correct += 'true' in resps[1]['generation']['content'].lower()
-    print(setting, first_correct, second_correct)
+            if 'true' in resps[0]['generation']['content'].lower() and 'true' in resps[1]['generation']['content'].lower():
+                both += 1
+    print(setting, first_correct, second_correct, both)
 
 for setting in ['choreographed', 'choreographed+linearized']:
     first_correct = 0
     second_correct = 0
+    both = 0
     for subset, answer in tqdm(answers[setting]):
         items = parse_items(answer)
         if len(items) == 2:
@@ -91,6 +95,8 @@ for setting in ['choreographed', 'choreographed+linearized']:
             ], content_prefills=['{"correct": "'] * 2)
             first_correct += 'true' in resps[0]['generation']['content'].lower()
             second_correct += 'true' in resps[1]['generation']['content'].lower()
+            if 'true' in resps[0]['generation']['content'].lower() and 'true' in resps[1]['generation']['content'].lower():
+                both += 1
         elif len(items) == 1:
             resps = llama.chat_completion([
                 [{'role': 'system', 'content': eval_system_prompt},
@@ -100,4 +106,4 @@ for setting in ['choreographed', 'choreographed+linearized']:
             ], content_prefills=['{"correct": "'] * 2)
             first_correct += 'true' in resps[0]['generation']['content'].lower()
             second_correct += 'true' in resps[1]['generation']['content'].lower()
-    print(setting, first_correct, second_correct)
+    print(setting, first_correct, second_correct, both)
