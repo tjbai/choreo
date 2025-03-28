@@ -30,7 +30,6 @@ with open('dumps/simple/from_tot.json', 'w') as f:
     json.dump(samples, f)
 
 # %%
-# create direct fine-tuning dataset
 import json
 from llama.workflows.tot import load_math_problems
 from llama.tokenizer import Tokenizer
@@ -52,4 +51,27 @@ for problem, sample in zip(problems, data):
     })
 
 with open('dumps/simple/from_mad.json', 'w') as f:
+    json.dump(samples, f)
+
+# %%
+import json
+from llama.workflows.tot import load_math_problems
+from llama.tokenizer import Tokenizer
+tokenizer = Tokenizer('model/tokenizer.model')
+
+problems = load_math_problems('data/MATH', split='train')
+p2s = {p['problem']: p['solution'] for p in problems}
+
+with open('dumps/madpar/math_baseline_e2e.json') as f:
+    data = json.load(f)
+
+samples = []
+for problem, d in zip(problems, data):
+    for answer in d['outputs']['debate_tokens'][-1]:
+        samples.append({
+            'inputs': {'problem': problem['problem'], 'solution': p2s[problem['problem']]},
+            'outputs': {'solution': tokenizer.decode(answer)}
+        })
+
+with open('dumps/simple/from_madpar.json', 'w') as f:
     json.dump(samples, f)
