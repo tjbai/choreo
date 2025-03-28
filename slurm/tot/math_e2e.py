@@ -3,7 +3,7 @@ import json
 import torch
 from tqdm import tqdm
 from llama import Workflow, Llama
-from llama.util import find_free_port
+from llama.util import find_free_port, load_ckpt
 from llama.workflows.tot import eval_solutions, load_math_problems, tot_cached
 
 os.environ["RANK"] = "0"
@@ -27,12 +27,14 @@ workflow.model.eval()
 problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='test')[:500]
 
 for ckpt_path in [
-   "lora_epoch-0_step-395.pt",
-   "lora_epoch-0_step-795.pt",
-   "lora_epoch-1_step-295.pt",
+   # "lora_step-99.pt",
+   # "lora_step-199.pt",
+   "lora_step-299.pt",
+   # "lora_step-399.pt",
+   # "lora_step-499.pt",
+   # "lora_step-599.pt",
 ]:
-    ckpt = torch.load(f'/scratch4/jeisner1/tjbai/checkpoints/tot_3/{ckpt_path}', weights_only=True)
-    workflow.model.load_state_dict(ckpt['lora'])
+    load_ckpt(workflow, f'/scratch4/jeisner1/tjbai/checkpoints/tot/math/{ckpt_path}')
     workflow.model.eval()
     workflow.model.reshape_cache(1)
     workflow.model.set_adapter_state(enabled=True)
@@ -47,8 +49,8 @@ for ckpt_path in [
             voters=4,
         ))
 
-    with open(f'/home/tbai4/llama3/dumps/tot/tot_b8v4/{ckpt_path}_e2e_test.json', 'w') as f:
-        json.dump(solutions, f)
+    # with open(f'/home/tbai4/llama3/dumps/tot/tot_b8v4/{ckpt_path}_e2e_test.json', 'w') as f:
+    #     json.dump(solutions, f)
 
     llama = Llama(workflow.model, workflow.tokenizer)
     llama.model.reshape_cache(4)

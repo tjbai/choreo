@@ -12,7 +12,7 @@ os.environ["WORLD_SIZE"] = "1"
 os.environ["MASTER_ADDR"] = "localhost"
 os.environ["MASTER_PORT"] = str(find_free_port())
 
-output_path = '/home/tbai4/llama3/dumps/mad/postft_eval.json'
+output_path = '/home/tbai4/llama3/dumps/mad/postft_eval_test.json'
 
 existing_samples = []
 if os.path.exists(output_path):
@@ -36,10 +36,10 @@ workflow = Workflow.build(
     lora_alpha=32,
     lora_dropout=0.05
 )
-load_ckpt(workflow, '/scratch4/jeisner1/tjbai/checkpoints/mad/lora_step-2249.pt')
+load_ckpt(workflow, '/scratch4/jeisner1/tjbai/checkpoints/mad/math/lora_step-2249.pt')
 workflow.model.eval()
 
-problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
+problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='test')[:500]
 
 processed_problems = {sample['inputs']['problem'] for sample in existing_samples}
 samples = existing_samples
