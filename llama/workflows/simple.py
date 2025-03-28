@@ -12,7 +12,7 @@ def math_direct(
     seed: int = 42,
     debug: bool = False,
 ):
-    solve_prompt = f'Solve this math problem. Just output the final answer without explanations or workings:\n\n{problem}'
+    solve_prompt = f'Solve this math problem:\n\n{problem}'
 
     [sys] = workflow.insert([{'messages': [{'role': 'user', 'content': solve_prompt}], 'parent_ids': []}])
 
