@@ -559,16 +559,16 @@ MATH Summary:
     + ToT fine-tuning:          53/280
     + MAD fine-tuning:          5/280
 
-  ToT Baseline:     116/280 (247/500 on test set)
+  ToT Baseline:     116/280
   ToT Before:       88/280
-  ToT After:        111/280
+  ToT After:        111/280 (207/500 on test set)
 
-  MAD Baseline:     94/280 (194/500 on train set)
+  MAD Baseline:     94/280
   MAD Before:       57/280
   MAD After:        99/240
 
-  MADpar Baseline:  176/280
-  MADpar Before:    153/280
+  MADpar Baseline:  176/280 (323/500 on test set)
+  MADpar Before:    153/280 (188/360 on test set)
   MADpar After:
 
 ## 3/20: 1db73ab813fb3a8faf2327643672b638d6da09b1
@@ -596,7 +596,7 @@ Choreographed + Fine-tuned:
 | Always Cooperate | 98%                    | 84%                     | 92%     | 20%       | 4%       |
 | Always Defect    | 1%                     | 60%                     | 41%     | 14%       | 23%      |
 
-Accuracy doesn't change much between baseline and choreographed versions... except in the always defect setting. We see that in both choreographed implementations, Bob can better predict Alice's strategy, but the choreographed version learns to be _less_ exploitative and _less_ defensive than the untrained version.
+implementations, Bob can better predict Alice's strategy, but the choreographed version learns to be _less_ exploitative and _less_ defensive than the untrained version.
 
 ## 3/20: f89004b93b9b2f3cab71d684114477b8daf8eab9
 

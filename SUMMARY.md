@@ -123,14 +123,14 @@ All evaluation so far is on the MATH dataset. We generate a training dataset of 
 |                   |         |              |
 | ToT Baseline      | 116/280 | 41.4% ± 6.5% |
 | ToT Before        | 88/280  | 31.4% ± 6.2% |
-| ToT After         | 111/280 | 39.6% ± 6.5% |
+| ToT After         | 207/500 | 41.4% ± 4.3% |
 |                   |         |              |
 | MAD Baseline      | 94/280  | 33.6% ± 6.2% |
 | MAD Before        | 57/280  | 20.4% ± 5.4% |
 | MAD After         | 99/240  | 41.3% ± 7.0% |
 |                   |         |              |
-| MADpar Baseline   | 176/280 | 62.9% ± 5.7% |
-| MADpar Before     | 153/280 | 54.6% ± 5.8% |
+| MADpar Baseline   | 323/500 | 64.6% ± 4.2% |
+| MADpar Before     | 188/360 | 52.2% ± 5.2% |
 | MADpar After      |         |              |
 
 *This is very low but there's nothing funny going on!
@@ -143,10 +143,107 @@ on the final answer provided.
 
 ## Performance
 
-1. Throughput (TPS)
 
 2. Latency (End-to-end wall clock time, where both workflows generate the same number of tokens via teacher-forcing.)
 
 3. Peak memory consumption
 
 **TODO TODO TODO**
+
+## Snippets
+
+### Tree of Thoughts
+
+```python
+# prefill initial prompts
+prompts = {...}
+
+# generate candidates
+candidate_tasks = [{
+    'prefill': 'Assistant:',
+    'parents': [
+        prompts['question'],
+        prompts['answer']
+    ]
+} for _ in range(CANDIDATES)]
+candidates = decode(candidate_tasks)
+
+# get votes
+vote_tasks = [{
+    'prefill': 'Assistant:',
+    'parents': [prompts['vote']] + candidates
+} for _ in range(VOTERS)]
+votes = decode(vote_tasks)
+
+# select & finalize
+best_i = parse_best(votes)
+final = decode(
+    prefill='Assistant:',
+    parents=[
+        prompts['final_prompt'],
+        candidates[best_i]
+    ]
+)
+```
+
+### Multi-agent debate (Iterative)
+
+```python
+# prefill initial prompts
+prompts = {...}
+
+prev = []
+for _ in range(ROUNDS):
+    # affirmative
+    aff = decode(
+        prefill='Affirmative Debater:',
+        parents=[prompts['aff']] + prev
+    )
+    prev.append(aff)
+
+    # negative
+    neg = decode(
+        prefill='Negative Debater:',
+        parents=[prompts['neg']] + prev
+    )
+    prev.append(neg)
+
+    # moderator
+    mod = decode(
+        prefill='Moderator:',
+        parents=[prompts['mod']] + prev
+    )
+
+    # early stop?
+    if parse_stop(mod):
+        break
+```
+
+### Multi-agent debate (Parallel)
+
+```python
+# prefill initial prompts
+prompts = {...}
+
+prev = []
+for _ in range(ROUNDS):
+    tasks = []
+    for i in range(AGENTS):
+        # get everyone else's answer
+        others = [
+            p for j, p in
+            enumerate(prev) if i != j
+        ]
+
+        # create new prompt
+        tasks.append({
+            'prefill': f'Agent #{i}',
+            'parents': [
+                prompt['question'],
+                prompt['update_answer']
+            ] + others
+        })
+
+    # decode every agent in parallel
+    prev = decode(update_tasks)
+```
