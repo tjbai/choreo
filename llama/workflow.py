@@ -75,7 +75,19 @@ class Workflow:
         self.adj[:, 0] = True # bos is always a parent
 
     # TODO -- we should make this lazy
-    def insert(self, prompts: List[Prompt], track_gradients: bool = False) -> List[Cached]:
+    def insert(
+        self,
+        prompts: List[Prompt],
+        track_gradients: bool = False,
+        time_buffer: Optional[List[int]] = None,
+    ) -> List[Cached]:
+        start_event = None
+        end_event = None
+        if time_buffer is not None:
+            start_event = torch.cuda.Event(enable_timing=True)
+            end_event = torch.cuda.Event(enable_timing=True)
+            start_event.record(stream=None)
+
         with (nullcontext() if track_gradients else torch.inference_mode()):
             if self.cur_id + len(prompts) > self.max_nodes:
                 raise Exception(f"Insufficient capacity for {len(prompts)} more nodes.")
@@ -97,6 +109,12 @@ class Workflow:
                 raise Exception(f"Insufficient capacity for {new_tokens} tokens.")
             self.prefill(prompt_tokens, prompt_length, start=self.cur_id, end=self.cur_id+len(prompts))
             self.cur_id += len(prompts)
+
+            if time_buffer is not None:
+                end_event.record(stream=None)
+                torch.cuda.synchronize()
+                time_buffer.append(start_event.elapsed_time(end_event) / 1000.0)
+
             return outputs
 
     def _step(
@@ -111,7 +129,14 @@ class Workflow:
         seed: int = 42,
         debug: bool = False,
         teacher_force: Optional[torch.Tensor] = None,
+        time_buffer: Optional[List[int]] = None,
+        ttft_buffer: Optional[List[int]] = None,
     ) -> StepResult:
+        start_event = torch.cuda.Event(enable_timing=True)
+        first_token_event = torch.cuda.Event(enable_timing=True)
+        end_event = torch.cuda.Event(enable_timing=True)
+        start_event.record(stream=None)
+
         bsz = len(tasks)
         if self.cache_len + (bsz * max_gen_len) > self.max_seq_len:
             raise Exception(f"Insufficient capacity for {bsz * max_gen_len} tokens.")
@@ -143,6 +168,8 @@ class Workflow:
             if cur_pos == 0:
                 header_ends = torch.cumsum(torch.tensor(header_length, device=self.device), dim=0) - 1
                 logits = prefill_logits[:, header_ends]
+                if ttft_buffer is not None:
+                    first_token_event.record(stream=None)
             else:
                 logits = self.model.forward(
                     tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
@@ -213,6 +240,14 @@ class Workflow:
         self.cur_id += 0 if stateless else bsz
         if log_probs:
             result['log_probs'] = log_probs_out
+
+        end_event.record(stream=None)
+        torch.cuda.synchronize()
+        if time_buffer is not None:
+            time_buffer.append(start_event.elapsed_time(end_event) / 1000.0)
+        if ttft_buffer is not None:
+            ttft_buffer.append(start_event.elapsed_time(first_token_event) / 1000.0)
+
         return result
 
     def step(self, *args, track_gradients: bool = False, **kwargs) -> StepResult:

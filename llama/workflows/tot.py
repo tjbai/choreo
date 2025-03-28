@@ -1026,7 +1026,6 @@ Your BEST CHOICE should be an index 1 through {branching_factor}.'''}
         'solution_tokens': solution_tokens,
     }
 
-
 def load_math_problems(
     root_dir: str,
     split: str,

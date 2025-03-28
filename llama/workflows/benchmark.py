@@ -91,29 +91,3 @@ def benchmark(
         }))
 
     return results
-
-def measure_step(workflow, step_args, track_ttft=True):
-    start_event = torch.cuda.Event(enable_timing=True)
-    end_event = torch.cuda.Event(enable_timing=True)
-    start_event.record(stream=None)
-
-    start_time = time.time()
-
-    ttft_start = time.time()
-    result = workflow.step(**step_args)
-    ttft = time.time() - ttft_start
-
-    wall_time = time.time() - start_time
-
-    end_event.record(stream=None)
-    torch.cuda.synchronize()
-    cuda_time = start_event.elapsed_time(end_event) / 1000
-
-    metrics = {
-        "wall_time": wall_time,
-        "cuda_time": cuda_time,
-        "token_count": sum(len(tokens) for tokens in result['tokens']),
-        "ttft": ttft if track_ttft else None
-    }
-
-    return result, metrics
