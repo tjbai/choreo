@@ -240,7 +240,7 @@ for branching_factor in [2, 4, 8, 16]:
                 benchmark(workflow, problem)
 
             results = {'baseline': [], 'cached': []}
-            for i, problem in tqdm(enumerate(problems), desc='B={branching_factor}, V={voters}'):
+            for i, problem in tqdm(enumerate(problems), desc=f'B={branching_factor}, V={voters}'):
                 baseline_res, cached_res = benchmark(workflow, problem)
                 results['baseline'].append(baseline_res)
                 results['cached'].append(cached_res)
@@ -255,6 +255,6 @@ for branching_factor in [2, 4, 8, 16]:
 
         except RuntimeError as e:
             if 'oom' in str(e).lower():
-                print('oom at B={branching_factor}, V={voters}')
+                print(f'oom at B={branching_factor}, V={voters}')
                 continue
             raise
