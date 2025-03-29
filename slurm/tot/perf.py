@@ -61,17 +61,18 @@ def baseline(
     vote_user_prompt = f'{format_problem(problem)}\n\nHere are the proposals:'
     for i, prop in enumerate(proposal_tokens):
         vote_user_prompt += f'\n\nSolution #{i+1}:\n{workflow.tokenizer.decode(prop)}'
-    [vote] = workflow.insert([
+    vote_prompts = workflow.insert([
         {'messages': [
             {'role': 'system', 'content': format_vote_system_prompt(branching_factor)},
             {'role': 'system', 'content': vote_user_prompt}
         ], 'parent_ids': []}
+        for _ in range(voters)
     ], time_buffer=insert_time)
     vote_tokens = get('tokens')(workflow.step([
             {'header': ('assistant', None),
             'prefill': 'BEST CHOICE: ',
-            'parent_ids': [vote['id']]}
-            for _ in range(voters)
+            'parent_ids': [vote_prompts[i]['id']]}
+            for i in range(voters)
         ],
         compact=False,
         max_gen_len=256,
@@ -127,7 +128,6 @@ def cached(
 ):
     workflow.reset()
     assert len(force_tokens) == 3
-
     insert_time = []
     step_time = []
     ttft_time = []
@@ -248,7 +248,7 @@ for branching_factor in [2, 4, 8, 16]:
                 if (i+1) % 10 == 0:
                     with open(f'/home/tbai4/llama3/dumps/tot/perf_B-{branching_factor}_V-{voters}.json', 'w') as f:
                         json.dump(results, f)
-            
+
             print('Wall mean:', statistics.mean(a['wall_time'] - b['wall_time'] for a, b in zip(results['baseline'], results['cached'])))
             print('Cuda mean:', statistics.mean(a['cuda_time'] - b['cuda_time'] for a, b in zip(results['baseline'], results['cached'])))
             print('TTFT mean:', statistics.mean(a['ttft'] - b['ttft'] for a, b in zip(results['baseline'], results['cached'])))
