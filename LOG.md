@@ -552,24 +552,25 @@ baseline vs. ft500:
 
 ToT: 8 branches, 4 voters
 MAD: 3 max rounds
-MADpar: 3 agents, 3 max rounds
+MADpar: 3 agents, 3 rounds
 
 MATH Summary:
-  I/O:                          52/280
-    + ToT fine-tuning:          53/280
-    + MAD fine-tuning:          5/280
+  I/O:                          52/280 (94/500)
+    + ToT fine-tuning:          53/280 (148/500)
+    + MAD fine-tuning:          5/280  (9/500)
+    + MADpar fine-tuning:              (26/500)
 
-  ToT Baseline:     116/280
-  ToT Before:       88/280
-  ToT After:        111/280 (207/500 on test set)
+  ToT Baseline:     116/280 (198/500)
+  ToT Before:       88/280  (151/500)
+  ToT After:        111/280 (207/500)
 
-  MAD Baseline:     94/280
-  MAD Before:       57/280
-  MAD After:        99/240
+  MAD Baseline:     94/280  (152/500)
+  MAD Before:       57/280  (124/500)
+  MAD After:        99/240  (168/500)
 
-  MADpar Baseline:  176/280 (323/500 on test set)
-  MADpar Before:    153/280 (188/360 on test set)
-  MADpar After:
+  MADpar Baseline:  176/280 (323/500)
+  MADpar Before:    153/280 (188/360)
+  MADpar After:             (167/300)
 
 ## 3/20: 1db73ab813fb3a8faf2327643672b638d6da09b1
 

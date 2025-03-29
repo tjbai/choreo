@@ -115,28 +115,24 @@ In this section of the paper, I will consider a broader set of experiments where
 All evaluation so far is on the MATH dataset. We generate a training dataset of 500 examples, which is split 90/10 for train/dev, and checkpoints are selected after 4 epochs by best dev accuracy. As baseline, we compare against a "direct-prompted" LLM, which queries the LLM for an answer without any intermediate reasoning, self-consistency, best@N, etc. While stronger comparisons may exist, the goal here is to isolate whether we can have the choreographed implementation match the baseline, not whether the workflow itself is stronger than a single LLM system. Thus, we also fine-tune these direct-prompted LLMs with the final answer step of all workflows, to determine whether the performance recovery is from fine-tuning the entire workflow, or simply training on the baseline solutions. THe baseline is fine-tuned with the same LoRA parameters and epochs.
 
 ```
-| Method            | Count   | Percentage   |
-|-------------------|---------|--------------|
-| Direct            | 52/280  | 18.6% ± 5.3% |
-| + ToT fine-tuning | 53/280  | 18.9% ± 5.4% |
-| + MAD fine-tuning | 5/280*  | 1.8% ± 2.4%  |
-|                   |         |              |
-| ToT Baseline      | 116/280 | 41.4% ± 6.5% |
-| ToT Before        | 88/280  | 31.4% ± 6.2% |
-| ToT After         | 207/500 | 41.4% ± 4.3% |
-|                   |         |              |
-| MAD Baseline      | 94/280  | 33.6% ± 6.2% |
-| MAD Before        | 57/280  | 20.4% ± 5.4% |
-| MAD After         | 99/240  | 41.3% ± 7.0% |
-|                   |         |              |
-| MADpar Baseline   | 323/500 | 64.6% ± 4.2% |
-| MADpar Before     | 188/360 | 52.2% ± 5.2% |
-| MADpar After      |         |              |
-
-*This is very low but there's nothing funny going on!
-The MAD final outputs have a domain-specific format.
-I tried fine-tuning both on the full output and just
-on the final answer provided.
+| Method               | Count   | Percentage   |
+|----------------------|---------|--------------|
+| Direct               | 94/500  | 18.8% ± 3.4% |
+| + ToT fine-tuning    | 148/500 | 29.6% ± 4.0% |
+| + MAD fine-tuning    | 9/500   | 1.8% ± 1.2%  |
+| + MADpar fine-tuning | 26/500  | 5.2% ± 2.0%  |
+|                      |         |              |
+| ToT Baseline         | 198/500 | 39.6% ± 4.3% |
+| ToT Before           | 151/500 | 30.2% ± 4.0% |
+| ToT After            | 207/500 | 41.4% ± 4.3% |
+|                      |         |              |
+| MAD Baseline         | 152/500 | 30.4% ± 4.0% |
+| MAD Before           | 124/500 | 24.8% ± 3.8% |
+| MAD After            | 168/500 | 33.6% ± 4.1% |
+|                      |         |              |
+| MADpar Baseline      | 323/500 | 64.6% ± 4.2% |
+| MADpar Before        | 188/360 | 52.2% ± 5.2% |
+| MADpar After         |         |              |
 ```
 
 **tl;dr We can fine-tune workflows end-to-end to recover baseline-level performance. Fine-tuning the workflow is more effective/sample efficient than simply fine-tuning a single LLM call with the final answer.**
