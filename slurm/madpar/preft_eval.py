@@ -18,19 +18,13 @@ workflow = Workflow.build(
     max_batch_size=1,
     model_parallel_size=1,
     max_nodes=100,
-    use_lora=True,
-    lora_rank=64,
-    lora_alpha=32,
-    lora_dropout=0.05,
 )
-
+workflow.model.eval()
 llama = Llama(workflow.model, workflow.tokenizer)
 
 # MATH dataset
 problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='test')[:500]
 
-load_ckpt(workflow, '/scratch4/jeisner1/tjbai/checkpoints/madpar/lora_step-2699.pt')
-workflow.model.eval()
 samples = []
 for i, problem in enumerate(tqdm(problems)):
     workflow.reset()
@@ -46,7 +40,7 @@ for i, problem in enumerate(tqdm(problems)):
         'outputs': outputs,
     })
     if (i+1) % 10 == 0:
-        with open('/home/tbai4/llama3/dumps/madpar/math_cached_postft_lora_step-2699.pt.json', 'w') as f:
+        with open('/home/tbai4/llama3/dumps/madpar/math_cached_preft.json', 'w') as f:
             json.dump(samples, f)
     if i == 0:
         llama.model.reshape_cache(4)
@@ -62,7 +56,7 @@ for i, problem in enumerate(tqdm(problems)):
         llama.model.reshape_cache(1)
         llama.model.set_adapter_state(enabled=True)
 
-with open('/home/tbai4/llama3/dumps/madpar/math_cached_postft_lora_step-2699.pt.json', 'w') as f:
+with open('/home/tbai4/llama3/dumps/madpar/math_cached_preft.json', 'w') as f:
     json.dump(samples, f)
 
 llama.model.reshape_cache(4)

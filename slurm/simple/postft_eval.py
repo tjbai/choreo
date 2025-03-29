@@ -26,10 +26,11 @@ workflow = Workflow.build(
 workflow.model.eval()
 llama = Llama(workflow.model, workflow.tokenizer)
 
-problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
+problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='test')[:500]
 
-# from_mad: lora_step-24.pt
-load_ckpt(workflow, '/scratch4/jeisner1/tjbai/checkpoints/direct/from_mad/lora_step-24.pt')
+'''
+# from_tot: lora_step-438.pt
+load_ckpt(workflow, '/scratch4/jeisner1/tjbai/checkpoints/direct/from_tot/lora_step-438.pt')
 workflow.model.set_adapter_state(enabled=True)
 
 solutions = []
@@ -42,10 +43,11 @@ for problem in tqdm(problems):
     ))
 
 workflow.model.set_adapter_state(enabled=False)
-print(sum(eval_solutions(llama, solutions, problems)))
+print('from tot', sum(eval_solutions(llama, solutions, problems)))
+'''
 
-# from_tot: lora_step-149.pt
-load_ckpt(workflow, '/scratch4/jeisner1/tjbai/checkpoints/direct/from_mad/lora_step-149.pt')
+# from_mad: lora_step-424.pt
+load_ckpt(workflow, '/scratch4/jeisner1/tjbai/checkpoints/direct/from_mad/lora_step-424.pt')
 workflow.model.set_adapter_state(enabled=True)
 
 solutions = []
@@ -58,4 +60,20 @@ for problem in tqdm(problems):
     ))
 
 workflow.model.set_adapter_state(enabled=False)
-print(sum(eval_solutions(llama, solutions, problems)))
+print('from mad', sum(eval_solutions(llama, solutions, problems)))
+
+# from_madpar: lora_step-449.pt
+load_ckpt(workflow, '/scratch4/jeisner1/tjbai/checkpoints/direct/from_madpar/lora_step-449.pt')
+workflow.model.set_adapter_state(enabled=True)
+
+solutions = []
+for problem in tqdm(problems):
+    workflow.reset()
+    solutions.append(math_direct(
+        workflow=workflow,
+        problem=problem['problem'],
+        debug=False,
+    ))
+
+workflow.model.set_adapter_state(enabled=False)
+print('from madpar', sum(eval_solutions(llama, solutions, problems)))

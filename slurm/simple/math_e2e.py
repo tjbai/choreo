@@ -23,7 +23,7 @@ workflow = Workflow.build(
 
 llama = Llama(workflow.model, workflow.tokenizer)
 
-problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')
+problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='test')[:500]
 
 # baseline direct "input-output" prompting
 solutions = []
@@ -35,7 +35,7 @@ for problem in tqdm(problems):
         debug=False,
     ))
 
-    with open('/home/tbai4/llama3/dumps/math_baseline_direct.json', 'w') as f:
+    with open('/home/tbai4/llama3/dumps/math_baseline_direct_test.json', 'w') as f:
         json.dump(solutions, f)
 
 # # baseline with reflection on MATH

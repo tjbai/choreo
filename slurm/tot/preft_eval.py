@@ -44,6 +44,7 @@ llama = Llama(workflow.model, workflow.tokenizer)
 
 problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='test')[:500]
 
+'''
 samples = []
 for i, problem in enumerate(tqdm(problems)):
     workflow.reset()
@@ -76,22 +77,26 @@ print('baseline correct', sum(eval_solutions(
         'solution': d['inputs']['solution']
     } for d in samples],
 )))
+'''
 
 samples = []
 for i, problem in enumerate(tqdm(problems)):
     workflow.reset()
-    outputs = tot_cached(
-        workflow=workflow,
-        problem=problem['problem'],
-        branching_factor=8,
-        voters=4,
-        temperature=0.7,
-        top_p=1.0,
-    )
-    samples.append({
-        'inputs': problem,
-        'outputs': outputs,
-    })
+    try:
+        outputs = tot_cached(
+            workflow=workflow,
+            problem=problem['problem'],
+            branching_factor=8,
+            voters=4,
+            temperature=0.7,
+            top_p=1.0,
+        )
+        samples.append({
+            'inputs': problem,
+            'outputs': outputs,
+        })
+    except:
+        continue
     if i == 0:
         print('cached correct', sum(eval_solutions(
             llama,
