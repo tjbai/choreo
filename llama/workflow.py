@@ -131,6 +131,7 @@ class Workflow:
         teacher_force: Optional[torch.Tensor] = None,
         time_buffer: Optional[List[int]] = None,
         ttft_buffer: Optional[List[int]] = None,
+        force_tokens: Optional[int] = None,
     ) -> StepResult:
         start_event = torch.cuda.Event(enable_timing=True)
         first_token_event = torch.cuda.Event(enable_timing=True)
@@ -164,7 +165,8 @@ class Workflow:
 
         # do N - 1 iterations to leave room for eot_id
         log_probs_out: List[torch.Tensor] = []
-        for cur_pos in range(0, bsz * (max_gen_len - 1), bsz):
+        max_pos = bsz * (force_tokens if force_tokens else max_gen_len - 1)
+        for cur_pos in range(0, max_pos, bsz):
             if cur_pos == 0:
                 header_ends = torch.cumsum(torch.tensor(header_length, device=self.device), dim=0) - 1
                 logits = prefill_logits[:, header_ends]
@@ -198,8 +200,9 @@ class Workflow:
             self.cache_len += bsz
             eos_reached |= torch.isin(next_token, self.stop_tokens)
 
-            # if early break or on the last iteration...
-            if (eos_reached.all() or cur_pos == bsz * (max_gen_len - 2)) and not stateless:
+            stop_because_eos = eos_reached.all() and not force_tokens
+            stop_because_last_iter = cur_pos == max_pos - bsz
+            if (stop_because_eos or stop_because_last_iter) and not stateless:
                 # one more forward pass to top off the kv cache
                 self.model.forward(
                     tokens=self.context[self.cache_len - bsz : self.cache_len].unsqueeze(0),
@@ -208,7 +211,7 @@ class Workflow:
                     position_ids=position_ids
                 )
 
-            if eos_reached.all():
+            if eos_reached.all() and not force_tokens:
                 break
 
         # force decode eot_id for everything that didn't naturally terminate
