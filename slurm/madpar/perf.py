@@ -292,11 +292,11 @@ problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')[:30]
 for agents in [2, 3, 4, 8, 16]:
     try:
         for problem in problems[:3]:
-            benchmark(workflow, problem)
+            benchmark(workflow, problem, num_agents=agents)
 
         results = {'baseline': [], 'cached': []}
         for i, problem in tqdm(enumerate(problems), desc=f'Agents={agents}'):
-            baseline_res, cached_res = benchmark(workflow, problem)
+            baseline_res, cached_res = benchmark(workflow, problem, num_agents=agents)
             results['baseline'].append(baseline_res)
             results['cached'].append(cached_res)
 

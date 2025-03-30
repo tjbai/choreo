@@ -237,11 +237,21 @@ for branching_factor in [2, 4, 8, 16]:
         try:
             # warmup
             for problem in problems[:3]:
-                benchmark(workflow, problem)
+                benchmark(
+                    workflow,
+                    problem,
+                    branching_factor=branching_factor,
+                    voters=voters,
+                )
 
             results = {'baseline': [], 'cached': []}
             for i, problem in tqdm(enumerate(problems), desc=f'B={branching_factor}, V={voters}'):
-                baseline_res, cached_res = benchmark(workflow, problem)
+                baseline_res, cached_res = benchmark(
+                    workflow,
+                    problem,
+                    branching_factor=branching_factor,
+                    voters=voters,
+                )
                 results['baseline'].append(baseline_res)
                 results['cached'].append(cached_res)
 
