@@ -79,10 +79,12 @@ def baseline(
 
     mod_stale = []
     mod_context = []
-
     for round in range(max_rounds - 1):
         aff_stale.append({'role': 'user', 'content': f'{neg_ans}\n\nDo you agree with my perspective? Please provide your reasons and answer.'})
-        aff_context.extend(workflow.insert([{'messages': aff_stale, 'parent_ids': [n['id'] for n in aff_context]}]))
+        aff_context.extend(workflow.insert(
+            [{'messages': aff_stale, 'parent_ids': [n['id'] for n in aff_context]}],
+            time_buffer=insert_time,
+        ))
         [aff_tokens] = get('tokens')(workflow.step(
             [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in aff_context]}],
             temperature=temperature,
@@ -93,12 +95,15 @@ def baseline(
         ))
         aff_ans = workflow.tokenizer.decode(aff_tokens)
         aff_stale = [{'role': 'assistant', 'content': aff_ans}]
-        total_ttft += ttft_time[-1]
+        total_ttft += insert_time + ttft_time[-1]
         total_tokens += len(aff_tokens)
         force_tokens.append(len(aff_tokens))
 
         neg_stale.append({'role': 'user', 'content': f'{aff_ans}\n\nDo you agree with my perspective? Please provide your reasons and answer.'})
-        neg_context.extend(workflow.insert([{'messages': neg_stale, 'parent_ids': [n['id'] for n in neg_context]}]))
+        neg_context.extend(workflow.insert(
+            [{'messages': neg_stale, 'parent_ids': [n['id'] for n in neg_context]}],
+            time_buffer=insert_time,
+        ))
         [neg_tokens] = get('tokens')(workflow.step(
             [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in neg_context]}],
             temperature=temperature,
@@ -109,12 +114,15 @@ def baseline(
         ))
         neg_ans = workflow.tokenizer.decode(neg_tokens)
         neg_stale = [{'role': 'assistant', 'content': neg_ans}]
-        total_ttft += ttft_time[-1]
+        total_ttft += insert_time + ttft_time[-1]
         total_tokens += len(neg_tokens)
         force_tokens.append(len(neg_tokens))
 
         mod_stale.append({'role': 'user', 'content': faithful_mod_prompt(dct[round+2], aff_ans, neg_ans)})
-        mod_context.extend(workflow.insert([{'messages': mod_stale, 'parent_ids': [n['id'] for n in mod_context]}]))
+        mod_context.extend(workflow.insert(
+            [{'messages': mod_stale, 'parent_ids': [n['id'] for n in mod_context]}],
+            time_buffer=insert_time,
+        ))
         [mod_tokens] = get('tokens')(workflow.step(
             [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in mod_context]}],
             time_buffer=step_time,
@@ -122,7 +130,7 @@ def baseline(
         ))
         mod_ans = workflow.tokenizer.decode(mod_tokens)
         mod_stale = [{'role': 'assistant', 'content': mod_ans}]
-        total_ttft += ttft_time[-1]
+        total_ttft += insert_time + ttft_time[-1]
         total_tokens += len(mod_tokens)
         force_tokens.append(len(mod_tokens))
 
