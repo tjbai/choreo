@@ -259,10 +259,6 @@ for branching_factor in [2, 4, 8, 16]:
                     with open(f'/home/tbai4/llama3/dumps/tot/perf_B-{branching_factor}_V-{voters}.json', 'w') as f:
                         json.dump(results, f)
 
-            print('Wall mean:', statistics.mean(a['wall_time'] - b['wall_time'] for a, b in zip(results['baseline'], results['cached'])))
-            print('Cuda mean:', statistics.mean(a['cuda_time'] - b['cuda_time'] for a, b in zip(results['baseline'], results['cached'])))
-            print('TTFT mean:', statistics.mean(a['ttft'] - b['ttft'] for a, b in zip(results['baseline'], results['cached'])))
-
         except RuntimeError as e:
             if 'oom' in str(e).lower():
                 print(f'oom at B={branching_factor}, V={voters}')

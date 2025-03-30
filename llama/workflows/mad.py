@@ -311,7 +311,7 @@ def mad_baseline(
         [aff_tokens] = get('tokens')(workflow.step(
             [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in aff_context]}],
             temperature=temperature,
-            top_p=temperature,
+            top_p=top_p,
             max_gen_len=512,
         ))
         aff_ans = workflow.tokenizer.decode(aff_tokens)
@@ -324,7 +324,7 @@ def mad_baseline(
         [neg_tokens] = get('tokens')(workflow.step(
             [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [n['id'] for n in neg_context]}],
             temperature=temperature,
-            top_p=temperature,
+            top_p=top_p,
             max_gen_len=512,
         ))
         neg_ans = workflow.tokenizer.decode(neg_tokens)

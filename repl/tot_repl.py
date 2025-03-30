@@ -1,3 +1,4 @@
+'''
 # %%
 import json
 from llama.workflows.mad import try_parse
@@ -317,3 +318,111 @@ plt.savefig("pd_leakage_shifts.pdf", bbox_inches="tight", dpi=300)
 plt.savefig("pd_leakage_shifts.png", bbox_inches="tight", dpi=300)
 
 plt.show()
+
+# %%
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import stats
+
+with open('dumps/tot/perf_B-8_V-4.json') as f:
+    data = json.load(f)
+
+plt.rcParams.update({
+    'font.family': 'serif',
+    'font.size': 14,
+    'axes.titlesize': 14,
+    'savefig.dpi': 300,
+    'figure.dpi': 300,
+})
+
+fig, ax = plt.subplots(figsize=(4, 4.5))
+
+x = np.array([d.get('tokens', i) for i, d in enumerate(data['baseline'])])
+baseline_times = np.array([b['wall_time'] * 1000 for b in data['baseline']])
+cached_times = np.array([c['wall_time'] * 1000 for c in data['cached']])
+diffs = baseline_times - cached_times
+
+mean_abs_diff = np.mean(diffs)
+corr, p_value = stats.pearsonr(x, diffs)
+
+colors = ['#ff6666' if diff < 0 else '#66cc66' for diff in diffs]
+edge_colors = ['#cc0000' if diff < 0 else '#009900' for diff in diffs]
+scatter = ax.scatter(x, diffs * 1000, c=colors, edgecolor=edge_colors, s=80, alpha=0.9)
+
+stats_text = (f"Mean: {mean_abs_diff:.2f}ms\n" f"Pearson's: {corr:.2f}")
+
+ax.text(
+    0.67, 0.08, stats_text,
+    transform=ax.transAxes,
+    bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.5'),
+    fontsize=10
+)
+
+ax.set_xlabel('Tokens generated')
+ax.set_ylabel('Time (ms)')
+ax.set_title('Tree of Thoughts')
+ax.axhline(y=0, color='gray', linestyle='--', alpha=0.3)
+
+plt.tight_layout()
+ax.spines['top'].set_visible(False)
+ax.spines['right'].set_visible(False)
+plt.savefig('figures/tot_perf_scatter.png')
+'''
+
+# %%
+import json
+import glob
+import numpy as np
+import re
+from collections import defaultdict
+
+# Scan all performance files
+results = defaultdict(dict)
+
+for filename in glob.glob('dumps/tot/perf_B-*_V-*.json'):
+    # Extract B and V parameters from filename
+    match = re.search(r'B-(\d+)_V-(\d+)', filename)
+    if not match:
+        continue
+
+    B, V = int(match.group(1)), int(match.group(2))
+
+    # Load the data
+    with open(filename) as f:
+        data = json.load(f)
+
+    # Calculate key metrics
+    baseline_times = np.array([b['wall_time'] for b in data['baseline']])
+    cached_times = np.array([c['wall_time'] for c in data['cached']])
+    baseline_cuda = np.array([b.get('cuda_time', 0) for b in data['baseline']])
+    cached_cuda = np.array([c.get('cuda_time', 0) for c in data['cached']])
+    baseline_ttft = np.array([b.get('ttft', 0) for b in data['baseline']])
+    cached_ttft = np.array([c.get('ttft', 0) for c in data['cached']])
+
+    # Store summary metrics in a structured format
+    results[(B, V)] = {
+        'wall_time': {
+            'baseline_mean': np.mean(baseline_times),
+            'cached_mean': np.mean(cached_times),
+            'speedup': np.mean(baseline_times) / np.mean(cached_times),
+            'diff_mean': np.mean(baseline_times - cached_times) * 1000  # ms
+        },
+        'cuda_time': {
+            'baseline_mean': np.mean(baseline_cuda),
+            'cached_mean': np.mean(cached_cuda),
+            'speedup': np.mean(baseline_cuda) / np.mean(cached_cuda) if np.mean(cached_cuda) > 0 else float('inf'),
+            'diff_mean': np.mean(baseline_cuda - cached_cuda) * 1000  # ms
+        },
+        'ttft': {
+            'baseline_mean': np.mean(baseline_ttft),
+            'cached_mean': np.mean(cached_ttft),
+            'speedup': np.mean(baseline_ttft) / np.mean(cached_ttft) if np.mean(cached_ttft) > 0 else float('inf'),
+            'diff_mean': np.mean(baseline_ttft - cached_ttft) * 1000  # ms
+        }
+    }
+
+print("| B | V | Wall Speedup | CUDA Speedup | TTFT Speedup |")
+print("|---|---|-------------|-------------|-------------|")
+for (B, V), metrics in sorted(results.items()):
+    print(f"| {B} | {V} | {metrics['wall_time']['speedup']:.3f}x | {metrics['cuda_time']['speedup']:.3f}x | {metrics['ttft']['speedup']:.3f}x |")
