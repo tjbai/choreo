@@ -74,7 +74,6 @@ class Workflow:
         self.adj = torch.eye(self.max_nodes, dtype=torch.bool)
         self.adj[:, 0] = True # bos is always a parent
 
-    # TODO -- we should make this lazy
     def insert(
         self,
         prompts: List[Prompt],
