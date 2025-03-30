@@ -119,8 +119,8 @@ All evaluation so far is on the MATH dataset. We generate a training dataset of 
 |----------------------|---------|--------------|
 | Direct               | 94/500  | 18.8% ± 3.4% |
 | + ToT fine-tuning    | 148/500 | 29.6% ± 4.0% |
-| + MAD fine-tuning    | 9/500   | 1.8% ± 1.2%  |
-| + MADpar fine-tuning | 26/500  | 5.2% ± 2.0%  |
+| + MAD fine-tuning    | 9/500   | 1.8% ± 1.2% |
+| + MADpar fine-tuning | 26/500  | 5.2% ± 1.9% |
 |                      |         |              |
 | ToT Baseline         | 198/500 | 39.6% ± 4.3% |
 | ToT Before           | 151/500 | 30.2% ± 4.0% |
@@ -131,8 +131,8 @@ All evaluation so far is on the MATH dataset. We generate a training dataset of 
 | MAD After            | 168/500 | 33.6% ± 4.1% |
 |                      |         |              |
 | MADpar Baseline      | 323/500 | 64.6% ± 4.2% |
-| MADpar Before        | 188/360 | 52.2% ± 5.2% |
-| MADpar After         |         |              |
+| MADpar Before        | 262/500 | 52.4% ± 4.4% |
+| MADpar After         | 310/500 | 62.0% ± 4.3% |
 ```
 
 **tl;dr We can fine-tune workflows end-to-end to recover baseline-level performance. Fine-tuning the workflow is more effective/sample efficient than simply fine-tuning a single LLM call with the final answer.**
