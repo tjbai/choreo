@@ -625,7 +625,6 @@ Test set ToT not looking so great...
 | Baseline                    | 71.8% ± 3.9% | 74.8% ± 3.8% |
 | Choreographed + Fine-tuning | 69.0% ± 4.1% | 72.8% ± 3.9% |
 
-
 ## 3/24: b3edc6a2204d03ecf13602d9fe2ea4615c93794d
 
 RACE Dataset, n=500:
@@ -651,3 +650,13 @@ Evaluate "BOTH" for multiQA on n=500:
 | choreographed            | 32.8 ± 4.1     | 26.2 ± 3.9     | 0.4 ± 0.5      |
 | choreographed+linearized | 2.0 ± 1.2      | 61.0 ± 4.3     | 0.4 ± 0.5      |
 | choreographed+finetuned  | 67.4 ± 4.1     | 71.2 ± 4.0     | 48.8 ± 4.4     |
+
+## 3/29: b1b4a42acd347455ec6065104d09edaadddf7e6c
+
+| Workflow | E2E Speedup | TTFT Speedup |
+|----------|-------------|--------------|
+| ToT      | 1.023x      | 3.57x        |
+| MADiter  |             |              |
+| MADpar   |             |              |
+
+The scaling sweep for ToT is flawed. I wasn't passing the parameters through lol.
