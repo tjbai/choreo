@@ -25,7 +25,6 @@ def baseline(
     top_p=1.0,
 ):
     dct = {1: 'first', 2: 'second', 3: 'third', 4: 'fourth', 5: 'fifth'}
-
     workflow.reset()
     insert_time = []
     step_time = []
@@ -34,6 +33,9 @@ def baseline(
     total_tokens = 0
     force_tokens = []
     s = time.time()
+
+    if isinstance(problem, dict):
+        problem = problem['problem']
 
     aff_stale = []
     aff_context = workflow.insert([
@@ -190,6 +192,9 @@ def cached(
     total_ttft = 0
     s = time.time()
 
+    if isinstance(problem, dict):
+        problem = problem['problem']
+
     aff_context, neg_context, mod_context = [[a] for a in workflow.insert([
         {'messages': [
             {'role': 'system', 'content': agent_prompt(problem, '')},
@@ -322,7 +327,7 @@ workflow = Workflow.build(
     max_seq_len=8*8192,
     max_batch_size=1,
     model_parallel_size=1,
-    max_nodes=20,
+    max_nodes=100,
     use_lora=True,
     lora_rank=64,
     lora_alpha=32,
@@ -337,7 +342,7 @@ for problem in problems[:3]:
 
 results = {'baseline': [], 'cached': []}
 for problem in tqdm(problems):
-    baseline_res, cached_res = benchmark(workflow, problem)
+    baseline_res, cached_res = benchmark(workflow, problem['problem'])
     results['baseline'].append(baseline_res)
     results['cached'].append(cached_res)
 
