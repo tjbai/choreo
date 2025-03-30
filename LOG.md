@@ -569,8 +569,8 @@ MATH Summary:
   MAD After:        99/240  (168/500)
 
   MADpar Baseline:  176/280 (323/500)
-  MADpar Before:    153/280 (188/360)
-  MADpar After:             (167/300)
+  MADpar Before:    153/280 (262/500)
+  MADpar After:             (310/500)
 
 ## 3/20: 1db73ab813fb3a8faf2327643672b638d6da09b1
 
