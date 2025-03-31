@@ -29,7 +29,6 @@ for attempt, b, problem in zip(ours, baseline, ciar):
 import json
 import numpy as np
 import matplotlib.pyplot as plt
-from scipy import stats
 
 with open('dumps/mad/perf.json') as f:
     data = json.load(f)

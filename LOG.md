@@ -570,7 +570,7 @@ MATH Summary:
 
   MADpar Baseline:  176/280 (323/500)
   MADpar Before:    153/280 (262/500)
-  MADpar After:             (310/500)
+  MADpar After:             (300/500)
 
 ## 3/20: 1db73ab813fb3a8faf2327643672b638d6da09b1
 
@@ -686,3 +686,28 @@ ToT sweeping configs:
 Yes yes yes!
 
 Weird discontinuity at B=8. Some kind of GPU utilization or optimization thing. Not good enough to know top of my head.
+
+## 3/31: acd6c8d3ffeb875f3382f8ae9a23a04fe45cfb44f
+
+The day of statistical tests...
+
+Prisoners:
+  Baseline vs. Untrained
+    No strategy:  -0.20663219 -0.09658915
+    Cooperate:    -0.14182809 -0.04195988
+    Defect:       -0.3089368 -0.1893714
+
+  Baseline vs. Fine-tuned
+    No strategy:  -0.06060094  0.04460375
+    Cooperate:    -0.05969051  0.02761004
+    Defect:       -0.08096182  0.03702232
+
+  Baseline vs. Untrained (Leak System):
+    No strategy:  -0.107052535 -0.001117426
+    Cooperate:    +0.006951215 +0.089524262
+    Defect:       -0.5583125 -0.4481504
+
+  Baseline vs. Untrained (Leak Plan):
+    No strategy:  -0.15720144 -0.04679757
+    Cooperate:    -0.084770841  0.007898904
+    Defect:       -0.4127490 -0.2940866
