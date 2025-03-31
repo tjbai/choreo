@@ -289,7 +289,7 @@ workflow.model.eval()
 
 problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')[:30]
 
-for agents in [2, 3, 4, 8, 16]:
+for agents in [16]:
     try:
         for problem in problems[:3]:
             benchmark(workflow, problem, num_agents=agents)

@@ -217,12 +217,12 @@ os.environ["MASTER_ADDR"] = "localhost"
 os.environ["MASTER_PORT"] = str(find_free_port())
 
 workflow = Workflow.build(
-    ckpt_dir='/scratch4/jeisner1/tjbai/llama_8b',
-    tokenizer_path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model',
+    ckpt_dir='/home/tbai4/llama_8b',
+    tokenizer_path='/home/tbai4/llama_8b/tokenizer.model',
     max_seq_len=8*8192,
     max_batch_size=1,
     model_parallel_size=1,
-    max_nodes=20,
+    max_nodes=100,
     use_lora=True,
     lora_rank=64,
     lora_alpha=32,
@@ -232,7 +232,7 @@ workflow.model.eval()
 
 problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')[:30]
 
-for branching_factor in [2, 4, 8, 16]:
+for branching_factor in [5, 6, 7, 9]:
     for voters in [2, 4, 8, 16]:
         try:
             # warmup
