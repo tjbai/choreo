@@ -232,7 +232,7 @@ workflow.model.eval()
 
 problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')[:30]
 
-for branching_factor in [5, 6, 7, 9]:
+for branching_factor in [1, 3]:
     for voters in [2, 4, 8, 16]:
         try:
             # warmup
