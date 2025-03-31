@@ -61,10 +61,16 @@ for seed in tqdm(range(N)):
 
 workflow.model.set_adapter_state(enabled=False)
 
+correct = {}
+with open('dumps/triviaqa/eval_large.json', 'w') as f:
+    json.dump({
+        'answers': dict(answers),
+        'correct': correct
+    }, f)
+
 for setting in ['baseline', 'choreographed+finetuned']:
-    first_correct = 0
-    second_correct = 0
-    both = 0
+    first_correct = []
+    second_correct = []
     for subset, answer in tqdm(answers[setting]):
         items = parse_items(answer)
         if len(items) == 2:
@@ -74,16 +80,21 @@ for setting in ['baseline', 'choreographed+finetuned']:
                 [{'role': 'system', 'content': eval_system_prompt},
                     {'role': 'user', 'content': format_eval_user(subset[1], items[1])}],
             ], content_prefills=['{"correct": "'] * 2)
-            first_correct += 'true' in resps[0]['generation']['content'].lower()
-            second_correct += 'true' in resps[1]['generation']['content'].lower()
-            if 'true' in resps[0]['generation']['content'].lower() and 'true' in resps[1]['generation']['content'].lower():
-                both += 1
-    print(setting, first_correct, second_correct, both)
+            first_correct.append('true' in resps[0]['generation']['content'].lower())
+            second_correct.append('true' in resps[1]['generation']['content'].lower())
+    correct[setting] = [first_correct, second_correct]
+    print(setting, sum(first_correct), sum(second_correct))
+
+with open('dumps/triviaqa/eval_large.json', 'w') as f:
+    json.dump({
+        'answers': dict(answers),
+        'correct': correct
+    }, f)
 
 for setting in ['choreographed', 'choreographed+linearized']:
-    first_correct = 0
-    second_correct = 0
-    both = 0
+    first_correct = []
+    second_correct = []
+    both = []
     for subset, answer in tqdm(answers[setting]):
         items = parse_items(answer)
         if len(items) == 2:
@@ -93,10 +104,9 @@ for setting in ['choreographed', 'choreographed+linearized']:
                 [{'role': 'system', 'content': eval_system_prompt},
                     {'role': 'user', 'content': format_eval_user(subset[1], items[1])}],
             ], content_prefills=['{"correct": "'] * 2)
-            first_correct += 'true' in resps[0]['generation']['content'].lower()
-            second_correct += 'true' in resps[1]['generation']['content'].lower()
-            if 'true' in resps[0]['generation']['content'].lower() and 'true' in resps[1]['generation']['content'].lower():
-                both += 1
+            first_correct.append('true' in resps[0]['generation']['content'].lower())
+            second_correct.append('true' in resps[1]['generation']['content'].lower())
+            both.append('true' in resps[0]['generation']['content'].lower() and 'true' in resps[1]['generation']['content'].lower())
         elif len(items) == 1:
             resps = llama.chat_completion([
                 [{'role': 'system', 'content': eval_system_prompt},
@@ -104,6 +114,13 @@ for setting in ['choreographed', 'choreographed+linearized']:
                 [{'role': 'system', 'content': eval_system_prompt},
                     {'role': 'user', 'content': format_eval_user(subset[1], items[0])}],
             ], content_prefills=['{"correct": "'] * 2)
-            first_correct += 'true' in resps[0]['generation']['content'].lower()
-            second_correct += 'true' in resps[1]['generation']['content'].lower()
-    print(setting, first_correct, second_correct, both)
+            first_correct.append('true' in resps[0]['generation']['content'].lower())
+            second_correct.append('true' in resps[1]['generation']['content'].lower())
+    correct[setting] = [first_correct, second_correct]
+    print(setting, first_correct, second_correct)
+
+with open('dumps/triviaqa/eval_large.json', 'w') as f:
+    json.dump({
+        'answers': dict(answers),
+        'correct': correct
+    }, f)
