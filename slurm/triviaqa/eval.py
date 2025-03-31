@@ -82,6 +82,9 @@ for setting in ['baseline', 'choreographed+finetuned']:
             ], content_prefills=['{"correct": "'] * 2)
             first_correct.append('true' in resps[0]['generation']['content'].lower())
             second_correct.append('true' in resps[1]['generation']['content'].lower())
+        else:
+            first_correct.append(False)
+            second_correct.append(False)
     correct[setting] = [first_correct, second_correct]
     print(setting, sum(first_correct), sum(second_correct))
 
@@ -116,6 +119,9 @@ for setting in ['choreographed', 'choreographed+linearized']:
             ], content_prefills=['{"correct": "'] * 2)
             first_correct.append('true' in resps[0]['generation']['content'].lower())
             second_correct.append('true' in resps[1]['generation']['content'].lower())
+        else:
+            first_correct.append(False)
+            second_correct.append(False)
     correct[setting] = [first_correct, second_correct]
     print(setting, first_correct, second_correct)
 

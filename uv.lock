@@ -881,6 +881,7 @@ dependencies = [
     { name = "llama-stack" },
     { name = "matplotlib" },
     { name = "openai" },
+    { name = "rpy2" },
     { name = "seaborn" },
     { name = "statsmodels" },
     { name = "tiktoken" },
@@ -900,6 +901,7 @@ requires-dist = [
     { name = "llama-stack", specifier = ">=0.0.63" },
     { name = "matplotlib", specifier = ">=3.10.0" },
     { name = "openai", specifier = ">=1.66.3" },
+    { name = "rpy2", specifier = ">=3.5.17" },
     { name = "seaborn", specifier = ">=0.13.2" },
     { name = "statsmodels", specifier = ">=0.14.4" },
     { name = "tiktoken", specifier = ">=0.8.0" },
@@ -1870,6 +1872,18 @@ wheels = [
 ]
 
 [[package]]
+name = "rpy2"
+version = "3.5.17"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cffi" },
+    { name = "jinja2" },
+    { name = "packaging", marker = "sys_platform == 'win32'" },
+    { name = "tzlocal" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/65/85/f3bf48052106fd93e74bea512a43d3de48617953cba7e6dd40e8626f27f5/rpy2-3.5.17.tar.gz", hash = "sha256:dbff08c30f3d79161922623858a5b3b68a3fba8ee1747d6af41bc4ba68f3d582", size = 220963 }
+
+[[package]]
 name = "sacrebleu"
 version = "2.5.1"
 source = { registry = "https://pypi.org/simple" }
@@ -2308,6 +2322,18 @@ source = { registry = "https://pypi.org/simple" }
 sdist = { url = "https://files.pythonhosted.org/packages/e1/34/943888654477a574a86a98e9896bae89c7aa15078ec29f490fef2f1e5384/tzdata-2024.2.tar.gz", hash = "sha256:7d85cc416e9382e69095b7bdf4afd9e3880418a2413feec7069d533d6b4e31cc", size = 193282 }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/a6/ab/7e5f53c3b9d14972843a647d8d7a853969a58aecc7559cb3267302c94774/tzdata-2024.2-py2.py3-none-any.whl", hash = "sha256:a48093786cdcde33cad18c2555e8532f34422074448fbc874186f0abd79565cd", size = 346586 },
+]
+
+[[package]]
+name = "tzlocal"
+version = "5.3.1"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "tzdata", marker = "sys_platform == 'win32'" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/8b/2e/c14812d3d4d9cd1773c6be938f89e5735a1f11a9f184ac3639b93cef35d5/tzlocal-5.3.1.tar.gz", hash = "sha256:cceffc7edecefea1f595541dbd6e990cb1ea3d19bf01b2809f362a03dd7921fd", size = 30761 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/c2/14/e2a54fabd4f08cd7af1c07030603c3356b74da07f7cc056e600436edfa17/tzlocal-5.3.1-py3-none-any.whl", hash = "sha256:eb1a66c3ef5847adf7a834f1be0800581b683b5608e74f86ecbcef8ab91bb85d", size = 18026 },
 ]
 
 [[package]]

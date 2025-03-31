@@ -13,6 +13,7 @@ dependencies = [
     "llama-stack>=0.0.63",
     "matplotlib>=3.10.0",
     "openai>=1.66.3",
+    "rpy2>=3.5.17",
     "seaborn>=0.13.2",
     "statsmodels>=0.14.4",
     "tiktoken>=0.8.0",
