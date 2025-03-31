@@ -655,8 +655,34 @@ Evaluate "BOTH" for multiQA on n=500:
 
 | Workflow | E2E Speedup | TTFT Speedup |
 |----------|-------------|--------------|
-| ToT      | 1.023x      | 3.57x        |
+| ToT      | 1.033x      | 3.61x        |
 | MADiter  |             |              |
 | MADpar   |             |              |
 
 The scaling sweep for ToT is flawed. I wasn't passing the parameters through lol.
+
+## 3/30: df622a9cdb020a651304a78910a88912d019480e
+
+ToT sweeping configs:
+
+| Branches | Voters | Wall Time | TTFT    |
+|----------|--------|-----------|---------|
+| 2        | 2      | 1.021x    | 1.788x  |
+| 2        | 4      | 1.118x    | 2.754x  |
+| 2        | 8      | 1.357x    | 5.016x  |
+| 2        | 16     | 1.900x    | 10.495x |
+| 4        | 2      | 1.072x    | 2.238x  |
+| 4        | 4      | 1.226x    | 3.647x  |
+| 4        | 8      | 1.556x    | 7.112x  |
+| 4        | 16     | 2.302x    | 15.947x |
+| 8        | 2      | 1.097x    | 2.958x  |
+| 8        | 4      | 1.033x    | 3.614x  |
+| 8        | 8      | 1.108x    | 7.572x  |
+| 8        | 16     | 1.421x    | 19.436x |
+| 16       | 2      | 1.028x    | 3.371x  |
+| 16       | 4      | 1.083x    | 6.267x  |
+| 16       | 8      | 1.306x    | 15.178x |
+
+Yes yes yes!
+
+Weird discontinuity at B=8. Some kind of GPU utilization or optimization thing. Not good enough to know top of my head.

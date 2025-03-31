@@ -370,6 +370,7 @@ ax.spines['right'].set_visible(False)
 plt.savefig('figures/tot_perf_scatter.png')
 '''
 
+'''
 # %%
 import json
 import glob
@@ -377,22 +378,13 @@ import numpy as np
 import re
 from collections import defaultdict
 
-# Scan all performance files
 results = defaultdict(dict)
-
 for filename in glob.glob('dumps/tot/perf_B-*_V-*.json'):
-    # Extract B and V parameters from filename
     match = re.search(r'B-(\d+)_V-(\d+)', filename)
-    if not match:
-        continue
-
+    if not match: continue
     B, V = int(match.group(1)), int(match.group(2))
+    with open(filename) as f: data = json.load(f)
 
-    # Load the data
-    with open(filename) as f:
-        data = json.load(f)
-
-    # Calculate key metrics
     baseline_times = np.array([b['wall_time'] for b in data['baseline']])
     cached_times = np.array([c['wall_time'] for c in data['cached']])
     baseline_cuda = np.array([b.get('cuda_time', 0) for b in data['baseline']])
@@ -400,7 +392,6 @@ for filename in glob.glob('dumps/tot/perf_B-*_V-*.json'):
     baseline_ttft = np.array([b.get('ttft', 0) for b in data['baseline']])
     cached_ttft = np.array([c.get('ttft', 0) for c in data['cached']])
 
-    # Store summary metrics in a structured format
     results[(B, V)] = {
         'wall_time': {
             'baseline_mean': np.mean(baseline_times),
@@ -426,3 +417,107 @@ print("| B | V | Wall Speedup | CUDA Speedup | TTFT Speedup |")
 print("|---|---|-------------|-------------|-------------|")
 for (B, V), metrics in sorted(results.items()):
     print(f"| {B} | {V} | {metrics['wall_time']['speedup']:.3f}x | {metrics['cuda_time']['speedup']:.3f}x | {metrics['ttft']['speedup']:.3f}x |")
+'''
+
+import json
+import glob
+import numpy as np
+import re
+import matplotlib.pyplot as plt
+from matplotlib.lines import Line2D
+from collections import defaultdict
+
+results = defaultdict(dict)
+
+for filename in glob.glob('dumps/tot/perf_B-*_V-*.json'):
+    match = re.search(r'B-(\d+)_V-(\d+)', filename)
+    if not match:
+        continue
+
+    B, V = int(match.group(1)), int(match.group(2))
+
+    with open(filename) as f:
+        data = json.load(f)
+
+    baseline_times = np.array([b['wall_time'] for b in data['baseline']])
+    cached_times = np.array([c['wall_time'] for c in data['cached']])
+
+    # Store mean times in milliseconds
+    results[(B, V)] = {
+        'baseline_mean': np.mean(baseline_times) * 1000,
+        'cached_mean': np.mean(cached_times) * 1000
+    }
+
+plt.rcParams.update({
+    'font.family': 'serif',
+    'font.size': 12,
+    'axes.labelsize': 14,
+    'axes.titlesize': 16,
+})
+
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+
+B_values = sorted(set([B for (B, _) in results.keys()]))
+B_values.remove(16) # not enough datapoints and can't fit on GPU
+V_values = sorted(set([V for (_, V) in results.keys()]))
+
+for V in V_values:
+    b_values = []
+    speedup_ratios = []
+
+    for B in B_values:
+        if (B, V) in results:
+            baseline = results[(B, V)]['baseline_mean']
+            choreographed = results[(B, V)]['cached_mean']
+            if choreographed > 0:  # Avoid division by zero
+                speedup = baseline / choreographed
+                b_values.append(B)
+                speedup_ratios.append(speedup)
+
+    if len(b_values) > 1:
+        ax1.plot(b_values, speedup_ratios, 'o-',
+                 label=f"V={V}",
+                 linewidth=1.5,
+                 marker='o',
+                 markersize=6)
+
+for B in B_values:
+    v_values = []
+    speedup_ratios = []
+
+    for V in V_values:
+        if (B, V) in results:
+            baseline = results[(B, V)]['baseline_mean']
+            choreographed = results[(B, V)]['cached_mean']
+            if choreographed > 0:  # Avoid division by zero
+                speedup = baseline / choreographed
+                v_values.append(V)
+                speedup_ratios.append(speedup)
+
+    if len(v_values) > 1:
+        ax2.plot(v_values, speedup_ratios, 'o-',
+                 label=f"B={B}",
+                 linewidth=1.5,
+                 marker='o',
+                 markersize=6)
+
+ax1.axhline(y=1, color='gray', linestyle='--', alpha=0.5)
+ax2.axhline(y=1, color='gray', linestyle='--', alpha=0.5)
+
+ax1.legend(frameon=True, facecolor='white', edgecolor='lightgray')
+ax2.legend(frameon=True, facecolor='white', edgecolor='lightgray')
+
+ax1.set_xlabel('Number of Branches')
+ax1.set_ylabel('Speedup Ratio (baseline/choreographed)')
+ax1.set_title('Speedup vs. Branches')
+ax1.spines['top'].set_visible(False)
+ax1.spines['right'].set_visible(False)
+
+ax2.set_xlabel('Number of Voters')
+ax2.set_ylabel('Speedup Ratio (baseline/choreographed)')
+ax2.set_title('Speedup vs. Voters')
+ax2.spines['top'].set_visible(False)
+ax2.spines['right'].set_visible(False)
+
+plt.tight_layout()
+plt.show()
