@@ -279,7 +279,7 @@ workflow = Workflow.build(
     max_seq_len=8*8192,
     max_batch_size=1,
     model_parallel_size=1,
-    max_nodes=20,
+    max_nodes=100,
     use_lora=True,
     lora_rank=64,
     lora_alpha=32,
@@ -296,7 +296,7 @@ for agents in [2, 3, 4, 8, 16]:
 
         results = {'baseline': [], 'cached': []}
         for i, problem in tqdm(enumerate(problems), desc=f'Agents={agents}'):
-            baseline_res, cached_res = benchmark(workflow, problem, num_agents=agents)
+            baseline_res, cached_res = benchmark(workflow, problem['problem'], num_agents=agents)
             results['baseline'].append(baseline_res)
             results['cached'].append(cached_res)
 

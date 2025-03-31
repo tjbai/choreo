@@ -97,7 +97,7 @@ def baseline(
         ))
         aff_ans = workflow.tokenizer.decode(aff_tokens)
         aff_stale = [{'role': 'assistant', 'content': aff_ans}]
-        total_ttft += insert_time + ttft_time[-1]
+        total_ttft += insert_time[-1] + ttft_time[-1]
         total_tokens += len(aff_tokens)
         force_tokens.append(len(aff_tokens))
 
@@ -116,7 +116,7 @@ def baseline(
         ))
         neg_ans = workflow.tokenizer.decode(neg_tokens)
         neg_stale = [{'role': 'assistant', 'content': neg_ans}]
-        total_ttft += insert_time + ttft_time[-1]
+        total_ttft += insert_time[-1] + ttft_time[-1]
         total_tokens += len(neg_tokens)
         force_tokens.append(len(neg_tokens))
 
@@ -132,7 +132,7 @@ def baseline(
         ))
         mod_ans = workflow.tokenizer.decode(mod_tokens)
         mod_stale = [{'role': 'assistant', 'content': mod_ans}]
-        total_ttft += insert_time + ttft_time[-1]
+        total_ttft += insert_time[-1] + ttft_time[-1]
         total_tokens += len(mod_tokens)
         force_tokens.append(len(mod_tokens))
 
