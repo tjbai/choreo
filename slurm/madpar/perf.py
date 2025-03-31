@@ -69,47 +69,13 @@ def baseline(
                 for j, resp in enumerate(last_tokens)
             ]
         )
-        [current_summary_node] = workflow.insert(
-            [
-                {
-                    "messages": [
-                        {
-                            "role": "user",
-                            "content": baseline_summary_prompt(problem, all_responses),
-                        }
-                    ],
-                    "parent_ids": [],
-                }
-            ],
-            time_buffer=insert_time,
-        )
-        [summary_tokens], [summary_result] = get("tokens", "nodes")(
-            workflow.step(
-                [
-                    {
-                        "header": ("assistant", ""),
-                        "prefill": "",
-                        "parent_ids": [current_summary_node["id"]],
-                    }
-                ],
-                temperature=temperature,
-                top_p=top_p,
-                time_buffer=step_time,
-                ttft_buffer=ttft_time,
-            )
-        )
-        total_tokens += len(summary_tokens)
-        force_tokens.append(len(summary_tokens))
-        total_ttft += insert_time[-1] + ttft_time[-1]
-        summary_text = workflow.tokenizer.decode(summary_tokens)
-
         debate_prompts = workflow.insert(
             [
                 {
                     "messages": [
                         {
                             "role": "user",
-                            "content": baseline_debate_prompt(summary_text, problem),
+                            "content": baseline_debate_prompt(all_responses, problem),
                         }
                     ],
                     "parent_ids": [n["id"] for n in context],
@@ -170,7 +136,7 @@ def cached(
     total_ttft = 0
     s = time.time()
 
-    [agent_node, debate_node, summary_prompt_node] = workflow.insert(
+    [agent_node, debate_node] = workflow.insert(
         [
             {
                 "messages": [{"role": "user", "content": starting_prompt(problem)}],
@@ -178,10 +144,6 @@ def cached(
             },
             {
                 "messages": [{"role": "user", "content": debate_prompt(problem)}],
-                "parent_ids": [],
-            },
-            {
-                "messages": [{"role": "user", "content": summary_prompt(problem)}],
                 "parent_ids": [],
             },
         ],
@@ -210,33 +172,17 @@ def cached(
     contexts = [[initial_node] for initial_node in initial_nodes]
     last_round = initial_nodes
     for round_idx in range(num_rounds):
-        [summary_tokens], [current_summary_node] = get("tokens", "nodes")(
-            workflow.step(
-                [
-                    {
-                        "header": ("assistant", None),
-                        "prefill": "Summary of agent responses:\n",
-                        "parent_ids": [summary_prompt_node["id"]]
-                        + [n["id"] for n in last_round],
-                    }
-                ],
-                temperature=temperature,
-                top_p=top_p,
-                time_buffer=step_time,
-                ttft_buffer=ttft_time,
-                force_tokens=force_tokens.pop(0),
-            )
-        )
-        total_ttft += ttft_time[-1]
-
         update_tokens, update_nodes = get("tokens", "nodes")(
             workflow.step(
                 [
                     {
                         "header": ("assistant", None),
                         "prefill": f"From Agent {i + 1}:\n",
-                        "parent_ids": [debate_node["id"], current_summary_node["id"]]
-                        + [n["id"] for n in context],
+                        "parent_ids": [
+                            debate_node["id"],
+                            *[n['id'] for n in last_round],
+                            *[n['id'] for n in context]
+                        ]
                     }
                     for i, context in enumerate(contexts)
                 ],
