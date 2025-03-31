@@ -319,112 +319,99 @@ plt.savefig("pd_leakage_shifts.png", bbox_inches="tight", dpi=300)
 
 plt.show()
 
-# %%
-import json
-import numpy as np
-import matplotlib.pyplot as plt
-from scipy import stats
-
-with open('dumps/tot/perf_B-8_V-4.json') as f:
-    data = json.load(f)
-
-plt.rcParams.update({
-    'font.family': 'serif',
-    'font.size': 14,
-    'axes.titlesize': 14,
-    'savefig.dpi': 300,
-    'figure.dpi': 300,
-})
-
-fig, ax = plt.subplots(figsize=(4, 4.5))
-
-x = np.array([d.get('tokens', i) for i, d in enumerate(data['baseline'])])
-baseline_times = np.array([b['wall_time'] * 1000 for b in data['baseline']])
-cached_times = np.array([c['wall_time'] * 1000 for c in data['cached']])
-diffs = baseline_times - cached_times
-
-mean_abs_diff = np.mean(diffs)
-corr, p_value = stats.pearsonr(x, diffs)
-
-colors = ['#ff6666' if diff < 0 else '#66cc66' for diff in diffs]
-edge_colors = ['#cc0000' if diff < 0 else '#009900' for diff in diffs]
-scatter = ax.scatter(x, diffs * 1000, c=colors, edgecolor=edge_colors, s=80, alpha=0.9)
-
-stats_text = (f"Mean: {mean_abs_diff:.2f}ms\n" f"Pearson's: {corr:.2f}")
-
-ax.text(
-    0.67, 0.08, stats_text,
-    transform=ax.transAxes,
-    bbox=dict(facecolor='white', edgecolor='black', boxstyle='round,pad=0.5'),
-    fontsize=10
-)
-
-ax.set_xlabel('Tokens generated')
-ax.set_ylabel('Time (ms)')
-ax.set_title('Tree of Thoughts')
-ax.axhline(y=0, color='gray', linestyle='--', alpha=0.3)
-
-plt.tight_layout()
-ax.spines['top'].set_visible(False)
-ax.spines['right'].set_visible(False)
-plt.savefig('figures/tot_perf_scatter.png')
 '''
 
-'''
-# %%
-import json
-import glob
-import numpy as np
-import re
-from collections import defaultdict
+# # %%
+# import json
+# import numpy as np
+# import matplotlib.pyplot as plt
+# from scipy import stats
 
-results = defaultdict(dict)
-for filename in glob.glob('dumps/tot/perf_B-*_V-*.json'):
-    match = re.search(r'B-(\d+)_V-(\d+)', filename)
-    if not match: continue
-    B, V = int(match.group(1)), int(match.group(2))
-    with open(filename) as f: data = json.load(f)
+# with open('dumps/tot/perf_B-8_V-4.json') as f:
+#     data = json.load(f)
 
-    baseline_times = np.array([b['wall_time'] for b in data['baseline']])
-    cached_times = np.array([c['wall_time'] for c in data['cached']])
-    baseline_cuda = np.array([b.get('cuda_time', 0) for b in data['baseline']])
-    cached_cuda = np.array([c.get('cuda_time', 0) for c in data['cached']])
-    baseline_ttft = np.array([b.get('ttft', 0) for b in data['baseline']])
-    cached_ttft = np.array([c.get('ttft', 0) for c in data['cached']])
+# plt.rcParams.update({
+#     'font.family': 'serif',
+#     'font.size': 14,
+#     'axes.titlesize': 14,
+#     'savefig.dpi': 300,
+#     'figure.dpi': 300,
+# })
 
-    results[(B, V)] = {
-        'wall_time': {
-            'baseline_mean': np.mean(baseline_times),
-            'cached_mean': np.mean(cached_times),
-            'speedup': np.mean(baseline_times) / np.mean(cached_times),
-            'diff_mean': np.mean(baseline_times - cached_times) * 1000  # ms
-        },
-        'cuda_time': {
-            'baseline_mean': np.mean(baseline_cuda),
-            'cached_mean': np.mean(cached_cuda),
-            'speedup': np.mean(baseline_cuda) / np.mean(cached_cuda) if np.mean(cached_cuda) > 0 else float('inf'),
-            'diff_mean': np.mean(baseline_cuda - cached_cuda) * 1000  # ms
-        },
-        'ttft': {
-            'baseline_mean': np.mean(baseline_ttft),
-            'cached_mean': np.mean(cached_ttft),
-            'speedup': np.mean(baseline_ttft) / np.mean(cached_ttft) if np.mean(cached_ttft) > 0 else float('inf'),
-            'diff_mean': np.mean(baseline_ttft - cached_ttft) * 1000  # ms
-        }
-    }
+# fig, ax = plt.subplots(figsize=(4, 4.5))
 
-print("| B | V | Wall Speedup | CUDA Speedup | TTFT Speedup |")
-print("|---|---|-------------|-------------|-------------|")
-for (B, V), metrics in sorted(results.items()):
-    print(f"| {B} | {V} | {metrics['wall_time']['speedup']:.3f}x | {metrics['cuda_time']['speedup']:.3f}x | {metrics['ttft']['speedup']:.3f}x |")
-'''
+# x = np.array([d.get('tokens', i) for i, d in enumerate(data['baseline'])])
+# baseline_times = np.array([b['wall_time'] * 1000 for b in data['baseline']])
+# cached_times = np.array([c['wall_time'] * 1000 for c in data['cached']])
+# diffs = baseline_times / cached_times
+
+# mean_abs_diff = np.mean(diffs)
+# colors = ['#ff6666' if diff < 1 else '#66cc66' for diff in diffs]
+# edge_colors = ['#cc0000' if diff < 0 else '#009900' for diff in diffs]
+# scatter = ax.scatter(x, diffs, c=colors, edgecolor=edge_colors, s=80, alpha=0.9)
+
+# ax.set_xlabel('Tokens generated')
+# ax.set_ylabel('Speedup')
+# ax.set_title('Tree of Thoughts')
+# ax.axhline(y=1, color='gray', linestyle='--', alpha=0.3)
+
+# plt.tight_layout()
+# ax.spines['top'].set_visible(False)
+# ax.spines['right'].set_visible(False)
+# plt.savefig('figures/tot_perf_scatter.png')
+
+# # %%
+# import json
+# import glob
+# import numpy as np
+# import re
+# from collections import defaultdict
+
+# results = defaultdict(dict)
+# for filename in glob.glob('dumps/tot/perf_B-*_V-*.json'):
+#     match = re.search(r'B-(\d+)_V-(\d+)', filename)
+#     if not match: continue
+#     B, V = int(match.group(1)), int(match.group(2))
+#     with open(filename) as f: data = json.load(f)
+
+#     baseline_times = np.array([b['wall_time'] for b in data['baseline']])
+#     cached_times = np.array([c['wall_time'] for c in data['cached']])
+#     baseline_cuda = np.array([b.get('cuda_time', 0) for b in data['baseline']])
+#     cached_cuda = np.array([c.get('cuda_time', 0) for c in data['cached']])
+#     baseline_ttft = np.array([b.get('ttft', 0) for b in data['baseline']])
+#     cached_ttft = np.array([c.get('ttft', 0) for c in data['cached']])
+
+#     results[(B, V)] = {
+#         'wall_time': {
+#             'baseline_mean': np.mean(baseline_times),
+#             'cached_mean': np.mean(cached_times),
+#             'speedup': np.mean(baseline_times) / np.mean(cached_times),
+#             'diff_mean': np.mean(baseline_times - cached_times) * 1000  # ms
+#         },
+#         'cuda_time': {
+#             'baseline_mean': np.mean(baseline_cuda),
+#             'cached_mean': np.mean(cached_cuda),
+#             'speedup': np.mean(baseline_cuda) / np.mean(cached_cuda) if np.mean(cached_cuda) > 0 else float('inf'),
+#             'diff_mean': np.mean(baseline_cuda - cached_cuda) * 1000  # ms
+#         },
+#         'ttft': {
+#             'baseline_mean': np.mean(baseline_ttft),
+#             'cached_mean': np.mean(cached_ttft),
+#             'speedup': np.mean(baseline_ttft) / np.mean(cached_ttft) if np.mean(cached_ttft) > 0 else float('inf'),
+#             'diff_mean': np.mean(baseline_ttft - cached_ttft) * 1000  # ms
+#         }
+#     }
+
+# print("| B | V | Wall Speedup | CUDA Speedup | TTFT Speedup |")
+# print("|---|---|-------------|-------------|-------------|")
+# for (B, V), metrics in sorted(results.items()):
+#     print(f"| {B} | {V} | {metrics['wall_time']['speedup']:.3f}x | {metrics['cuda_time']['speedup']:.3f}x | {metrics['ttft']['speedup']:.3f}x |")
 
 import json
 import glob
 import numpy as np
 import re
 import matplotlib.pyplot as plt
-from matplotlib.lines import Line2D
 from collections import defaultdict
 
 results = defaultdict(dict)
@@ -450,18 +437,24 @@ for filename in glob.glob('dumps/tot/perf_B-*_V-*.json'):
 
 plt.rcParams.update({
     'font.family': 'serif',
-    'font.size': 12,
-    'axes.labelsize': 14,
-    'axes.titlesize': 16,
+    'font.size': 16,
+    'axes.labelsize': 16,
+    'savefig.dpi': 300,
+    'figure.dpi': 300,
 })
 
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
 
 B_values = sorted(set([B for (B, _) in results.keys()]))
-B_values.remove(16) # not enough datapoints and can't fit on GPU
+B_values.remove(16)  # not enough datapoints and can't fit on GPU
+B_values.remove(9)   # just so we have 2 to 8
 V_values = sorted(set([V for (_, V) in results.keys()]))
 
-for V in V_values:
+b_colors = plt.cm.plasma(np.linspace(0.0, 0.9, len(B_values)))
+v_colors = plt.cm.plasma(np.linspace(0.0, 0.9, len(V_values)))
+
+# Left plot: Speedup vs Branches
+for i, V in enumerate(V_values):
     b_values = []
     speedup_ratios = []
 
@@ -475,13 +468,26 @@ for V in V_values:
                 speedup_ratios.append(speedup)
 
     if len(b_values) > 1:
-        ax1.plot(b_values, speedup_ratios, 'o-',
-                 label=f"V={V}",
-                 linewidth=1.5,
-                 marker='o',
-                 markersize=6)
+        line, = ax1.plot(b_values, speedup_ratios, 'o-',
+                    color=v_colors[i],
+                    linewidth=1.5,
+                    marker='o',
+                    markersize=6)
 
-for B in B_values:
+        last_x, last_y = b_values[-1], speedup_ratios[-1]
+
+        y_offset = 12 if V == 8 else 2
+
+        ax1.annotate(f"V={V}",
+                    xy=(last_x, last_y),
+                    xytext=(10, y_offset),
+                    textcoords="offset points",
+                    ha="left", va="center",
+                    fontsize=10,
+                    bbox=dict(boxstyle="round,pad=0.3", fc=v_colors[i], ec="lightgray", alpha=0.5))
+
+# Right plot: Speedup vs Voters
+for i, B in enumerate(B_values):
     v_values = []
     speedup_ratios = []
 
@@ -495,29 +501,35 @@ for B in B_values:
                 speedup_ratios.append(speedup)
 
     if len(v_values) > 1:
-        ax2.plot(v_values, speedup_ratios, 'o-',
-                 label=f"B={B}",
+        line, = ax2.plot(v_values, speedup_ratios, 'o-',
+                 color=b_colors[i],
                  linewidth=1.5,
                  marker='o',
                  markersize=6)
 
+        last_x, last_y = v_values[-1], speedup_ratios[-1]
+        ax2.annotate(f"B={B}",
+                    xy=(last_x, last_y),
+                    xytext=(10, 0),
+                    textcoords="offset points",
+                    ha="left", va="center",
+                    fontsize=10,
+                    bbox=dict(boxstyle="round,pad=0.3", fc=b_colors[i], ec="lightgray", alpha=0.5))
+
 ax1.axhline(y=1, color='gray', linestyle='--', alpha=0.5)
 ax2.axhline(y=1, color='gray', linestyle='--', alpha=0.5)
 
-ax1.legend(frameon=True, facecolor='white', edgecolor='lightgray')
-ax2.legend(frameon=True, facecolor='white', edgecolor='lightgray')
-
 ax1.set_xlabel('Number of Branches')
-ax1.set_ylabel('Speedup Ratio (baseline/choreographed)')
+ax1.set_ylabel('Speedup (x)')
 ax1.set_title('Speedup vs. Branches')
 ax1.spines['top'].set_visible(False)
 ax1.spines['right'].set_visible(False)
 
 ax2.set_xlabel('Number of Voters')
-ax2.set_ylabel('Speedup Ratio (baseline/choreographed)')
+ax2.set_ylabel('Speedup (x)')
 ax2.set_title('Speedup vs. Voters')
 ax2.spines['top'].set_visible(False)
 ax2.spines['right'].set_visible(False)
 
 plt.tight_layout()
-plt.show()
+plt.savefig('figures/tot_perf_scaling.png')
