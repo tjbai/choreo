@@ -141,15 +141,14 @@ def baseline(
             {'role': 'system', 'content': agent_prompt(problem, '')},
             {'role': 'user', 'content': f'Affirmative side arguing:\n{aff_ans}\n\nNegative side arguing:\n{neg_ans}\n\nNow, what answer candidates do we have? Present them without reasons.'},
         ], 'parent_ids': []}
-    ], time_buffer=insert_time)
+    ])
     [cand_tokens], [cand_response] = get('tokens', 'nodes')(workflow.step(
         [{'header': ('assistant', ''), 'prefill': '', 'parent_ids': [judge_prompt['id']]}],
-        time_buffer=step_time,
-        ttft_buffer=ttft_time,
     ))
-    total_ttft += insert_time[-1] + ttft_time[-1]
-    total_tokens += len(cand_tokens)
-    force_tokens.append(len(cand_tokens))
+    # omit this for fair comparison...
+    # total_ttft += insert_time[-1] + ttft_time[-1]
+    # total_tokens += len(cand_tokens)
+    # force_tokens.append(len(cand_tokens))
 
     [final_prompt] = workflow.insert([
         {'messages': [
@@ -172,6 +171,8 @@ def baseline(
     return {
         'wall_time': time.time() - s,
         'cuda_time': sum(insert_time) + sum(step_time),
+        'insert_time': insert_time,
+        'step_time': step_time,
         'ttft': total_ttft,
         'tokens': total_tokens,
         'force_tokens': force_tokens
@@ -297,7 +298,7 @@ def cached(
         top_p=top_p,
         time_buffer=step_time,
         ttft_buffer=ttft_time,
-        force_tokens=force_tokens[-1],
+        force_tokens=force_tokens.pop(0),
     ))
     mod_context.append(final_node)
     total_ttft += insert_time[-1] + ttft_time[-1]
@@ -305,6 +306,8 @@ def cached(
     return {
         'wall_time': time.time() - s,
         'cuda_time': sum(insert_time) + sum(step_time),
+        'insert_time': insert_time,
+        'step_time': step_time,
         'ttft': total_ttft,
     }
 
