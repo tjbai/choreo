@@ -541,7 +541,6 @@ baseline vs. ft500:
 
 ## 3/19: bc5aa88abd0cd65335e86220ada12fc8b2118940
 
-
 | Strategy         | Baseline Cooperate | Choreographed | Choreographed (fine-tuning examples) | p-value before | p-value after |
 |------------------|--------------------|---------------|--------------------------------------|----------------|---------------|
 | No Strategy      | 78.3% ± 3.6%       | 63.9% ± 4.3%  | 76.75% ± 2.6% (800)                  | 5.8e-8         | 0.82          |
@@ -655,9 +654,9 @@ Evaluate "BOTH" for multiQA on n=500:
 
 | Workflow | E2E Speedup | TTFT Speedup |
 |----------|-------------|--------------|
-| ToT      | 1.033x      | 3.61x        |
-| MADiter  |             |              |
-| MADpar   |             |              |
+| ToT      | 1.03x       | 3.61x        |
+| MADiter  | 1.01x       | 2.00x        |
+| MADpar   | 1.03x       | 6.22x        |
 
 The scaling sweep for ToT is flawed. I wasn't passing the parameters through lol.
 
@@ -711,3 +710,27 @@ Prisoners:
     No strategy:  -0.15720144 -0.04679757
     Cooperate:    -0.084770841  0.007898904
     Defect:       -0.4127490 -0.2940866
+
+| Strategy         | Baseline | Choreographed       | Leak System          | Leak Plan            |
+|------------------|----------|---------------------|----------------------|----------------------|
+| No Strategy      | 78.3     | 63.9 (-20.7, -9.7)  | 73.3% (-10.7, -0.01) | 67.9% (-15.7, -0.47) |
+| Always Cooperate | 87.7     | 78.2 (-14.2, -4.2)  | 91.7% (+0.1, +9.0)   | 82.3% (-8.5, +0.1)   |
+| Always Defect    | 72.8     | 46.7 (-30.9, -18.9) | 20.5% (-55.8, -44.8) | 36.2% (-41.2, -29.4) |
+
+TriviaQA:
+  Q1:
+    Untrained:    -0.4358601 -0.3409125
+    Linearized:   -0.7382991 -0.6506962
+    Trained:      -0.07670084 -0.01179255
+
+  Q2:
+    Untrained:    -0.5332363 -0.4341922
+    Linearized:   -0.17975964 -0.09563063
+    Trained:      -0.0728019428  0.0005183805
+
+  Both:
+    Untrained:    -0.6040191 -0.5108533
+    Linearized:   -0.6040191 -0.5108533
+    Trained:      -0.11289857 -0.03919143
+
+Fucked up my git history at some point around here I think.
