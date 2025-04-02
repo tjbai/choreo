@@ -321,44 +321,60 @@ plt.show()
 
 '''
 
-# # %%
-# import json
-# import numpy as np
-# import matplotlib.pyplot as plt
-# from scipy import stats
+# %%
+import json
+import numpy as np
+import matplotlib.pyplot as plt
+from scipy import stats
 
-# with open('dumps/tot/perf_B-8_V-4.json') as f:
-#     data = json.load(f)
+plt.rcParams.update({
+    'font.family': 'serif',
+    'font.size': 14,
+    'axes.titlesize': 12,
+    'savefig.dpi': 300,
+    'figure.dpi': 600,
+})
 
-# plt.rcParams.update({
-#     'font.family': 'serif',
-#     'font.size': 14,
-#     'axes.titlesize': 14,
-#     'savefig.dpi': 300,
-#     'figure.dpi': 300,
-# })
+fig, axs = plt.subplots(1, 3, figsize=(16, 4.5))
 
-# fig, ax = plt.subplots(figsize=(4, 4.5))
+for path, title, ax in zip([
+    'dumps/tot/perf_B-8_V-4.json',
+    'dumps/mad/perf.json',
+    'dumps/madpar/perf_A-3.json'
+], [
+    'ToT',
+    'MADiter',
+    'MADpar'
+], axs):
+    with open(path) as f:
+        data = json.load(f)
 
-# x = np.array([d.get('tokens', i) for i, d in enumerate(data['baseline'])])
-# baseline_times = np.array([b['wall_time'] * 1000 for b in data['baseline']])
-# cached_times = np.array([c['wall_time'] * 1000 for c in data['cached']])
-# diffs = baseline_times / cached_times
+    x = np.array([d.get('tokens', i) for i, d in enumerate(data['baseline'])])
+    baseline_times = np.array([b['wall_time'] * 1000 for b in data['baseline']])
+    cached_times = np.array([c['wall_time'] * 1000 for c in data['cached']])
+    diffs = baseline_times / cached_times
+    corr, _ = stats.pearsonr(x, diffs)
 
-# mean_abs_diff = np.mean(diffs)
-# colors = ['#ff6666' if diff < 1 else '#66cc66' for diff in diffs]
-# edge_colors = ['#cc0000' if diff < 0 else '#009900' for diff in diffs]
-# scatter = ax.scatter(x, diffs, c=colors, edgecolor=edge_colors, s=80, alpha=0.9)
+    mean_abs_diff = np.mean(diffs)
+    colors = ['#ff6666' if diff < 1 else '#66cc66' for diff in diffs]
+    edge_colors = ['#cc0000' if diff < 0 else '#009900' for diff in diffs]
+    scatter = ax.scatter(x, diffs, c=colors, edgecolor=edge_colors, s=80, alpha=0.9)
 
-# ax.set_xlabel('Tokens generated')
-# ax.set_ylabel('Speedup')
-# ax.set_title('Tree of Thoughts')
-# ax.axhline(y=1, color='gray', linestyle='--', alpha=0.3)
+    slope, intercept = np.polyfit(x, diffs, 1)
+    ax.plot(x, slope * x + intercept, alpha=0.5)
 
-# plt.tight_layout()
-# ax.spines['top'].set_visible(False)
-# ax.spines['right'].set_visible(False)
-# plt.savefig('figures/tot_perf_scatter.png')
+    ax.text(0.05, 0.05, f"r = {corr:.2f}", transform=ax.transAxes,
+            fontsize=14, ha='left', va='bottom')
+
+    ax.set_xlabel('Tokens Generated')
+    ax.set_ylabel('E2E Speedup')
+    ax.set_title(title)
+    ax.axhline(y=1, color='gray', linestyle='--', alpha=0.3)
+    ax.spines['top'].set_visible(False)
+    ax.spines['right'].set_visible(False)
+
+plt.tight_layout()
+plt.savefig('figures/all_perf_scatter.png')
 
 # # %%
 # import json
@@ -407,129 +423,127 @@ plt.show()
 # for (B, V), metrics in sorted(results.items()):
 #     print(f"| {B} | {V} | {metrics['wall_time']['speedup']:.3f}x | {metrics['cuda_time']['speedup']:.3f}x | {metrics['ttft']['speedup']:.3f}x |")
 
-import json
-import glob
-import numpy as np
-import re
-import matplotlib.pyplot as plt
-from collections import defaultdict
+# import json
+# import glob
+# import numpy as np
+# import re
+# import matplotlib.pyplot as plt
+# from collections import defaultdict
 
-results = defaultdict(dict)
+# results = defaultdict(dict)
 
-for filename in glob.glob('dumps/tot/perf_B-*_V-*.json'):
-    match = re.search(r'B-(\d+)_V-(\d+)', filename)
-    if not match:
-        continue
+# for filename in glob.glob('dumps/tot/perf_B-*_V-*.json'):
+#     match = re.search(r'B-(\d+)_V-(\d+)', filename)
+#     if not match:
+#         continue
 
-    B, V = int(match.group(1)), int(match.group(2))
+#     B, V = int(match.group(1)), int(match.group(2))
 
-    with open(filename) as f:
-        data = json.load(f)
+#     with open(filename) as f:
+#         data = json.load(f)
 
-    baseline_times = np.array([b['wall_time'] for b in data['baseline']])
-    cached_times = np.array([c['wall_time'] for c in data['cached']])
+#     baseline_times = np.array([b['wall_time'] for b in data['baseline']])
+#     cached_times = np.array([c['wall_time'] for c in data['cached']])
 
-    # Store mean times in milliseconds
-    results[(B, V)] = {
-        'baseline_mean': np.mean(baseline_times) * 1000,
-        'cached_mean': np.mean(cached_times) * 1000
-    }
+#     # Store mean times in milliseconds
+#     results[(B, V)] = {
+#         'baseline_mean': np.mean(baseline_times) * 1000,
+#         'cached_mean': np.mean(cached_times) * 1000
+#     }
 
-plt.rcParams.update({
-    'font.family': 'serif',
-    'font.size': 16,
-    'axes.labelsize': 16,
-    'savefig.dpi': 300,
-    'figure.dpi': 300,
-})
+# plt.rcParams.update({
+#     'font.family': 'serif',
+#     'font.size': 16,
+#     'axes.labelsize': 16,
+#     'savefig.dpi': 300,
+#     'figure.dpi': 300,
+# })
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(12, 5))
+# fig, (ax2) = plt.subplots(1, 1, figsize=(6, 5))
 
-B_values = sorted(set([B for (B, _) in results.keys()]))
-B_values.remove(16)  # not enough datapoints and can't fit on GPU
-B_values.remove(9)   # just so we have 2 to 8
-V_values = sorted(set([V for (_, V) in results.keys()]))
+# B_values = sorted(set([B for (B, _) in results.keys()]))
+# B_values.remove(16)  # not enough datapoints and can't fit on GPU
+# B_values.remove(9)   # just so we have 2 to 8
+# V_values = sorted(set([V for (_, V) in results.keys()]))
 
-b_colors = plt.cm.plasma(np.linspace(0.0, 0.9, len(B_values)))
-v_colors = plt.cm.plasma(np.linspace(0.0, 0.9, len(V_values)))
+# b_colors = plt.cm.plasma(np.linspace(0.0, 0.9, len(B_values)))
+# v_colors = plt.cm.plasma(np.linspace(0.0, 0.9, len(V_values)))
 
 # Left plot: Speedup vs Branches
-for i, V in enumerate(V_values):
-    b_values = []
-    speedup_ratios = []
+# for i, V in enumerate(V_values):
+#     b_values = []
+#     speedup_ratios = []
 
-    for B in B_values:
-        if (B, V) in results:
-            baseline = results[(B, V)]['baseline_mean']
-            choreographed = results[(B, V)]['cached_mean']
-            if choreographed > 0:  # Avoid division by zero
-                speedup = baseline / choreographed
-                b_values.append(B)
-                speedup_ratios.append(speedup)
+#     for B in B_values:
+#         if (B, V) in results:
+#             baseline = results[(B, V)]['baseline_mean']
+#             choreographed = results[(B, V)]['cached_mean']
+#             if choreographed > 0:  # Avoid division by zero
+#                 speedup = baseline / choreographed
+#                 b_values.append(B)
+#                 speedup_ratios.append(speedup)
 
-    if len(b_values) > 1:
-        line, = ax1.plot(b_values, speedup_ratios, 'o-',
-                    color=v_colors[i],
-                    linewidth=1.5,
-                    marker='o',
-                    markersize=6)
+#     if len(b_values) > 1:
+#         line, = ax1.plot(b_values, speedup_ratios, 'o-',
+#                     color=v_colors[i],
+#                     linewidth=1.5,
+#                     marker='o',
+#                     markersize=6)
 
-        last_x, last_y = b_values[-1], speedup_ratios[-1]
+#         last_x, last_y = b_values[-1], speedup_ratios[-1]
 
-        y_offset = 12 if V == 8 else 2
+#         y_offset = 12 if V == 8 else 2
 
-        ax1.annotate(f"V={V}",
-                    xy=(last_x, last_y),
-                    xytext=(10, y_offset),
-                    textcoords="offset points",
-                    ha="left", va="center",
-                    fontsize=10,
-                    bbox=dict(boxstyle="round,pad=0.3", fc=v_colors[i], ec="lightgray", alpha=0.5))
+#         ax1.annotate(f"V={V}",
+#                     xy=(last_x, last_y),
+#                     xytext=(10, y_offset),
+#                     textcoords="offset points",
+#                     ha="left", va="center",
+#                     fontsize=10,
+#                     bbox=dict(boxstyle="round,pad=0.3", fc=v_colors[i], ec="lightgray", alpha=0.5))
 
-# Right plot: Speedup vs Voters
-for i, B in enumerate(B_values):
-    v_values = []
-    speedup_ratios = []
+# for i, B in enumerate(B_values):
+#     v_values = []
+#     speedup_ratios = []
 
-    for V in V_values:
-        if (B, V) in results:
-            baseline = results[(B, V)]['baseline_mean']
-            choreographed = results[(B, V)]['cached_mean']
-            if choreographed > 0:  # Avoid division by zero
-                speedup = baseline / choreographed
-                v_values.append(V)
-                speedup_ratios.append(speedup)
+#     for V in V_values:
+#         if (B, V) in results:
+#             baseline = results[(B, V)]['baseline_mean']
+#             choreographed = results[(B, V)]['cached_mean']
+#             if choreographed > 0:  # Avoid division by zero
+#                 speedup = baseline / choreographed
+#                 v_values.append(V)
+#                 speedup_ratios.append(speedup)
 
-    if len(v_values) > 1:
-        line, = ax2.plot(v_values, speedup_ratios, 'o-',
-                 color=b_colors[i],
-                 linewidth=1.5,
-                 marker='o',
-                 markersize=6)
+#     if len(v_values) > 1:
+#         line, = ax2.plot(v_values, speedup_ratios, 'o-',
+#                  color=b_colors[i],
+#                  linewidth=1.5,
+#                  marker='o',
+#                  markersize=6)
 
-        last_x, last_y = v_values[-1], speedup_ratios[-1]
-        ax2.annotate(f"B={B}",
-                    xy=(last_x, last_y),
-                    xytext=(10, 0),
-                    textcoords="offset points",
-                    ha="left", va="center",
-                    fontsize=10,
-                    bbox=dict(boxstyle="round,pad=0.3", fc=b_colors[i], ec="lightgray", alpha=0.5))
+#         last_x, last_y = v_values[-1], speedup_ratios[-1]
+#         ax2.annotate(f"B={B}",
+#                     xy=(last_x, last_y),
+#                     xytext=(10, 0),
+#                     textcoords="offset points",
+#                     ha="left", va="center",
+#                     fontsize=10,
+#                     bbox=dict(boxstyle="round,pad=0.3", fc=b_colors[i], ec="lightgray", alpha=0.5))
 
-ax1.axhline(y=1, color='gray', linestyle='--', alpha=0.5)
-ax2.axhline(y=1, color='gray', linestyle='--', alpha=0.5)
+# ax1.axhline(y=1, color='gray', linestyle='--', alpha=0.5)
+# ax2.axhline(y=1, color='gray', linestyle='--', alpha=0.5)
 
-ax1.set_xlabel('Number of Branches')
-ax1.set_ylabel('Speedup (x)')
-ax1.set_title('Speedup vs. Branches')
-ax1.spines['top'].set_visible(False)
-ax1.spines['right'].set_visible(False)
+# ax1.set_xlabel('Number of Branches')
+# ax1.set_ylabel('Speedup (x)')
+# ax1.set_title('Speedup vs. Branches')
+# ax1.spines['top'].set_visible(False)
+# ax1.spines['right'].set_visible(False)
 
-ax2.set_xlabel('Number of Voters')
-ax2.set_ylabel('Speedup (x)')
-ax2.set_title('Speedup vs. Voters')
-ax2.spines['top'].set_visible(False)
-ax2.spines['right'].set_visible(False)
+# ax2.set_xlabel('Number of Voters')
+# ax2.set_ylabel('E2E Speedup (x)')
+# ax2.spines['top'].set_visible(False)
+# ax2.spines['right'].set_visible(False)
 
-plt.tight_layout()
-plt.savefig('figures/tot_perf_scaling.png')
+# plt.tight_layout()
+# plt.savefig('figures/tot_perf_scaling.png')
