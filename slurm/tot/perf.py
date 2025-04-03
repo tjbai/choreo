@@ -112,6 +112,8 @@ def baseline(
     return {
         'wall_time': time.time() - s,
         'cuda_time': sum(insert_time) + sum(step_time),
+        'insert_time': insert_time,
+        'step_time': step_time,
         'ttft': total_ttft,
         'tokens': total_tokens,
         'force_tokens': force_tokens
@@ -200,6 +202,8 @@ def cached(
     return {
         'wall_time': time.time() - s,
         'cuda_time': sum(insert_time) + sum(step_time),
+        'insert_time': insert_time,
+        'step_time': step_time,
         'ttft': total_ttft,
     }
 
@@ -232,8 +236,8 @@ workflow.model.eval()
 
 problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='val')[:30]
 
-for branching_factor in [1, 3]:
-    for voters in [2, 4, 8, 16]:
+for branching_factor in [2, 3, 4, 5, 6]:
+    for voters in [2, 4, 8]:
         try:
             # warmup
             for problem in problems[:3]:
@@ -256,7 +260,7 @@ for branching_factor in [1, 3]:
                 results['cached'].append(cached_res)
 
                 if (i+1) % 10 == 0:
-                    with open(f'/home/tbai4/llama3/dumps/tot/perf_B-{branching_factor}_V-{voters}.json', 'w') as f:
+                    with open(f'/home/tbai4/llama3/dumps/tot/perf_B-{branching_factor}_V-{voters}_more.json', 'w') as f:
                         json.dump(results, f)
 
         except RuntimeError as e:

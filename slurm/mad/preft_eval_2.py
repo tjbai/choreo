@@ -29,7 +29,7 @@ problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='test')[:250
 samples = []
 for i, problem in enumerate(tqdm(problems)):
     workflow.reset()
-    outputs = mad_baseline(
+    outputs = mad_cached(
         workflow=workflow,
         problem=problem['problem'],
         max_rounds=3,
@@ -41,15 +41,16 @@ for i, problem in enumerate(tqdm(problems)):
     if i == 0:
         correct = eval_solutions(
             llama,
-            [(d['outputs']['decision']['Answer'] if isinstance(d['outputs']['decision'], dict) else '') for d in samples],
+            [(d['outputs']['decision']['Answer'] if isinstance(d['outputs']['decision'], dict) else '')for d in samples],
             [d['inputs'] for d in samples],
         )
-        with open('dumps/mad/baseline_correct.json', 'w') as f:
+        with open('dumps/mad/choreo_correct.json', 'w') as f:
             json.dump(correct, f)
 correct = eval_solutions(
     llama,
-    [(d['outputs']['decision']['Answer'] if isinstance(d['outputs']['decision'], dict) else '') for d in samples],
+    [(d['outputs']['decision']['Answer'] if isinstance(d['outputs']['decision'], dict) else '')for d in samples],
     [d['inputs'] for d in samples],
 )
-with open('dumps/mad/baseline_correct.json', 'w') as f:
+with open('dumps/mad/choreo_correct.json', 'w') as f:
     json.dump(correct, f)
+
