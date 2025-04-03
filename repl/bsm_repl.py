@@ -30,13 +30,13 @@ import numpy as np
 
 with open('dumps/bsm/preft_eval.json') as f:
     pre = json.load(f)
-    baseline = pre['raw_data']['baseline']['group2_coverage']
-    choreo = pre['raw_data']['cached']['group2_coverage']
-    choreo_lin = pre['raw_data']['cached_compact']['group2_coverage']
+    baseline = pre['raw_data']['baseline']['coverage']
+    choreo = pre['raw_data']['cached']
+    choreo_lin = pre['raw_data']['cached_compact']
 
 with open('dumps/bsm/postft_eval.json') as f:
     post = json.load(f)
-    choreo_ft = post['lora_step-104']['raw_data']['group2_coverage']
+    choreo_ft = post['lora_step-104']['raw_data']['coverage']
 
 def bootstrap_ci(baseline, comparison, n_bootstrap=10000):
     n = len(baseline)
@@ -80,3 +80,15 @@ with open('dumps/bsm/preft_eval.json') as f:
     print(bootstrap_test(pre['raw_data']['baseline']['group1_coverage'], pre['raw_data']['baseline']['group2_coverage']))
 
 # %%
+with open('dumps/bsm/preft_eval.json') as f:
+    data = json.load(f)
+    concepts = data['raw_data']['concepts']
+    baseline_stories = data['raw_data']['baseline']['stories']
+    choreo_stories = data['raw_data']['cached']['stories']
+    choreo_lin_stories = data['raw_data']['cached_compact']['stories']
+
+with open('dumps/bsm/postft_eval.json') as f:
+    data = json.load(f)
+    choreo_ft_stories = data['lora_step-104']['raw_data']['stories']
+
+from llama.workflows.bsm import compare_stories

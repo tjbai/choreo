@@ -194,7 +194,7 @@ plt.rcParams.update({
     'figure.dpi': 300,
 })
 
-plt.figure(figsize=(8, 6))
+plt.figure(figsize=(12, 6))
 
 x = np.arange(len(strategies))
 width = 0.25
@@ -206,7 +206,8 @@ plt.bar(x + width, diff_plan, width, label='Leak Plan', color='#CC3311', yerr=er
 plt.ylabel('Shift in Bob\'s Cooperation Rate (%)', fontsize=16)
 plt.xticks(x, strategies, fontsize=16)
 plt.yticks(np.arange(-60, 11, 10), fontsize=16)
-plt.legend(loc='lower center', ncol=3, fontsize=16)
+# plt.legend(loc='lower center', ncol=3, fontsize=16)
+plt.legend(loc='center left', bbox_to_anchor=(0.02, 0.12), fontsize=16)
 plt.grid(axis='y', linestyle='--', alpha=0.7)
 
 for i, val in enumerate(baseline):
@@ -224,4 +225,4 @@ plt.ylim(-65, 10)
 plt.grid(True, alpha=0.3)
 plt.tight_layout()
 plt.savefig('figures/leakage_ablations.png')
-plt.show()
+# plt.show()

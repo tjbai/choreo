@@ -114,6 +114,7 @@ def mcnemar_exact(control, treatment):
     print(result)
 
 mcnemar_exact(baseline, choreo)
+mcnemar_exact(baseline, choreo_ft)
 mcnemar_exact(baseline, distilled)
 
 # %%

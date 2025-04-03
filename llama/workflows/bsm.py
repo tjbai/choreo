@@ -5,6 +5,7 @@ from operator import itemgetter as get
 from typing import List, Optional, Dict, Tuple
 from concurrent.futures import ThreadPoolExecutor, as_completed
 
+import numpy as np
 from openai import OpenAI
 from dotenv import load_dotenv
 from tqdm import tqdm
@@ -241,6 +242,7 @@ def compare_stories(
     load_dotenv()
     client = OpenAI()
     results = [False] * len(a_stories)
+    result_types = []
 
     stats = {
         "a_wins": 0,
@@ -249,7 +251,7 @@ def compare_stories(
         "errors": 0,
         "total": len(a_stories)
     }
-    
+
     prompt_template =  '''
 Please act as an impartial judge and evaluate the quality of the stories provided by two AI assistants.
 Both stories were generated using the following instructions:
@@ -330,6 +332,7 @@ After providing your explanation, output your final verdict by strictly followin
         for future in tqdm(as_completed(futures), total=len(futures), desc="Comparing"):
             idx, a_wins, result_type = future.result()
             results[idx] = a_wins
+            result_types.append(result_type)
 
             if result_type == "a_win":
                 stats["a_wins"] += 1
@@ -345,5 +348,38 @@ After providing your explanation, output your final verdict by strictly followin
         stats["a_win_percent"] = (stats["a_wins"] / total_valid) * 100
         stats["b_win_percent"] = (stats["b_wins"] / total_valid) * 100
         stats["tie_percent"] = (stats["ties"] / total_valid) * 100
+
+    if total_valid > 0:
+        a_win_percentages = np.zeros(1000)
+        b_win_percentages = np.zeros(1000)
+        tie_percentages = np.zeros(1000)
+
+        for i in range(1000):
+            bootstrap_indices = np.random.choice(range(len(result_types)), size=len(result_types), replace=True)
+            bootstrap_sample = [result_types[idx] for idx in bootstrap_indices]
+            bootstrap_a_wins = bootstrap_sample.count("a_win")
+            bootstrap_b_wins = bootstrap_sample.count("b_win")
+            bootstrap_ties = bootstrap_sample.count("tie")
+            bootstrap_total = len(bootstrap_sample)
+            a_win_percentages[i] = (bootstrap_a_wins / bootstrap_total) * 100
+            b_win_percentages[i] = (bootstrap_b_wins / bootstrap_total) * 100
+            tie_percentages[i] = (bootstrap_ties / bootstrap_total) * 100
+
+        alpha = 0.05
+        lower_percentile = alpha / 2 * 100
+        upper_percentile = (1 - alpha / 2) * 100
+
+        stats["a_win_ci"] = (
+            np.percentile(a_win_percentages, lower_percentile),
+            np.percentile(a_win_percentages, upper_percentile)
+        )
+        stats["b_win_ci"] = (
+            np.percentile(b_win_percentages, lower_percentile),
+            np.percentile(b_win_percentages, upper_percentile)
+        )
+        stats["tie_ci"] = (
+            np.percentile(tie_percentages, lower_percentile),
+            np.percentile(tie_percentages, upper_percentile)
+        )
 
     return results, stats
