@@ -160,16 +160,11 @@ class Tokenizer:
         else:
             return self.tiktoken_model.decode(cast(List[int], tokens))
 
-    def apply_chat_template(self, messages: List[Message], add_generation_prompt: bool = False) -> List[int]:
+    def apply_chat_template(self, messages: List[Message], **kwargs) -> List[int]:
         if self.model_type != "qwen":
             raise NotImplementedError("Chat templates only supported for Qwen models")
 
-        return self.hf_tokenizer.apply_chat_template(
-            messages,
-            tokenize=True,
-            add_generation_prompt=add_generation_prompt,
-            return_tensors=None
-        )
+        return self.hf_tokenizer.apply_chat_template(messages, return_tensors=None, **kwargs)
 
     @staticmethod
     def _split_whitespaces_or_nonwhitespaces(s: str, max_consecutive_slice_len: int) -> Iterator[str]:
@@ -202,13 +197,13 @@ class QwenChatFormat:
         return self.tokenizer.encode(header_text, bos=False, eos=False)
 
     def encode_message(self, message: Message) -> List[int]:
-        return self.tokenizer.apply_chat_template([message], add_generation_prompt=False)
+        return self.tokenizer.apply_chat_template([message], add_generation_prompt=False, enable_thinking=False)
 
     def encode_dialog(self, dialog: Dialog) -> List[int]:
-        return self.tokenizer.apply_chat_template(list(dialog), add_generation_prompt=False)
+        return self.tokenizer.apply_chat_template(list(dialog), add_generation_prompt=False, enable_thinking=False)
 
     def encode_dialog_prompt(self, dialog: Dialog, prefill: bool = True) -> List[int]:
-        return self.tokenizer.apply_chat_template(list(dialog), add_generation_prompt=prefill)
+        return self.tokenizer.apply_chat_template(list(dialog), add_generation_prompt=prefill, enable_thinking=False)
 
 
 class LlamaChatFormat:
