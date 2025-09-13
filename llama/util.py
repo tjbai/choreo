@@ -5,6 +5,7 @@ from pathlib import Path
 import torch
 import numpy as np
 from scipy import stats
+from safetensors.torch import load_file as safe_load
 from statsmodels.stats.contingency_tables import mcnemar
 from fairscale.nn.model_parallel.initialize import (
     get_model_parallel_rank,
@@ -137,6 +138,13 @@ def load_model_and_tokenizer(
         model_args.attention_bias = attention_bias
         model_args.use_qk_norm = True
 
+        if 'rope_scaling' in cfg and cfg['rope_scaling']:
+            rope_config = cfg['rope_scaling']
+            if 'factor' in rope_config:
+                model_args.rope_scale = float(rope_config['factor'])
+            elif 'attention_factor' in rope_config:
+                model_args.rope_scale = float(rope_config['attention_factor'])
+
         if torch.cuda.is_bf16_supported():
             torch.set_default_device('cuda')
             torch.set_default_dtype(torch.bfloat16)
@@ -266,24 +274,6 @@ def bootstrap_continuous(
 
 
 def _load_qwen_to_native_state_dict(ckpt_dir: str, target_vocab: Optional[int] = None) -> Dict[str, torch.Tensor]:
-    """
-    Load Qwen HuggingFace-format weights from `ckpt_dir` and map to this repo's
-    native Transformer state_dict layout.
-
-    Notes:
-    - Assumes MP=1 (no tensor-parallel sharding).
-    - Expects files named model*.safetensors (single or sharded); merges shards.
-    - Maps common Qwen key names to our module names.
-    - Does not depend on `transformers`; uses safetensors if available.
-    """
-    try:
-        from safetensors.torch import load_file as safe_load
-    except Exception as e:
-        raise RuntimeError(
-            "Loading Qwen safetensors requires `safetensors`. Install via `pip install safetensors`."
-        ) from e
-
-    # Load one or multiple shards and merge
     shard_paths = sorted(glob.glob(os.path.join(ckpt_dir, "model*.safetensors")))
     if not shard_paths:
         raise FileNotFoundError(f"No Qwen safetensors found in {ckpt_dir}")
@@ -296,7 +286,6 @@ def _load_qwen_to_native_state_dict(ckpt_dir: str, target_vocab: Optional[int] =
 
     state: Dict[str, torch.Tensor] = {}
 
-    # Embeddings and output
     if 'model.embed_tokens.weight' in merged:
         emb = merged['model.embed_tokens.weight']
         if target_vocab is not None and emb.shape[0] != target_vocab:
@@ -327,21 +316,17 @@ def _load_qwen_to_native_state_dict(ckpt_dir: str, target_vocab: Optional[int] =
         if f"{base}.self_attn.q_proj.weight" not in merged:
             break
 
-        # Attention projections
         state[f"layers.{i}.attention.wq.weight"] = merged[f"{base}.self_attn.q_proj.weight"]
         state[f"layers.{i}.attention.wk.weight"] = merged[f"{base}.self_attn.k_proj.weight"]
         state[f"layers.{i}.attention.wv.weight"] = merged[f"{base}.self_attn.v_proj.weight"]
         state[f"layers.{i}.attention.wo.weight"] = merged[f"{base}.self_attn.o_proj.weight"]
 
-        # Q/K normalization weights (Qwen-specific)
         if f"{base}.self_attn.q_norm.weight" in merged:
             state[f"layers.{i}.attention.q_norm.weight"] = merged[f"{base}.self_attn.q_norm.weight"]
         if f"{base}.self_attn.k_norm.weight" in merged:
             state[f"layers.{i}.attention.k_norm.weight"] = merged[f"{base}.self_attn.k_norm.weight"]
 
-        # Norms
         state[f"layers.{i}.attention_norm.weight"] = merged[f"{base}.input_layernorm.weight"]
-        # Qwen uses post_attention_layernorm for MLP input
         state[f"layers.{i}.ffn_norm.weight"] = merged[f"{base}.post_attention_layernorm.weight"]
 
         # MLP (SwiGLU-style)

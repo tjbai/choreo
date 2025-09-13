@@ -31,13 +31,14 @@ class ModelArgs:
     max_batch_size: int = 32
     max_seq_len: int = 2048
     use_scaled_rope: bool = True
-    use_spda: bool = True
+    use_sdpa: bool = True
 
     # NOTE(tj) -- qwen3 configs
     model_type: Union[Literal['llama'], Literal['qwen']] = "llama"
     use_qk_norm: bool = False
     attention_bias: bool = False
     intermediate_size: Optional[int] = None  # Direct override for MLP hidden dim (Qwen)
+    rope_scale: float = 1.0  # RoPE scaling factor for Qwen
 
 
 class RMSNorm(torch.nn.Module):
@@ -88,6 +89,40 @@ def apply_rotary_emb(
     return xq_out.type_as(xq), xk_out.type_as(xk)
 
 
+def apply_rotary_emb_qwen(
+    xq: torch.Tensor,
+    xk: torch.Tensor,
+    freqs_cis: torch.Tensor,
+    rope_scale: float = 1.0,
+):
+    cos_half = freqs_cis.real
+    sin_half = freqs_cis.imag
+    if rope_scale != 1.0:
+        cos_half = cos_half * rope_scale
+        sin_half = sin_half * rope_scale
+
+    cos = torch.cat([cos_half, cos_half], dim=-1)
+    sin = torch.cat([sin_half, sin_half], dim=-1)
+
+    cos = cos.to(dtype=xq.dtype)
+    sin = sin.to(dtype=xq.dtype)
+
+    xq_t = xq.transpose(1, 2)
+    xk_t = xk.transpose(1, 2)
+
+    cos = cos[None, None, :, :]
+    sin = sin[None, None, :, :]
+
+    def rotate_half(x):
+        d = x.shape[-1] // 2
+        return torch.cat((-x[..., d:], x[..., :d]), dim=-1)
+
+    xq_rot = (xq_t * cos) + (rotate_half(xq_t) * sin)
+    xk_rot = (xk_t * cos) + (rotate_half(xk_t) * sin)
+
+    return xq_rot.transpose(1, 2), xk_rot.transpose(1, 2)
+
+
 def reposition_rotary_emb(
     xk: torch.Tensor,
     from_pos: torch.Tensor,
@@ -125,8 +160,10 @@ class Attention(nn.Module):
         self.head_dim = args.dim // args.n_heads
         self.n_local_heads = args.n_heads // model_parallel_size
         self.n_rep = self.n_local_heads // self.n_local_kv_heads
-        self.use_sdpa = args.use_spda
+        self.use_sdpa = args.use_sdpa
         self.use_qk_norm = args.use_qk_norm
+        self.model_type = args.model_type
+        self.rope_scale = args.rope_scale
 
         self.wq = ColumnParallelLinear(
             args.dim,
@@ -182,7 +219,10 @@ class Attention(nn.Module):
             xq = self.q_norm(xq)
             xk = self.k_norm(xk)
 
-        xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
+        if self.model_type == "qwen":
+            xq, xk = apply_rotary_emb_qwen(xq, xk, freqs_cis=freqs_cis, rope_scale=self.rope_scale)
+        else:
+            xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
         self.cache_k = self.cache_k.to(xq)
         self.cache_v = self.cache_v.to(xq)
