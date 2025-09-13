@@ -1,6 +1,6 @@
 import os, sys, time, json, warnings, socket, glob
+from typing import Optional, Tuple, List, Dict, Union, Literal
 from pathlib import Path
-from typing import Optional, Tuple, List, Dict
 
 import torch
 import numpy as np
@@ -27,6 +27,7 @@ def load_model_and_tokenizer(
     lora_rank: Optional[int] = None,
     lora_alpha: Optional[int] = None,
     lora_dropout: Optional[float] = None,
+    model_type: Union[Literal['llama'], Literal['qwen']] = 'llama',
 ) -> Tuple[Transformer, Tokenizer]:
     """
     Build a Llama or Qwen model instance by initializing and loading a checkpoint.
@@ -70,14 +71,9 @@ def load_model_and_tokenizer(
 
     start_time = time.time()
 
-    llama_pths = sorted(Path(ckpt_dir).glob("*.pth"))
-    qwen_sfts = sorted(list(Path(ckpt_dir).glob("model*.safetensors")))
-    qwen_config = Path(ckpt_dir) / "config.json"
-
-    if len(llama_pths) > 0:
-        assert model_parallel_size == len(llama_pths), (
-            f"Loading a checkpoint for MP={len(llama_pths)} but world size is {model_parallel_size}"
-        )
+    if model_type == "llama":
+        llama_pths = sorted(Path(ckpt_dir).glob("*.pth"))
+        assert len(llama_pths) > 0, f"No Llama checkpoint files found in {ckpt_dir}"
         ckpt_path = llama_pths[get_model_parallel_rank()]
         checkpoint = torch.load(ckpt_path, map_location="cpu", weights_only=True)
 
@@ -102,7 +98,11 @@ def load_model_and_tokenizer(
         model = Transformer(model_args).cuda()
         model.load_state_dict(checkpoint, strict=strict)
 
-    elif qwen_sfts and qwen_config.exists():
+    elif model_type == "qwen":
+        qwen_sfts = sorted(list(Path(ckpt_dir).glob("model*.safetensors")))
+        qwen_config = Path(ckpt_dir) / "config.json"
+
+        assert qwen_sfts and qwen_config.exists(), f"No Qwen checkpoint files found in {ckpt_dir}"
         if model_parallel_size is None:
             model_parallel_size = int(os.environ.get("WORLD_SIZE", 1))
         assert model_parallel_size == 1, "Qwen loader currently supports MP=1 only."
@@ -117,10 +117,7 @@ def load_model_and_tokenizer(
         norm_eps = cfg.get("rms_norm_eps", 1e-5)
         rope_theta = cfg.get("rope_theta", 10000)
         attention_bias = cfg.get("attention_bias", False)
-        model_type = cfg.get("model_type", "qwen")
-
-        tokenizer_input = ckpt_dir if model_type == "qwen" else tokenizer_path
-        tokenizer = Tokenizer(model_path=tokenizer_input, model_type=model_type)
+        tokenizer = Tokenizer(model_path=ckpt_dir, model_type="qwen")
 
         model_args = ModelArgs(
             dim=int(hidden_size),
@@ -134,7 +131,7 @@ def load_model_and_tokenizer(
             max_batch_size=max_batch_size,
         )
 
-        model_args.model_type = model_type
+        model_args.model_type = "qwen"
         model_args.attention_bias = attention_bias
         model_args.use_qk_norm = True
 
@@ -150,12 +147,6 @@ def load_model_and_tokenizer(
         missing, unexpected = model.load_state_dict(state_dict, strict=False)
         if strict and (missing or unexpected):
             raise RuntimeError(f"State dict mismatch. Missing: {missing}, Unexpected: {unexpected}")
-
-    else:
-        raise AssertionError(
-            f"No supported checkpoints found in {ckpt_dir}. "
-            "Expected *.pth (Llama) or config.json + model*.safetensors (Qwen)."
-        )
 
     if use_lora:
         print("Converting to LoRA")
