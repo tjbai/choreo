@@ -52,12 +52,7 @@ class Tokenizer:
             if not model_dir.exists():
                 raise FileNotFoundError(f"Model directory not found: {model_path}")
 
-            self.hf_tokenizer = AutoTokenizer.from_pretrained(
-                str(model_dir.absolute()),
-                trust_remote_code=True,
-                local_files_only=True
-            )
-
+            self.hf_tokenizer = AutoTokenizer.from_pretrained(model_dir)
             self.n_words = self.hf_tokenizer.vocab_size
             self.bos_id = getattr(self.hf_tokenizer, 'bos_token_id', 0) or 0
             self.eos_id = getattr(self.hf_tokenizer, 'eos_token_id', 0) or 0

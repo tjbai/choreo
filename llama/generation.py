@@ -36,6 +36,7 @@ class Llama:
         lora_rank: Optional[int] = None,
         lora_alpha: Optional[int] = None,
         lora_dropout: Optional[float] = None,
+        **kwargs,
     ) -> "Llama":
         model, tokenizer = load_model_and_tokenizer(
             ckpt_dir=ckpt_dir,
@@ -48,6 +49,7 @@ class Llama:
             lora_rank=lora_rank,
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,
+            **kwargs,
         )
         return Llama(model, tokenizer)
 

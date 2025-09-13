@@ -53,7 +53,7 @@ def load_model_and_tokenizer(
         warnings.warn(f"{max_seq_len} does not lie within [1, 32768]")
 
     assert os.path.isdir(ckpt_dir)
-    assert os.path.isfile(tokenizer_path)
+    assert os.path.isfile(tokenizer_path) or os.path.isdir(tokenizer_path)
 
     if not torch.distributed.is_initialized():
         torch.distributed.init_process_group("nccl")
