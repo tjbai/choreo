@@ -117,6 +117,7 @@ def load_model_and_tokenizer(
         norm_eps = cfg.get("rms_norm_eps", 1e-5)
         rope_theta = cfg.get("rope_theta", 10000)
         attention_bias = cfg.get("attention_bias", False)
+        intermediate_size = cfg.get("intermediate_size")
         tokenizer = Tokenizer(model_path=ckpt_dir, model_type="qwen")
 
         model_args = ModelArgs(
@@ -129,6 +130,7 @@ def load_model_and_tokenizer(
             rope_theta=float(rope_theta),
             max_seq_len=max_seq_len,
             max_batch_size=max_batch_size,
+            intermediate_size=int(intermediate_size) if intermediate_size else None,
         )
 
         model_args.model_type = "qwen"

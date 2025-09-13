@@ -37,6 +37,7 @@ class ModelArgs:
     model_type: Union[Literal['llama'], Literal['qwen']] = "llama"
     use_qk_norm: bool = False
     attention_bias: bool = False
+    intermediate_size: Optional[int] = None  # Direct override for MLP hidden dim (Qwen)
 
 
 class RMSNorm(torch.nn.Module):
@@ -226,12 +227,17 @@ class FeedForward(nn.Module):
         hidden_dim: int,
         multiple_of: int,
         ffn_dim_multiplier: Optional[float],
+        intermediate_size: Optional[int] = None,
     ):
         super().__init__()
-        hidden_dim = int(2 * hidden_dim / 3)
-        if ffn_dim_multiplier is not None:
-            hidden_dim = int(ffn_dim_multiplier * hidden_dim)
-        hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
+
+        if intermediate_size is not None:
+            hidden_dim = intermediate_size
+        else:
+            hidden_dim = int(2 * hidden_dim / 3)
+            if ffn_dim_multiplier is not None:
+                hidden_dim = int(ffn_dim_multiplier * hidden_dim)
+            hidden_dim = multiple_of * ((hidden_dim + multiple_of - 1) // multiple_of)
 
         self.w1 = ColumnParallelLinear(
             dim, hidden_dim, bias=False, gather_output=False, init_method=lambda x: x
@@ -259,6 +265,7 @@ class TransformerBlock(nn.Module):
             hidden_dim=4 * args.dim,
             multiple_of=args.multiple_of,
             ffn_dim_multiplier=args.ffn_dim_multiplier,
+            intermediate_size=args.intermediate_size,
         )
         self.layer_id = layer_id
         self.attention_norm = RMSNorm(args.dim, eps=args.norm_eps)
