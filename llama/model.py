@@ -55,6 +55,20 @@ class RMSNorm(torch.nn.Module):
         return output * self.weight
 
 
+class Qwen3RMSNorm(nn.Module):
+    def __init__(self, hidden_size, eps: float = 1e-6) -> None:
+        super().__init__()
+        self.weight = nn.Parameter(torch.ones(hidden_size))
+        self.variance_epsilon = eps
+
+    def forward(self, hidden_states: torch.Tensor) -> torch.Tensor:
+        input_dtype = hidden_states.dtype
+        hidden_states = hidden_states.to(torch.float32)
+        variance = hidden_states.pow(2).mean(-1, keepdim=True)
+        hidden_states = hidden_states * torch.rsqrt(variance + self.variance_epsilon)
+        return self.weight * hidden_states.to(input_dtype)
+
+
 def precompute_freqs_cis(dim: int, end: int, theta: float = 10000.0) -> torch.Tensor:
     freqs = 1.0 / (theta ** (torch.arange(0, dim, 2)[: (dim // 2)].float() / dim))
     t = torch.arange(end, device=freqs.device, dtype=torch.float32)
@@ -195,8 +209,12 @@ class Attention(nn.Module):
         )
 
         if self.use_qk_norm:
-            self.q_norm = RMSNorm(self.head_dim, eps=args.norm_eps)
-            self.k_norm = RMSNorm(self.head_dim, eps=args.norm_eps)
+            if args.model_type == "qwen":
+                self.q_norm = Qwen3RMSNorm(self.head_dim, eps=args.norm_eps)
+                self.k_norm = Qwen3RMSNorm(self.head_dim, eps=args.norm_eps)
+            else:
+                self.q_norm = RMSNorm(self.head_dim, eps=args.norm_eps)
+                self.k_norm = RMSNorm(self.head_dim, eps=args.norm_eps)
 
         self.cache_k = cache_k
         self.cache_v = cache_v
