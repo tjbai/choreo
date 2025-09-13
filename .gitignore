@@ -21,7 +21,6 @@
 **/.ipynb_checkpoints
 
 # metadata
-!model
 !llama3.egg-info
 !LICENSE
 !USE_POLICY.md
@@ -47,7 +46,8 @@ data/triviaqa
 data/triviaqa.tar.gz
 
 # misc
-!tokenizer.model
+!model/
+!model/*.model
 !slurm/
 !slurm/*/
 !slurm/**/*.py
