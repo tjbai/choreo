@@ -90,7 +90,7 @@ def load_model_and_tokenizer(
             **params,
         )
 
-        tokenizer = Tokenizer(model_path=tokenizer_path)
+        tokenizer = Tokenizer(model_path=tokenizer_path, model_type="llama")
         assert model_args.vocab_size == tokenizer.n_words
 
         if torch.cuda.is_bf16_supported():
@@ -119,7 +119,8 @@ def load_model_and_tokenizer(
         attention_bias = cfg.get("attention_bias", False)
         model_type = cfg.get("model_type", "qwen")
 
-        tokenizer = Tokenizer(model_path=tokenizer_path)
+        tokenizer_input = ckpt_dir if model_type == "qwen" else tokenizer_path
+        tokenizer = Tokenizer(model_path=tokenizer_input, model_type=model_type)
 
         model_args = ModelArgs(
             dim=int(hidden_size),
