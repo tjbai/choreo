@@ -1,5 +1,5 @@
 QWEN_CKPT_DIR = '/scratch4/jeisner1/tjbai/qwen3_8b'
-QWEN_TOKENIZER_PATH = '/scratch4/jeisner1/tjbai/qwen3_8b/tokenizer.model'
+QWEN_TOKENIZER_PATH = '/scratch4/jeisner1/tjbai/qwen3_8b'
 
 DATA_ROOT = '/scratch4/jeisner1/tjbai/qwen_data'
 MATH_DATA_PATH = '/home/tbai4/llama3/data/MATH'
