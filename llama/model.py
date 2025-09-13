@@ -3,7 +3,7 @@
 
 import math
 from dataclasses import dataclass
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Union, Literal
 from contextlib import nullcontext
 
 import fairscale.nn.model_parallel.initialize as fs_init
@@ -32,6 +32,11 @@ class ModelArgs:
     max_seq_len: int = 2048
     use_scaled_rope: bool = True
     use_spda: bool = True
+
+    # NOTE(tj) -- qwen3 configs
+    model_type: Union[Literal['llama'], Literal['qwen']] = "llama"
+    use_qk_norm: bool = False
+    attention_bias: bool = False
 
 
 class RMSNorm(torch.nn.Module):
@@ -120,35 +125,40 @@ class Attention(nn.Module):
         self.n_local_heads = args.n_heads // model_parallel_size
         self.n_rep = self.n_local_heads // self.n_local_kv_heads
         self.use_sdpa = args.use_spda
+        self.use_qk_norm = args.use_qk_norm
 
         self.wq = ColumnParallelLinear(
             args.dim,
             args.n_heads * self.head_dim,
-            bias=False,
+            bias=args.attention_bias,
             gather_output=False,
             init_method=lambda x: x,
         )
         self.wk = ColumnParallelLinear(
             args.dim,
             self.n_kv_heads * self.head_dim,
-            bias=False,
+            bias=args.attention_bias,
             gather_output=False,
             init_method=lambda x: x,
         )
         self.wv = ColumnParallelLinear(
             args.dim,
             self.n_kv_heads * self.head_dim,
-            bias=False,
+            bias=args.attention_bias,
             gather_output=False,
             init_method=lambda x: x,
         )
         self.wo = RowParallelLinear(
             args.n_heads * self.head_dim,
             args.dim,
-            bias=False,
+            bias=args.attention_bias,
             input_is_parallel=True,
             init_method=lambda x: x,
         )
+
+        if self.use_qk_norm:
+            self.q_norm = RMSNorm(self.head_dim, eps=args.norm_eps)
+            self.k_norm = RMSNorm(self.head_dim, eps=args.norm_eps)
 
         self.cache_k = cache_k
         self.cache_v = cache_v
@@ -166,6 +176,10 @@ class Attention(nn.Module):
         xq = xq.view(bsz, seqlen, self.n_local_heads, self.head_dim)
         xk = xk.view(bsz, seqlen, self.n_local_kv_heads, self.head_dim)
         xv = xv.view(bsz, seqlen, self.n_local_kv_heads, self.head_dim)
+
+        if self.use_qk_norm:
+            xq = self.q_norm(xq)
+            xk = self.k_norm(xk)
 
         xq, xk = apply_rotary_emb(xq, xk, freqs_cis=freqs_cis)
 
