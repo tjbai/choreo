@@ -1,0 +1,22 @@
+QWEN_CKPT_DIR = '/scratch4/jeisner1/tjbai/qwen3_8b'
+QWEN_TOKENIZER_PATH = '/scratch4/jeisner1/tjbai/qwen3_8b/tokenizer.model'
+
+DATA_ROOT = '/scratch4/jeisner1/tjbai/qwen_data'
+MATH_DATA_PATH = '/home/tbai4/llama3/data/MATH'
+
+CHECKPOINT_ROOT = '/scratch4/jeisner1/tjbai/qwen_checkpoints'
+
+MAX_SEQ_LEN = 8192
+MAX_BATCH_SIZE = 1
+MODEL_PARALLEL_SIZE = 1
+BRANCHING_FACTOR = 8
+VOTERS = 4
+NUM_PROBLEMS_TRAIN = 500
+NUM_PROBLEMS_TEST = 500
+
+LORA_RANK = 64
+LORA_ALPHA = 32
+LORA_DROPOUT = 0.05
+LEARNING_RATE = 5e-5
+EPOCHS = 8
+GRADIENT_ACCUMULATION_STEPS = 4
