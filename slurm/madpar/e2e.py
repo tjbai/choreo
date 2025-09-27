@@ -76,4 +76,3 @@ outputs = eval_debate_solutions(
     problems=problems[:len(samples)],
 )
 print(sum(outputs))
-

@@ -23,7 +23,7 @@ workflow = Workflow.build(
 llama = Llama(workflow.model, workflow.tokenizer)
 
 # problems = load_dataset('openai/gsm8k', 'main', split='train')[:500]
-# 
+#
 # for i, (problem, solution) in enumerate(tqdm(zip(problems['question'], problems['solution']))):
 #     workflow.reset()
 #     outputs = tot_baseline(
@@ -40,7 +40,7 @@ llama = Llama(workflow.model, workflow.tokenizer)
 #         'result': outputs,
 #     }
 #     torch.save(example, f'/home/tbai4/llama3/dumps/tot/tot_gsm8k/problem_{i}.pt')
-# 
+#
 
 problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='test')[:500]
 

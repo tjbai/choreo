@@ -53,4 +53,3 @@ correct = eval_solutions(
 )
 with open('dumps/mad/choreo_correct.json', 'w') as f:
     json.dump(correct, f)
-
