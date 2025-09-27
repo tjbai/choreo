@@ -33,7 +33,6 @@ def main(
     ckpt_path: Path = Path('/scratch4/jeisner1/tjbai/qwen3_8b'),
     tokenizer_path: Path = Path('/scratch4/jeisner1/tjbai/qwen3_8b'),
     lora_ckpt_path: Optional[Path] = None,
-
 ):
     workflow = Workflow.build(
         ckpt_dir=ckpt_path,
@@ -46,6 +45,7 @@ def main(
         lora_rank=64,
         lora_alpha=32,
         lora_dropout=0.05,
+        model_type='qwen',
     )
 
     if lora_ckpt_path:
