@@ -181,20 +181,21 @@ def tot_cached(
 
     if len(votes) > 0:
         best = Counter(votes).most_common(1)[0][0]
-        [final_tokens] = get('tokens')(workflow.step([
-                {'header': ('assistant', None),
-                'prefill': 'ANSWER: ',
-                'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]}
-            ],
-            teacher_force=final_force,
-            stateless=False,
-            compact=compact,
-            max_gen_len=256,
-            temperature=temperature,
-            top_p=top_p,
-            seed=42,
-            debug=False
-        ))
+        if best <= len(proposal_nodes):
+            [final_tokens] = get('tokens')(workflow.step([
+                    {'header': ('assistant', None),
+                    'prefill': 'ANSWER: ',
+                    'parent_ids': [finish['id']] + [proposal_nodes[best-1]['id']]}
+                ],
+                teacher_force=final_force,
+                stateless=False,
+                compact=compact,
+                max_gen_len=256,
+                temperature=temperature,
+                top_p=top_p,
+                seed=42,
+                debug=False
+            ))
 
     return {
         'proposal_tokens': proposal_tokens,

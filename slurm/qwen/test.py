@@ -58,7 +58,7 @@ def main(
     problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='test')[start:end]
 
     output_path = (
-        f'/scratch4/jeisner/tjbai/qwen_data/'
+        f'/scratch4/jeisner1/tjbai/qwen_data/'
         f'{workflow_type}/test/math_shard-{shard_idx}_ft-{lora_ckpt_path is not None}.json'
     )
 
