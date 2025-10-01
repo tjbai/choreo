@@ -30,6 +30,7 @@ os.environ["MASTER_PORT"] = str(find_free_port())
 def main(
     workflow_type: str,
     shard_idx: int,
+    split: str = 'test',
     ckpt_path: Path = Path('/scratch4/jeisner1/tjbai/qwen3_8b'),
     tokenizer_path: Path = Path('/scratch4/jeisner1/tjbai/qwen3_8b'),
     lora_ckpt_path: Optional[Path] = None,
@@ -59,7 +60,7 @@ def main(
 
     output_path = (
         f'/scratch4/jeisner1/tjbai/qwen_data/'
-        f'{workflow_type}/test/math_shard-{shard_idx}_ft-{lora_ckpt_path is not None}.json'
+        f'{workflow_type}/{split}/math_shard-{shard_idx}_ft-{lora_ckpt_path is not None}.json'
     )
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)
