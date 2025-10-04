@@ -7,39 +7,69 @@ from tqdm.asyncio import tqdm_asyncio
 load_dotenv()
 client = AsyncOpenAI()
 
-async def judge_bo3(problem: str, baseline_solution: str, test_solution: str) -> dict:
-    prompt = f"""Problem: {problem}
+async def extract_answer(solution: str, semaphore: asyncio.Semaphore) -> str:
+    async with semaphore:
+        prompt = f"""Extract the final numerical answer from this solution. Return only the answer, nothing else.
 
-Baseline Solution (assumed correct): {baseline_solution}
+Solution: {solution}
 
-Test Solution: {test_solution}
+Respond in JSON:
+{{"answer": "the extracted answer"}}"""
 
-Determine if the test solution is correct beyond reasonable doubt by comparing it to the baseline.
+        response = await client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        
+        return json.loads(response.choices[0].message.content)["answer"]
+
+async def judge_bo3(
+    problem: str,
+    baseline_solution: str,
+    test_solution: str,
+    semaphore: asyncio.Semaphore,
+) -> dict:
+    baseline_answer, test_answer = await asyncio.gather(
+        extract_answer(baseline_solution, semaphore),
+        extract_answer(test_solution, semaphore)
+    )
+    
+    async with semaphore:
+        prompt = f"""Problem: {problem}
+
+Baseline Answer (assumed correct): {baseline_answer}
+
+Test Answer: {test_answer}
+
+Determine if the test answer is correct beyond reasonable doubt by comparing it to the baseline.
 The answers may be in different formats or have minor numerical differences due to rounding, but judge if they're mathematically equivalent.
 
 Respond in JSON:
 {{"test_correct": true/false, "reasoning": "brief explanation"}}"""
 
-    responses = await asyncio.gather(*[
-        client.chat.completions.create(
-            model="gpt-4.1-mini",
-            messages=[{"role": "user", "content": prompt}],
-            response_format={"type": "json_object"}
-        )
-        for _ in range(3)
-    ])
+        responses = await asyncio.gather(*[
+            client.chat.completions.create(
+                model="gpt-4.1-mini",
+                messages=[{"role": "user", "content": prompt}],
+                response_format={"type": "json_object"}
+            )
+            for _ in range(3)
+        ])
 
-    judges = [json.loads(r.choices[0].message.content) for r in responses]
-    correct_votes = sum(j["test_correct"] for j in judges)
+        judges = [json.loads(r.choices[0].message.content) for r in responses]
+        correct_votes = sum(j["test_correct"] for j in judges)
 
-    return {
-        "test_correct": correct_votes >= 2,
-        "votes": {"correct": correct_votes, "incorrect": 3 - correct_votes},
-        "judges": judges
-    }
+        return {
+            "test_correct": correct_votes >= 2,
+            "votes": {"correct": correct_votes, "incorrect": 3 - correct_votes},
+            "judges": judges,
+            "extracted_answers": {"baseline": baseline_answer, "test": test_answer}
+        }
 
 async def judge_all(to_judge: list[dict]) -> list[dict]:
-    tasks = [judge_bo3(**item) for item in to_judge] # type: ignore
+    semaphore = asyncio.Semaphore(10)
+    tasks = [judge_bo3(**item, semaphore=semaphore) for item in to_judge]
     results = await tqdm_asyncio.gather(*tasks, desc="Judging")
     return results
 
@@ -61,7 +91,7 @@ def main(
         to_judge = [{
             'problem': d['inputs']['problem'],
             'baseline_solution': d['inputs']['solution'],
-            'test_solution': tokenizer.decode(d['outputs']['final_tokens'][0]),
+            'test_solution': tokenizer.decode(d['outputs'].get('final_tokens', [[]])[0]),
         } for d in data]
 
     elif workflow_type.startswith('tot'):
