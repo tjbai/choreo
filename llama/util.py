@@ -131,7 +131,7 @@ def load_model_and_tokenizer(
             n_layers=int(n_layers),
             n_heads=int(n_heads),
             n_kv_heads=int(n_kv_heads),
-            vocab_size=int(tokenizer.n_words),
+            vocab_size=int(tokenizer.n_words) + 3,
             norm_eps=float(norm_eps),
             rope_theta=float(rope_theta),
             max_seq_len=max_seq_len,
