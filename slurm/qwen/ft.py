@@ -20,11 +20,11 @@ def main(
 ):
     data = []
     for shard_idx in range(5):
-        shard_path = f'/scratch4/jeisner1/tjbai/qwen_data/{task}/train/math_shard-{shard_idx}_ft-{ft}.json'
+        shard_path = f'/scratch4/jeisner1/tjbai/qwen_data/{task}_baseline/train/math_shard-{shard_idx}_ft-{ft}.json'
         with open(shard_path) as f:
             data.extend(json.load(f))
 
-    collected_path = f'/scratch4/jeisner1/tjbai/qwen_data/{task}/train/collected_ft-{ft}.json'
+    collected_path = f'/scratch4/jeisner1/tjbai/qwen_data/{task}_baseline/train/collected_ft-{ft}.json'
     with open(collected_path, 'w') as f:
         json.dump(data, f)
 

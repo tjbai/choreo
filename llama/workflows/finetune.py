@@ -269,6 +269,7 @@ def finetune(
             lora_rank=lora_rank,
             lora_alpha=lora_alpha,
             lora_dropout=lora_dropout,
+            model_type=model_type,
         )
 
     # always reshape just in case
