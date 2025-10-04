@@ -21,7 +21,7 @@ Respond in JSON:
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
-        
+
         return json.loads(response.choices[0].message.content)["answer"]
 
 async def judge_bo3(
@@ -34,7 +34,7 @@ async def judge_bo3(
         extract_answer(baseline_solution, semaphore),
         extract_answer(test_solution, semaphore)
     )
-    
+
     async with semaphore:
         prompt = f"""Problem: {problem}
 
@@ -58,11 +58,11 @@ Respond in JSON:
         ])
 
         judges = [json.loads(r.choices[0].message.content) for r in responses]
-        
+
         for j in judges:
             if isinstance(j["test_correct"], str):
                 j["test_correct"] = j["test_correct"].lower() == "true"
-        
+
         correct_votes = sum(j["test_correct"] for j in judges)
 
         return {
@@ -83,7 +83,7 @@ async def judge_consensus(
         extract_answer(baseline_solution, semaphore),
         *[extract_answer(sol, semaphore) for sol in agent_solutions]
     )
-    
+
     async with semaphore:
         prompt = f"""Problem: {problem}
 
@@ -104,11 +104,11 @@ Respond in JSON:
             messages=[{"role": "user", "content": prompt}],
             response_format={"type": "json_object"}
         )
-        
+
         result = json.loads(response.choices[0].message.content)
         if isinstance(result["consensus_correct"], str):
             result["consensus_correct"] = result["consensus_correct"].lower() == "true"
-        
+
         return {
             "test_correct": result["consensus_correct"],
             "reasoning": result["reasoning"],
@@ -143,7 +143,7 @@ def main(
             'problem': d['inputs']['problem'],
             'baseline_solution': d['inputs']['solution'],
             'agent_solutions': [
-                tokenizer.decode(agent_tokens) 
+                tokenizer.decode(agent_tokens)
                 for agent_tokens in d['outputs'].get('debate_tokens', [[]])[-1]
             ],
         } for d in data]

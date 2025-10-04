@@ -254,6 +254,7 @@ def finetune(
     strategy: Optional[str] = None,
     # optionally, pass in a pre-configured workflow
     workflow: Optional[Workflow] = None,
+    model_type: str = 'llama',
 ):
     if workflow is None:
         set_model_env()
