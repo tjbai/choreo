@@ -58,6 +58,11 @@ Respond in JSON:
         ])
 
         judges = [json.loads(r.choices[0].message.content) for r in responses]
+        
+        for j in judges:
+            if isinstance(j["test_correct"], str):
+                j["test_correct"] = j["test_correct"].lower() == "true"
+        
         correct_votes = sum(j["test_correct"] for j in judges)
 
         return {
@@ -67,9 +72,58 @@ Respond in JSON:
             "extracted_answers": {"baseline": baseline_answer, "test": test_answer}
         }
 
-async def judge_all(to_judge: list[dict]) -> list[dict]:
+async def judge_consensus(
+    problem: str,
+    baseline_solution: str,
+    agent_solutions: list[str],
+    semaphore: asyncio.Semaphore,
+) -> dict:
+    # Extract all answers in parallel
+    baseline_answer, *agent_answers = await asyncio.gather(
+        extract_answer(baseline_solution, semaphore),
+        *[extract_answer(sol, semaphore) for sol in agent_solutions]
+    )
+    
+    async with semaphore:
+        prompt = f"""Problem: {problem}
+
+Baseline Answer (assumed correct): {baseline_answer}
+
+Agent 1 Answer: {agent_answers[0]}
+Agent 2 Answer: {agent_answers[1]}
+Agent 3 Answer: {agent_answers[2]}
+
+Determine if at least 2 out of 3 agents provided correct answers (mathematically equivalent to baseline).
+Answers may be in different formats or have minor numerical differences due to rounding.
+
+Respond in JSON:
+{{"consensus_correct": true/false, "reasoning": "brief explanation"}}"""
+
+        response = await client.chat.completions.create(
+            model="gpt-4.1-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={"type": "json_object"}
+        )
+        
+        result = json.loads(response.choices[0].message.content)
+        if isinstance(result["consensus_correct"], str):
+            result["consensus_correct"] = result["consensus_correct"].lower() == "true"
+        
+        return {
+            "test_correct": result["consensus_correct"],
+            "reasoning": result["reasoning"],
+            "extracted_answers": {
+                "baseline": baseline_answer,
+                "agents": agent_answers
+            }
+        }
+
+async def judge_all(to_judge: list[dict], is_madpar: bool = False) -> list[dict]:
     semaphore = asyncio.Semaphore(10)
-    tasks = [judge_bo3(**item, semaphore=semaphore) for item in to_judge]
+    if is_madpar:
+        tasks = [judge_consensus(**item, semaphore=semaphore) for item in to_judge]
+    else:
+        tasks = [judge_bo3(**item, semaphore=semaphore) for item in to_judge]
     results = await tqdm_asyncio.gather(*tasks, desc="Judging")
     return results
 
@@ -85,7 +139,15 @@ def main(
     tokenizer = Tokenizer('/scratch4/jeisner1/tjbai/qwen3_8b', 'qwen')
 
     if workflow_type.startswith('madpar'):
-        ...
+        to_judge = [{
+            'problem': d['inputs']['problem'],
+            'baseline_solution': d['inputs']['solution'],
+            'agent_solutions': [
+                tokenizer.decode(agent_tokens) 
+                for agent_tokens in d['outputs'].get('debate_tokens', [[]])[-1]
+            ],
+        } for d in data]
+        is_madpar = True
 
     elif workflow_type.startswith('mad'):
         to_judge = [{
@@ -93,11 +155,17 @@ def main(
             'baseline_solution': d['inputs']['solution'],
             'test_solution': tokenizer.decode(d['outputs'].get('final_tokens', [[]])[0]),
         } for d in data]
+        is_madpar = False
 
     elif workflow_type.startswith('tot'):
-        ...
+        to_judge = [{
+            'problem': d['inputs']['problem'],
+            'baseline_solution': d['inputs']['solution'],
+            'test_solution': tokenizer.decode(d['outputs'].get('final_tokens', []) or []),
+        } for d in data]
+        is_madpar = False
 
-    results = asyncio.run(judge_all(to_judge))
+    results = asyncio.run(judge_all(to_judge, is_madpar=is_madpar))
 
     output = []
     for orig, result in zip(to_judge, results):
