@@ -1,4 +1,4 @@
-import random
+import random, asyncio
 from tqdm import tqdm
 from typing import Dict, Optional
 from contextlib import nullcontext
@@ -6,6 +6,7 @@ from contextlib import nullcontext
 import torch
 import torch.nn.functional as F
 
+from llama.util import judge_all
 from llama.workflows.trainers.base import LoraTrainer, ListDataset, reorder_targets
 from llama.workflows.tot import load_math_problems
 from llama.workflows.madpar import (
@@ -154,44 +155,39 @@ class MadparTrainer(LoraTrainer[ListDataset]):
         self.workflow.model.eval()
 
         losses = []
-        for step, sample in enumerate(tqdm(val_dataset)):
+        for step, sample in enumerate(tqdm(val_dataset, desc="Computing validation loss")):
             if max_steps and step >= max_steps:
                 break
             loss, metrics = self.step(sample)
             losses.append(metrics['train/total_loss'])
 
         outputs = []
-        for step, sample in enumerate(tqdm(val_dataset)):
-            if max_e2e and step >= max_e2e:
-                break
+        eval_samples = list(val_dataset)[:max_e2e] if max_e2e else list(val_dataset)
+
+        for sample in tqdm(eval_samples, desc="Running e2e generation"):
             self.workflow.reset()
             outputs.append(madpar_cached(
                 self.workflow,
                 problem=sample['inputs']['problem'],
             ))
 
-        self.llama.model.reshape_cache(4)
-        self.llama.model.set_adapter_state(enabled=False)
-        problems = load_math_problems('/home/tbai4/llama3/data/MATH', split='train')
-        p2s = {d['problem']: d['solution'] for d in problems}
-        try:
-            correct = eval_debate_solutions(
-                self.llama,
-                agent_solutions=[
-                    [parse_output(self.llama.tokenizer.decode(a)) for a in d['debate_tokens'][-1]]
-                    for d in outputs
-                ],
-                problems=[{
-                    'problem': sample['inputs']['problem'],
-                    'solution': p2s[sample['inputs']['problem']]
-                } for sample in val_dataset]
-            )
-        finally:
-            self.llama.model.set_adapter_state(enabled=True)
-            self.llama.model.reshape_cache(1)
+        to_judge = []
+        for sample, output in zip(eval_samples, outputs):
+            agent_solutions = [
+                self.workflow.tokenizer.decode(agent_tokens)
+                for agent_tokens in output['debate_tokens'][-1]
+            ]
+            to_judge.append({
+                'problem': sample['inputs']['problem'],
+                'baseline_solution': sample['inputs']['solution'],
+                'agent_solutions': agent_solutions,
+            })
+
+        results = asyncio.run(judge_all(to_judge, is_madpar=True))
+        correct = sum(r['test_correct'] for r in results)
 
         self.workflow.model.train()
         return {
             'val/total_loss': sum(losses) / len(losses),
-            'val/correct': sum(correct) / len(correct)
+            'val/correct': correct / len(results) if results else 0.0
         }

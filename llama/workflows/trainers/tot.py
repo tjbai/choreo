@@ -10,6 +10,7 @@ from tqdm import tqdm
 
 from llama import Workflow
 from llama.workflows.trainers.base import LoraTrainer, reorder_targets
+from llama.workflows.trainers import ListDataset
 from llama.workflows.tot import (
     cot_prompt,
     finish_prompt,
@@ -31,7 +32,7 @@ class TotDataset(Dataset):
     def __getitem__(self, idx) -> Dict:
         return torch.load(self.problem_paths[idx], weights_only=True)
 
-class TotTrainer(LoraTrainer[TotDataset]):
+class TotTrainer(LoraTrainer[ListDataset]):
     def __init__(self, workflow: Workflow, output_dir: str,  learning_rate: float, branching_factor: int, voters: int):
         super().__init__(workflow, output_dir, learning_rate)
         self.branching_factor = branching_factor
