@@ -31,10 +31,15 @@ def main(
     workflow_type: str,
     shard_idx: int,
     split: str = 'test',
-    ckpt_path: Path = Path('/scratch4/jeisner1/tjbai/qwen3_8b'),
-    tokenizer_path: Path = Path('/scratch4/jeisner1/tjbai/qwen3_8b'),
+    model_size: str = '8b',
+    ckpt_path: Optional[Path] = None,
+    tokenizer_path: Optional[Path] = None,
     lora_ckpt_path: Optional[Path] = None,
 ):
+    if ckpt_path is None:
+        ckpt_path = Path(f'/scratch4/jeisner1/tjbai/qwen3_{model_size}')
+    if tokenizer_path is None:
+        tokenizer_path = Path(f'/scratch4/jeisner1/tjbai/qwen3_{model_size}')
     workflow = Workflow.build(
         ckpt_dir=ckpt_path,
         tokenizer_path=tokenizer_path,
@@ -60,7 +65,7 @@ def main(
 
     output_path = (
         f'/scratch4/jeisner1/tjbai/qwen_data/'
-        f'{workflow_type}/{split}/math_shard-{shard_idx}_ft-{lora_ckpt_path is not None}.json'
+        f'{model_size}/{workflow_type}/{split}/math_shard-{shard_idx}_ft-{lora_ckpt_path is not None}.json'
     )
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)

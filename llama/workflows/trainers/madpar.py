@@ -156,8 +156,7 @@ class MadparTrainer(LoraTrainer[ListDataset]):
 
         losses = []
         for step, sample in enumerate(tqdm(val_dataset, desc="Computing validation loss")):
-            if max_steps and step >= max_steps:
-                break
+            if max_steps and step >= max_steps: break
             loss, metrics = self.step(sample)
             losses.append(metrics['train/total_loss'])
 
