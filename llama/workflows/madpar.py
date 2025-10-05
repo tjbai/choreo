@@ -32,7 +32,7 @@ def parse_output(resp: str):
 def starting_prompt(problem):
     return f"""Can you solve the following math problem? {problem}
 Your final answer should be a single numerical number, in the form \\boxed{{answer}}, at the end of your response.
-Explain your reasoning within 500 words.
+Explain your reasoning within 100 words.
 """
 
 def debate_prompt(problem):
@@ -132,7 +132,7 @@ def madpar_cached(
                 ],
                 temperature=temperature,
                 top_p=top_p,
-                max_gen_len=1024 if (round_idx == num_rounds - 1) else 512,
+                max_gen_len=255,
             )
         )
         for update, context in zip(update_nodes, contexts):
@@ -276,7 +276,7 @@ def madpar_baseline(
                 ],
                 temperature=temperature,
                 top_p=top_p,
-                max_gen_len=1024 if (round_idx == num_rounds - 1) else 512,
+                max_gen_len=256,
             )
         )
         for update, context in zip(update_nodes, contexts):
