@@ -12,6 +12,7 @@ from llama.workflows import load_math_problems
 from llama.workflows.tot import tot_baseline, tot_cached
 from llama.workflows.madpar import madpar_baseline, madpar_cached
 from llama.workflows.mad import mad_baseline, mad_cached
+from llama.workflows.simple import math_direct
 
 WORKFLOWS = {
     'madpar_cached': partial(madpar_cached, num_agents=3, num_rounds=3, debug=False),
@@ -20,6 +21,7 @@ WORKFLOWS = {
     'madpar_baseline': partial(madpar_baseline, num_agents=3, num_rounds=3, debug=False),
     'mad_baseline': partial(mad_baseline, max_rounds=3),
     'tot_baseline': partial(tot_baseline, branching_factor=8, voters=4),
+    'direct': math_direct
 }
 
 os.environ["RANK"] = "0"
