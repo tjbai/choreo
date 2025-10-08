@@ -11,10 +11,18 @@ client = AsyncOpenAI()
 def main(
     workflow_type: str,
     ft: bool = False,
+    large: bool = False,
 ):
+    print(workflow_type, ft, large, type(large))
+
     data = []
     for shard_idx in range(5):
-        with open(f'/scratch4/jeisner1/tjbai/qwen_data/{workflow_type}/test/math_shard-{shard_idx}_ft-{ft}.json') as f:
+        path = (
+            f'/scratch4/jeisner1/tjbai/qwen_data/14b/{workflow_type}/test/math_shard-{shard_idx}_ft-{ft}.json'
+            if large else
+            f'/scratch4/jeisner1/tjbai/qwen_data/{workflow_type}/test/math_shard-{shard_idx}_ft-{ft}.json'
+        )
+        with open(path) as f:
             data.extend(json.load(f))
 
     tokenizer = Tokenizer('/scratch4/jeisner1/tjbai/qwen3_8b', 'qwen')
@@ -52,7 +60,11 @@ def main(
     for orig, result in zip(to_judge, results):
         output.append({**orig, 'judgment': result})
 
-    output_path = f'/scratch4/jeisner1/tjbai/qwen_data/{workflow_type}/test/judged_ft-{ft}.json'
+    output_path = (
+        f'/scratch4/jeisner1/tjbai/qwen_data/14b/{workflow_type}/test/judged_ft-{ft}.json'
+        if large else
+        f'/scratch4/jeisner1/tjbai/qwen_data/{workflow_type}/test/judged_ft-{ft}.json'
+    )
     with open(output_path, 'w') as f:
         json.dump(output, f, indent=2)
 

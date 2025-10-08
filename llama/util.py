@@ -360,7 +360,10 @@ Respond in JSON:
             response_format={"type": "json_object"}
         )
 
-        return json.loads(response.choices[0].message.content)["answer"]
+        try:
+            return json.loads(response.choices[0].message.content)["answer"]
+        except:
+            return ''
 
 async def judge_bo3(
     problem: str,
