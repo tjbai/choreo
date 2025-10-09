@@ -398,7 +398,13 @@ Respond in JSON:
             for _ in range(3)
         ])
 
-        judges = [json.loads(r.choices[0].message.content) for r in responses]
+        try:
+            judges = [json.loads(r.choices[0].message.content) for r in responses]
+        except:
+            return {
+                "test_correct": False,
+                "extracted_answers": {"baseline": baseline_answer, "test": test_answer}
+            }
 
         for j in judges:
             if isinstance(j["test_correct"], str):
