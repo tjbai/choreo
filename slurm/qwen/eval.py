@@ -13,8 +13,6 @@ def main(
     ft: bool = False,
     large: bool = False,
 ):
-    print(workflow_type, ft, large, type(large))
-
     data = []
     for shard_idx in range(5):
         path = (
@@ -51,6 +49,14 @@ def main(
             'problem': d['inputs']['problem'],
             'baseline_solution': d['inputs']['solution'],
             'test_solution': tokenizer.decode(d['outputs'].get('final_tokens', []) or []),
+        } for d in data]
+        is_madpar = False
+
+    elif workflow_type.startswith('direct'):
+        to_judge = [{
+            'problem': d['inputs']['problem'],
+            'baseline_solution': d['inputs']['solution'],
+            'test_solution': d['outputs']
         } for d in data]
         is_madpar = False
 

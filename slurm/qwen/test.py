@@ -57,7 +57,7 @@ def main(
     )
 
     if lora_ckpt_path:
-        workflow = load_ckpt(workflow, lora_ckpt_path)
+        load_ckpt(workflow, lora_ckpt_path)
 
     assert workflow is not None
     workflow.model.eval()
@@ -67,7 +67,7 @@ def main(
 
     output_path = (
         f'/scratch4/jeisner1/tjbai/qwen_data/'
-        f'{model_size}/{workflow_type}/{split}/math_shard-{shard_idx}_ft-{lora_ckpt_path is not None}.json'
+        f'{workflow_type}/{split}/math_shard-{shard_idx}_ft-{lora_ckpt_path}.json'
     )
 
     os.makedirs(os.path.dirname(output_path), exist_ok=True)

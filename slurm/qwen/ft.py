@@ -28,6 +28,8 @@ def main(
     with open(collected_path, 'w') as f:
         json.dump(data, f)
 
+    exit()
+
     print(f"Collected {len(data)} samples from shards -> {collected_path}")
     output_dir = f'/scratch4/jeisner1/tjbai/qwen_data/checkpoints/{task}_ft-{ft}'
 

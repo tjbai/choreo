@@ -8,4 +8,4 @@
 #SBATCH --time=12:00:00
 #SBATCH --output=madpar_ft.out
 
-uv run python slurm/qwen/ft.py --task madpar --lora_rank 32
+uv run python slurm/qwen/ft.py --task madpar --lora_rank 8
