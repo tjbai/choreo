@@ -734,3 +734,60 @@ TriviaQA:
     Trained:      -0.11289857 -0.03919143
 
 Fucked up my git history at some point around here I think.
+
+## 10/9:
+
+direct:
+```
+Results: 188/500 correct (37.60%)
+Output written to: /scratch4/jeisner1/tjbai/qwen_data/direct/test/judged_ft-False.json
+
+Results: 197/500 correct (39.40%)
+Output written to: /scratch4/jeisner1/tjbai/qwen_data/14b/direct/test/judged_ft-False.json
+```
+
+mad:
+```
+Results: 375/490 correct (76.53%)
+Output written to: /scratch4/jeisner1/tjbai/qwen_data/mad_baseline/test/judged_ft-False.json
+
+Results: 386/500 correct (77.20%)
+Output written to: /scratch4/jeisner1/tjbai/qwen_data/mad_cached/test/judged_ft-False.json
+
+Results: 393/500 correct (78.60%)
+Output written to: /scratch4/jeisner1/tjbai/qwen_data/14b/mad_baseline/test/judged_ft-False.json
+
+Results: 423/500 correct (84.60%)
+Output written to: /scratch4/jeisner1/tjbai/qwen_data/14b/mad_cached/test/judged_ft-False.json
+```
+
+tot:
+```
+Results: 299/500 correct (59.80%)
+Output written to: /scratch4/jeisner1/tjbai/qwen_data/tot_baseline/test/judged_ft-False.json
+
+Results: 280/500 correct (56.00%)
+Output written to: /scratch4/jeisner1/tjbai/qwen_data/tot_cached/test/judged_ft-False.json
+
+Results: 314/500 correct (62.80%)
+Output written to: /scratch4/jeisner1/tjbai/qwen_data/14b/tot_baseline/test/judged_ft-False.json
+
+Results: 363/500 correct (72.60%)
+Output written to: /scratch4/jeisner1/tjbai/qwen_data/14b/tot_cached/test/judged_ft-False.json
+```
+
+madpar:
+```
+Results: 258/500 correct (51.60%)
+Output written to: /scratch4/jeisner1/tjbai/qwen_data/madpar_baseline/test/judged_ft-False.json
+
+Results: 183/500 correct (36.60%)
+Output written to: /scratch4/jeisner1/tjbai/qwen_data/madpar_cached/test/judged_ft-False.json
+
+Results: 229/500 correct (45.80%)
+Output written to: /scratch4/jeisner1/tjbai/qwen_data/14b/madpar_baseline/test/judged_ft-False.json
+
+Results: 282/500 correct (56.40%)
+Output written to: /scratch4/jeisner1/tjbai/qwen_data/14b/madpar_cached/test/judged_ft-False.json
+```
+
