@@ -141,7 +141,7 @@ def init_task(
             branching_factor=task_params['branching_factor'],
             voters=task_params['voters']
         )
-        dataset = TotDataset(data_path)
+        dataset = ListDataset(data_path)
         wandb.init(
             project="tot",
             config={

@@ -41,26 +41,27 @@ class TotTrainer(LoraTrainer[ListDataset]):
 
     def step(self, sample: Dict) -> Tuple[torch.Tensor, Dict]:
         self.workflow.reset()
+        problem = sample['inputs']['problem']
 
         try:
             cot, vote, finish = self.workflow.insert([
                 {'messages': [
                     {'role': 'system', 'content': cot_prompt},
-                    {'role': 'user', 'content': format_problem(sample['problem'])}
+                    {'role': 'user', 'content': format_problem(problem)}
                 ], 'parent_ids': []},
                 {'messages': [
                     {'role': 'system', 'content': format_vote_system_prompt(self.branching_factor)},
-                    {'role': 'user', 'content': format_problem(sample['problem'])}
+                    {'role': 'user', 'content': format_problem(problem)}
                 ], 'parent_ids': []},
                 {'messages': [
                     {'role': 'system', 'content': finish_prompt},
-                    {'role': 'user', 'content': format_problem(sample['problem'])}
+                    {'role': 'user', 'content': format_problem(problem)}
                 ], 'parent_ids': []},
             ], track_gradients=True)
 
-            target_proposal_ids = [p + [self.eot_id] for p in sample['result']['proposal_tokens']]
-            vote_target_ids = [p + [self.eot_id] for p in sample['result']['vote_tokens']]
-            final_target_ids = sample['result']['final_tokens'] + [self.eot_id]
+            target_proposal_ids = [p + [self.eot_id] for p in sample['outputs']['proposal_tokens']]
+            vote_target_ids = [p + [self.eot_id] for p in sample['outputs']['vote_tokens']]
+            final_target_ids = sample['outputs']['final_tokens'] + [self.eot_id]
 
             # hacky. see above comment.
             proposal_targets = reorder_targets(target_proposal_ids)
@@ -83,7 +84,7 @@ class TotTrainer(LoraTrainer[ListDataset]):
             ]
             _, vote_logits = self.workflow.train_step(vote_tasks, vote_target_ids)
 
-            votes = [v for v in sample['result']['votes'] if v is not None]
+            votes = [v for v in sample['outputs']['votes'] if v is not None]
             best = Counter(votes).most_common(1)[0][0]
             final_task = {
                 'header': ('assistant', None),
