@@ -5,7 +5,7 @@ finetune(
     data_path='/home/tbai4/llama3/dumps/bsm/baseline_e2e.json',
     ckpt_dir='/scratch4/jeisner1/tjbai/llama_8b',
     tokenizer_path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model',
-    output_dir='/scratch4/jeisner1/tjbai/checkpoints/bsm',
+    output_dir='/scratch4/jeisner1/tjbai/checkpoints/bsm/baseline',
     max_seq_len=8*8192,
     epochs=6,
     gradient_accumulation_steps=4,

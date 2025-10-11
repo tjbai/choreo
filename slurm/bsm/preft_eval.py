@@ -5,7 +5,7 @@ from tqdm import tqdm
 from pathlib import Path
 
 from llama import Workflow
-from llama.util import find_free_port
+from llama.util import find_free_port, load_ckpt
 from llama.workflows.bsm import load_concepts
 from llama.workflows.bsm import bsm_baseline, bsm_cached
 
@@ -15,12 +15,15 @@ os.environ["MASTER_ADDR"] = "localhost"
 os.environ["MASTER_PORT"] = str(find_free_port())
 
 workflow = Workflow.build(
-    ckpt_dir='/scratch4/jeisner1/tjbai/llama_8b',
-    tokenizer_path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model',
+    # ckpt_dir='/scratch4/jeisner1/tjbai/llama_8b',
+    # tokenizer_path='/scratch4/jeisner1/tjbai/llama_8b/tokenizer.model',
+    ckpt_dir='/scratch4/jeisner1/tjbai/qwen3_8b',
+    tokenizer_path='/scratch4/jeisner1/tjbai/qwen3_8b',
     max_seq_len=8192,
     max_batch_size=8,
     model_parallel_size=1,
     max_nodes=100,
+    model_type='qwen'
 )
 
 concepts_list = load_concepts(
@@ -57,6 +60,7 @@ for idx, concept_set in enumerate(tqdm(concepts_list, desc="Evaluating")):
     # bsm baseline
     workflow.reset()
     try:
+        load_ckpt(workflow, '/home/tbai4/llama3/checkpoints/lora_step-14.pt')
         outputs = bsm_baseline(workflow=workflow, concepts=concept_set)
         if outputs is None:
             raise ValueError("Method returned None")
@@ -93,6 +97,7 @@ for idx, concept_set in enumerate(tqdm(concepts_list, desc="Evaluating")):
         baseline_group1_coverage.append(0.0)
         baseline_group2_coverage.append(0.0)
 
+    '''
     # bsm cached
     workflow.reset()
     try:
@@ -198,15 +203,16 @@ for idx, concept_set in enumerate(tqdm(concepts_list, desc="Evaluating")):
 
         print(f"BSM Cached Compact:   {cached_compact_all_pct:.2f}% all concepts, {cached_compact_avg_pct:.2f}% avg coverage")
         print(f"  Group 1: {cached_compact_g1_pct:.2f}%, Group 2: {cached_compact_g2_pct:.2f}%")
+    '''
 
 total = len(concepts)
 
 baseline_g1_std = np.std(baseline_group1_coverage) * 100
 baseline_g2_std = np.std(baseline_group2_coverage) * 100
-cached_g1_std = np.std(cached_group1_coverage) * 100
-cached_g2_std = np.std(cached_group2_coverage) * 100
-cached_compact_g1_std = np.std(cached_compact_group1_coverage) * 100
-cached_compact_g2_std = np.std(cached_compact_group2_coverage) * 100
+# cached_g1_std = np.std(cached_group1_coverage) * 100
+# cached_g2_std = np.std(cached_group2_coverage) * 100
+# cached_compact_g1_std = np.std(cached_compact_group1_coverage) * 100
+# cached_compact_g2_std = np.std(cached_compact_group2_coverage) * 100
 
 final_results = {
     'total_samples': total,
@@ -219,6 +225,7 @@ final_results = {
             'group1_coverage_std': baseline_g1_std,
             'group2_coverage_std': baseline_g2_std
         },
+        '''
         'bsm_cached': {
             'all_concepts_pct': sum(cached_all_concepts) / total * 100,
             'avg_coverage_pct': sum(cached_coverage) / total * 100,
@@ -235,6 +242,7 @@ final_results = {
             'group1_coverage_std': cached_compact_g1_std,
             'group2_coverage_std': cached_compact_g2_std
         }
+        '''
     },
     'raw_data': {
         'concepts': concepts,
@@ -245,6 +253,7 @@ final_results = {
             'group1_coverage': baseline_group1_coverage,
             'group2_coverage': baseline_group2_coverage
         },
+        '''
         'cached': {
             'stories': cached_stories,
             'all_concepts': cached_all_concepts,
@@ -259,21 +268,22 @@ final_results = {
             'group1_coverage': cached_compact_group1_coverage,
             'group2_coverage': cached_compact_group2_coverage
         }
+        '''
     }
 }
 
-with open('/home/tbai4/llama3/dumps/bsm/llm_group_eval.json', 'w') as f:
+with open('/home/tbai4/llama3/dumps/bsm/llm_group_eval_ft.json', 'w') as f:
     json.dump(final_results, f)
 
 print("\n===== FINAL RESULTS =====")
-for method in ['bsm_baseline', 'bsm_cached', 'bsm_cached_compact']:
+for method in ['bsm_baseline']:#, 'bsm_cached', 'bsm_cached_compact']:
     all_pct = final_results['methods'][method]['all_concepts_pct']
     avg_pct = final_results['methods'][method]['avg_coverage_pct']
     g1_pct = final_results['methods'][method]['group1_coverage_pct']
     g2_pct = final_results['methods'][method]['group2_coverage_pct']
     g1_std = final_results['methods'][method]['group1_coverage_std']
     g2_std = final_results['methods'][method]['group2_coverage_std']
-
     print(f"{method}: {all_pct:.2f}% all concepts, {avg_pct:.2f}% avg coverage")
     print(f"  Group 1: {g1_pct:.2f}% ± {g1_std:.2f}%")
     print(f"  Group 2: {g2_pct:.2f}% ± {g2_std:.2f}%")
+
