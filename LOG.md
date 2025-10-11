@@ -778,7 +778,7 @@ Output written to: /scratch4/jeisner1/tjbai/qwen_data/14b/tot_cached/test/judged
 
 madpar:
 ```
-Results: 258/500 correct (51.60%)
+Results: 211/500 correct (42.20%)
 Output written to: /scratch4/jeisner1/tjbai/qwen_data/madpar_baseline/test/judged_ft-False.json
 
 Results: 183/500 correct (36.60%)
