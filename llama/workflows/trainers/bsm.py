@@ -10,7 +10,8 @@ from llama.workflows.bsm import (
     branch_prompt_content,
     solve_prompt,
     cached_merge_prompt,
-    bsm_cached
+    bsm_cached,
+    merge_prompt
 )
 
 class BsmTrainer(LoraTrainer[ListDataset]):
@@ -19,13 +20,14 @@ class BsmTrainer(LoraTrainer[ListDataset]):
         metrics = {}
 
         concepts = sample['inputs']['concepts']
-        [branch_node, merge_node] = self.workflow.insert([
+        # [branch_node, merge_node] = self.workflow.insert([
+        [branch_node] = self.workflow.insert([
             {'messages': [
                 {'role': 'user', 'content': branch_prompt_content(concepts)}
             ], 'parent_ids': []},
-            {'messages': [
-                {'role': 'user', 'content': cached_merge_prompt}
-            ], 'parent_ids': []},
+            # {'messages': [
+            #     {'role': 'user', 'content': cached_merge_prompt}
+            # ], 'parent_ids': []},
         ])
 
         branch_target_ids = [
@@ -64,18 +66,28 @@ class BsmTrainer(LoraTrainer[ListDataset]):
             reorder_targets(solve_target_ids)
         )
 
+        [merge_node] = self.workflow.insert([
+            {'messages': [
+                {'role': 'user', 'content': merge_prompt(
+                    sample['outputs']['solve_tokens'],
+                    sample['outputs']['concept_groups'][0],
+                    sample['outputs']['concept_groups'][1],
+                )}
+            ]}
+        ])
+
         merge_target_ids = [
             p[p.index(1473)+1:] + [self.eot_id]
             for p in sample['outputs']['merge_tokens']
         ]
         _, merge_logits = self.workflow.train_step([
             {'header':
-                ('assistant', None),
+                ('user', None),
                 'prefill': 'Combined Story:\n\n',
                 'parent_ids': [
                     merge_node['id'],
-                    solve_nodes[0]['id'],
-                    solve_nodes[1]['id'],
+                    # solve_nodes[0]['id'],
+                    # solve_nodes[1]['id'],
                 ]}
         ], merge_target_ids)
 
@@ -85,6 +97,9 @@ class BsmTrainer(LoraTrainer[ListDataset]):
         )
 
         return sum(metrics.values()), metrics
+
+    def step():
+        pass
 
     @torch.no_grad
     def evaluate(
